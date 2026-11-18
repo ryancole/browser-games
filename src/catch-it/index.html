@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Catch It</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: #0f1115;
+    color: #e8e8ea;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    user-select: none;
+    touch-action: none;
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 0.5rem; font-weight: 600; letter-spacing: 0.04em; }
+  #hud { display: flex; gap: 2rem; margin-bottom: 0.5rem; font-variant-numeric: tabular-nums; }
+  canvas {
+    background: #171a21;
+    border: 1px solid #2a2f3a;
+    border-radius: 10px;
+    max-width: 96vw;
+    height: auto;
+  }
+  #hint { margin-top: 0.75rem; font-size: 0.85rem; opacity: 0.6; }
+  button + button { background: #2a2f3a; margin-left: 0.5rem; }
+  button + button:hover { background: #363c4a; }
+  button {
+    margin-top: 1rem;
+    padding: 0.6rem 1.4rem;
+    font-size: 1rem;
+    border: none;
+    border-radius: 8px;
+    background: #4f8cff;
+    color: white;
+    cursor: pointer;
+  }
+  button:hover { background: #3a78f0; }
+</style>
+</head>
+<body>
+<h1>CATCH IT</h1>
+<div id="hud">
+  <span>Score: <strong id="score">0</strong></span>
+  <span>Best: <strong id="best">0</strong></span>
+  <span>Lives: <strong id="lives">3</strong></span>
+</div>
+<canvas id="game" width="480" height="640"></canvas>
+<div id="hint">← → or A / D to move · drag or tap on touch screens</div>
+<div>
+  <button id="start">Start</button>
+  <button id="mute">Sound: on</button>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width, H = canvas.height;
+
+  const scoreEl = document.getElementById("score");
+  const bestEl = document.getElementById("best");
+  const livesEl = document.getElementById("lives");
+  const startBtn = document.getElementById("start");
+
+  // Persist the best score if storage is available; fail quietly otherwise.
+  const loadBest = () => {
+    try { return Number(localStorage.getItem("catchit-best")) || 0; } catch { return 0; }
+  };
+  const saveBest = (v) => {
+    try { localStorage.setItem("catchit-best", String(v)); } catch {}
+  };
+
+  // ---- 8-bit sound effects (synthesized, no audio files) ----
+  let audioCtx = null;
+  let muted = false;
+  try { muted = localStorage.getItem("catchit-muted") === "1"; } catch {}
+  const muteBtn = document.getElementById("mute");
+
+  function getAudio() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    }
+    if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+    return audioCtx;
+  }
+
+  // Play a sequence of square-wave notes: [frequency Hz, duration seconds]
+  function blip(notes, { type = "square", gain = 0.12, slide = false } = {}) {
+    if (muted) return;
+    const ac = getAudio();
+    if (!ac) return;
+    let t = ac.currentTime;
+    for (const [freq, dur] of notes) {
+      const osc = ac.createOscillator();
+      const g = ac.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, t);
+      if (slide) osc.frequency.exponentialRampToValueAtTime(Math.max(40, freq * 0.5), t + dur);
+      g.gain.setValueAtTime(gain, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      osc.connect(g).connect(ac.destination);
+      osc.start(t);
+      osc.stop(t + dur);
+      t += dur;
+    }
+  }
+
+  const sfx = {
+    catch: () => blip([[660, 0.05], [990, 0.07]]),
+    miss: () => blip([[330, 0.1], [247, 0.14]], { type: "triangle", gain: 0.08 }),
+    hit: () => blip([[220, 0.25]], { type: "sawtooth", gain: 0.18, slide: true }),
+    start: () => blip([[330, 0.08], [440, 0.08], [660, 0.14]]),
+    over: () => blip([[523, 0.14], [392, 0.14], [330, 0.14], [262, 0.4]], { type: "triangle", gain: 0.2 }),
+    best: () => blip([[523, 0.08], [659, 0.08], [784, 0.08], [1047, 0.2]]),
+  };
+
+  function toggleMute() {
+    muted = !muted;
+    try { localStorage.setItem("catchit-muted", muted ? "1" : "0"); } catch {}
+    muteBtn.textContent = muted ? "Sound: off" : "Sound: on";
+  }
+  muteBtn.textContent = muted ? "Sound: off" : "Sound: on";
+  muteBtn.addEventListener("click", () => { toggleMute(); muteBtn.blur(); });
+
+  const player = { w: 90, h: 14, x: W / 2 - 45, y: H - 40, speed: 7 };
+  const keys = { left: false, right: false };
+  let pointerX = null;
+
+  let items = [];
+  let score = 0, lives = 3, best = loadBest();
+  let running = false, gameOver = false;
+  let spawnTimer = 0, spawnEvery = 50, fallSpeed = 2.5;
+  let frame = 0, lastTime = 0;
+
+  bestEl.textContent = best;
+
+  function reset() {
+    items = [];
+    score = 0; lives = 3;
+    spawnTimer = 0; spawnEvery = 50; fallSpeed = 2.5;
+    player.x = W / 2 - player.w / 2;
+    updateHud();
+  }
+
+  function updateHud() {
+    scoreEl.textContent = score;
+    livesEl.textContent = lives;
+    bestEl.textContent = best;
+  }
+
+  function spawn() {
+    const size = 18 + Math.random() * 14;
+    items.push({
+      x: Math.random() * (W - size),
+      y: -size,
+      size,
+      // ~1 in 5 items is a bad one (red) that costs a life if caught.
+      bad: Math.random() < 0.2,
+      speed: fallSpeed * (0.8 + Math.random() * 0.6),
+    });
+  }
+
+  function update() {
+    // Keyboard movement
+    if (keys.left) player.x -= player.speed;
+    if (keys.right) player.x += player.speed;
+    // Pointer movement (mouse drag / touch)
+    if (pointerX !== null) player.x = pointerX - player.w / 2;
+    player.x = Math.max(0, Math.min(W - player.w, player.x));
+
+    // Spawning
+    spawnTimer++;
+    if (spawnTimer >= spawnEvery) {
+      spawnTimer = 0;
+      spawn();
+    }
+
+    // Move items and check collisions
+    for (const it of items) {
+      it.y += it.speed;
+      const hitX = it.x + it.size > player.x && it.x < player.x + player.w;
+      const hitY = it.y + it.size > player.y && it.y < player.y + player.h;
+      if (hitX && hitY) {
+        it.caught = true;
+        if (it.bad) {
+          lives--;
+          sfx.hit();
+        } else {
+          score++;
+          if (score > best) { best = score; saveBest(best); }
+          sfx.catch();
+        }
+      }
+    }
+    // A green item that reaches the bottom is a miss: no penalty, just a soft sound.
+    for (const it of items) {
+      if (!it.caught && !it.bad && !it.missed && it.y > H) {
+        it.missed = true;
+        sfx.miss();
+      }
+    }
+    items = items.filter(it => !it.caught && it.y < H + 40);
+
+    // Missed good items cost nothing; the difficulty ramps with score.
+    fallSpeed = 2.5 + score * 0.08;
+    spawnEvery = Math.max(18, 50 - score * 0.6);
+
+    updateHud();
+    if (lives <= 0) endGame();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+
+    // Player paddle
+    ctx.fillStyle = "#4f8cff";
+    ctx.beginPath();
+    ctx.roundRect(player.x, player.y, player.w, player.h, 7);
+    ctx.fill();
+
+    // Falling items
+    for (const it of items) {
+      ctx.fillStyle = it.bad ? "#ff5c5c" : "#7de08a";
+      ctx.beginPath();
+      ctx.roundRect(it.x, it.y, it.size, it.size, 4);
+      ctx.fill();
+    }
+
+    if (!running) {
+      ctx.fillStyle = "rgba(0,0,0,0.55)";
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = "#e8e8ea";
+      ctx.textAlign = "center";
+      ctx.font = "bold 28px system-ui, sans-serif";
+      ctx.fillText(gameOver ? "Game over" : "Ready?", W / 2, H / 2 - 10);
+      ctx.font = "16px system-ui, sans-serif";
+      ctx.fillText(gameOver ? `Score: ${score}` : "Catch green. Dodge red.", W / 2, H / 2 + 24);
+    }
+  }
+
+  function loop(t) {
+    if (running) {
+      update();
+      frame++;
+    }
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  function startGame() {
+    reset();
+    gameOver = false;
+    running = true;
+    startBtn.blur();
+    sfx.start();
+  }
+
+  function endGame() {
+    running = false;
+    gameOver = true;
+    startBtn.textContent = "Play again";
+    if (score > 0 && score >= best) sfx.best();
+    else sfx.over();
+  }
+
+  // Keyboard
+  const keyMap = { ArrowLeft: "left", a: "left", A: "left", ArrowRight: "right", d: "right", D: "right" };
+  window.addEventListener("keydown", (e) => {
+    const k = keyMap[e.key];
+    if (k) { keys[k] = true; e.preventDefault(); }
+    if ((e.key === " " || e.key === "Enter") && !running) startGame();
+    if (e.key === "m" || e.key === "M") toggleMute();
+  });
+  window.addEventListener("keyup", (e) => {
+    const k = keyMap[e.key];
+    if (k) keys[k] = false;
+  });
+
+  // Pointer / touch
+  const toCanvasX = (clientX) => {
+    const rect = canvas.getBoundingClientRect();
+    return (clientX - rect.left) * (W / rect.width);
+  };
+  canvas.addEventListener("pointermove", (e) => {
+    if (e.buttons || e.pointerType === "touch") pointerX = toCanvasX(e.clientX);
+  });
+  canvas.addEventListener("pointerdown", (e) => {
+    pointerX = toCanvasX(e.clientX);
+    if (!running) startGame();
+  });
+  canvas.addEventListener("pointerup", () => { pointerX = null; });
+  canvas.addEventListener("pointerleave", () => { pointerX = null; });
+
+  startBtn.addEventListener("click", startGame);
+
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

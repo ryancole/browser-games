@@ -1,4 +1,4 @@
-# Publishes the game in src/ to GitHub Pages on every push to master.
+# Publishes the games in src/ to GitHub Pages on every push to master.
 name: Deploy to GitHub Pages
 
 on:

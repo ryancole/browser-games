@@ -1,35 +1,34 @@
-# Catch It
+# Browser Games
 
-A small arcade game for the browser. Move the paddle to catch the green blocks and dodge the red ones. The game speeds up as your score climbs.
+A collection of small games for the browser. Each game is a self-contained folder under `src/` with no dependencies or build step.
 
-It's a single HTML file with no dependencies, build step or asset files. The graphics are drawn on a `<canvas>` and the sound effects are made in code with the Web Audio API.
+Play them at https://ryancole.github.io/browser-games/.
 
-## Play
+## Games
 
-Open `src/index.html` in any modern browser.
+| Game | Description |
+| ---- | ----------- |
+| [Catch It](src/catch-it/) | Catch the green blocks, dodge the red ones. |
 
-## How to play
+## Running locally
 
-- **Green blocks** are worth 1 point each. Missing one costs nothing.
-- **Red blocks** cost a life if you catch them, so let them fall.
-- You start with **3 lives**. The game ends when you run out.
-- Blocks fall faster and appear more often as your score goes up.
-
-## Controls
-
-| Action      | Keyboard              | Mouse / touch               |
-| ----------- | --------------------- | --------------------------- |
-| Move        | `←` `→` or `A` `D`    | Drag (mouse) or touch/drag  |
-| Start       | `Space` or `Enter`    | Click/tap the board or Start |
-| Toggle sound| `M`                   | "Sound" button              |
-
-## Saved settings
-
-Your best score and the sound setting are kept in the browser's `localStorage` under the keys `catchit-best` and `catchit-muted`. If storage isn't available, the game still runs but won't remember them.
+Open `src/index.html` (the game list) or any game's `index.html` in a modern browser.
 
 ## Project layout
 
 ```
 src/
-  index.html   # the whole game: markup, styles and script
+  index.html        # landing page listing the games
+  catch-it/
+    index.html      # the whole game: markup, styles and script
+    README.md       # how to play
 ```
+
+## Adding a game
+
+1. Create `src/<game-name>/index.html`.
+2. Add a link to it in `src/index.html` and a row to the table above.
+
+## Deployment
+
+Every push to `master` publishes `src/` to GitHub Pages via `.github/workflows/pages.yml`.
