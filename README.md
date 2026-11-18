@@ -9,3 +9,5 @@ Play them at https://rycole.com/browser-games/.
 | Game | Description |
 | ---- | ----------- |
 | [Catch It](src/catch-it/) | Catch the green blocks, dodge the red ones. |
+| [Brick Breaker](src/brick-breaker/) | Bounce the ball off your paddle and smash every brick. |
+| [Sky Hop](src/sky-hop/) | Tap to flap through the gaps between the pillars. |

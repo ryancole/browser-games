@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sky Hop</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: #0f1115;
+    color: #e8e8ea;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    user-select: none;
+    touch-action: none;
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 0.5rem; font-weight: 600; letter-spacing: 0.04em; }
+  #hud { display: flex; gap: 2rem; margin-bottom: 0.5rem; font-variant-numeric: tabular-nums; }
+  canvas {
+    background: #171a21;
+    border: 1px solid #2a2f3a;
+    border-radius: 10px;
+    max-width: 96vw;
+    max-height: 78vh;
+    height: auto;
+  }
+  #hint { margin-top: 0.75rem; font-size: 0.85rem; opacity: 0.6; text-align: center; padding: 0 1rem; }
+  button + button { background: #2a2f3a; margin-left: 0.5rem; }
+  button + button:hover { background: #363c4a; }
+  button {
+    margin-top: 1rem;
+    padding: 0.6rem 1.4rem;
+    font-size: 1rem;
+    border: none;
+    border-radius: 8px;
+    background: #4f8cff;
+    color: white;
+    cursor: pointer;
+  }
+  button:hover { background: #3a78f0; }
+</style>
+</head>
+<body>
+<h1>SKY HOP</h1>
+<div id="hud">
+  <span>Score: <strong id="score">0</strong></span>
+  <span>Best: <strong id="best">0</strong></span>
+</div>
+<canvas id="game" width="480" height="640"></canvas>
+<div id="hint">Space, ↑ or W to flap · click or tap the board on touch screens</div>
+<div>
+  <button id="start">Start</button>
+  <button id="mute">Sound: on</button>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width, H = canvas.height;
+
+  const scoreEl = document.getElementById("score");
+  const bestEl = document.getElementById("best");
+  const startBtn = document.getElementById("start");
+  const muteBtn = document.getElementById("mute");
+
+  const loadBest = () => {
+    try { return Number(localStorage.getItem("skyhop-best")) || 0; } catch { return 0; }
+  };
+  const saveBest = (v) => {
+    try { localStorage.setItem("skyhop-best", String(v)); } catch {}
+  };
+
+  // ---- 8-bit sound effects (synthesized, no audio files) ----
+  let audioCtx = null;
+  let muted = false;
+  try { muted = localStorage.getItem("skyhop-muted") === "1"; } catch {}
+
+  function getAudio() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    }
+    if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+    return audioCtx;
+  }
+
+  // Play a sequence of notes: [frequency Hz, duration seconds]
+  function blip(notes, { type = "square", gain = 0.1, slide = false, rise = false } = {}) {
+    if (muted) return;
+    const ac = getAudio();
+    if (!ac) return;
+    let t = ac.currentTime;
+    for (const [freq, dur] of notes) {
+      const osc = ac.createOscillator();
+      const g = ac.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, t);
+      if (slide) osc.frequency.exponentialRampToValueAtTime(Math.max(40, freq * 0.5), t + dur);
+      if (rise) osc.frequency.exponentialRampToValueAtTime(freq * 1.6, t + dur);
+      g.gain.setValueAtTime(gain, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      osc.connect(g).connect(ac.destination);
+      osc.start(t);
+      osc.stop(t + dur);
+      t += dur;
+    }
+  }
+
+  const sfx = {
+    flap: () => blip([[380, 0.07]], { type: "triangle", gain: 0.12, rise: true }),
+    point: () => blip([[784, 0.05], [1175, 0.08]], { gain: 0.07 }),
+    hit: () => blip([[220, 0.25]], { type: "sawtooth", gain: 0.16, slide: true }),
+    over: () => blip([[523, 0.14], [392, 0.14], [330, 0.14], [262, 0.4]], { type: "triangle", gain: 0.2 }),
+    best: () => blip([[523, 0.08], [659, 0.08], [784, 0.08], [1047, 0.2]]),
+  };
+
+  function toggleMute() {
+    muted = !muted;
+    try { localStorage.setItem("skyhop-muted", muted ? "1" : "0"); } catch {}
+    muteBtn.textContent = muted ? "Sound: off" : "Sound: on";
+  }
+  muteBtn.textContent = muted ? "Sound: off" : "Sound: on";
+  muteBtn.addEventListener("click", () => { toggleMute(); muteBtn.blur(); });
+
+  // ---- Tuning ----
+  const GROUND = 60;               // height of the ground strip
+  const GRAVITY = 1500;            // px/s²
+  const FLAP = -440;               // px/s upward kick
+  const PILLAR_W = 70;
+  const SPACING = 230;             // horizontal distance between pillars
+  const START_GAP = 180, MIN_GAP = 130;
+  const START_SPEED = 170, MAX_SPEED = 260;
+
+  const bird = { x: 130, y: H / 2, vy: 0, r: 14 };
+  let pillars = [];
+  let stars = [];
+  let score = 0, best = loadBest();
+  let state = "ready"; // ready | play | dying | over
+  let time = 0, groundX = 0, overAt = 0;
+
+  bestEl.textContent = best;
+
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  const speed = () => Math.min(MAX_SPEED, START_SPEED + score * 3);
+  const gapSize = () => Math.max(MIN_GAP, START_GAP - score * 2);
+
+  // Faint background stars, drawn in two layers that scroll at different speeds.
+  for (let i = 0; i < 40; i++) {
+    stars.push({ x: Math.random() * W, y: Math.random() * (H - GROUND - 20), layer: Math.random() < 0.5 ? 0.15 : 0.35, size: Math.random() < 0.2 ? 2 : 1 });
+  }
+
+  function addPillar(x) {
+    const gap = gapSize();
+    const prev = pillars.length ? pillars[pillars.length - 1].gapY + pillars[pillars.length - 1].gap / 2 : H / 2;
+    const minC = 70 + gap / 2, maxC = H - GROUND - 70 - gap / 2;
+    // Keep each gap within reach of the last one.
+    const lo = Math.max(minC, prev - 170), hi = Math.min(maxC, prev + 170);
+    const center = lo + Math.random() * (hi - lo);
+    pillars.push({ x, gapY: center - gap / 2, gap, passed: false });
+  }
+
+  function reset() {
+    bird.y = H / 2;
+    bird.vy = 0;
+    pillars = [];
+    score = 0;
+    addPillar(W + 60);
+    updateHud();
+  }
+
+  function updateHud() {
+    scoreEl.textContent = score;
+    bestEl.textContent = best;
+  }
+
+  function flap() {
+    bird.vy = FLAP;
+    sfx.flap();
+  }
+
+  function circleRect(x, y, r, rx, ry, rw, rh) {
+    const cx = clamp(x, rx, rx + rw), cy = clamp(y, ry, ry + rh);
+    const dx = x - cx, dy = y - cy;
+    return dx * dx + dy * dy < r * r;
+  }
+
+  function crash() {
+    state = "dying";
+    sfx.hit();
+    if (bird.vy < 0) bird.vy = 0;
+  }
+
+  function update(dt) {
+    time += dt;
+
+    if (state === "ready") {
+      // Gentle bob while waiting.
+      bird.y = H / 2 + Math.sin(time * 3) * 8;
+      groundX = (groundX + START_SPEED * dt) % 24;
+      return;
+    }
+
+    // Bird physics (also runs while dying, so it drops to the ground).
+    bird.vy = Math.min(bird.vy + GRAVITY * dt, 900);
+    bird.y += bird.vy * dt;
+    if (bird.y < bird.r) { bird.y = bird.r; bird.vy = 0; }
+
+    const floor = H - GROUND - bird.r;
+    if (bird.y >= floor) {
+      bird.y = floor;
+      if (state === "play") crash();
+      if (state === "dying") endGame();
+      return;
+    }
+    if (state !== "play") return;
+
+    const sp = speed();
+    groundX = (groundX + sp * dt) % 24;
+    for (const s of stars) s.x = (s.x - sp * s.layer * dt + W) % W;
+
+    for (const p of pillars) {
+      p.x -= sp * dt;
+      if (!p.passed && p.x + PILLAR_W < bird.x - bird.r) {
+        p.passed = true;
+        score++;
+        if (score > best) { best = score; saveBest(best); }
+        sfx.point();
+        updateHud();
+      }
+      const top = circleRect(bird.x, bird.y, bird.r - 2, p.x, -10, PILLAR_W, p.gapY + 10);
+      const bottom = circleRect(bird.x, bird.y, bird.r - 2, p.x, p.gapY + p.gap, PILLAR_W, H);
+      if (top || bottom) { crash(); return; }
+    }
+    pillars = pillars.filter(p => p.x + PILLAR_W > -10);
+    const lastP = pillars[pillars.length - 1];
+    if (!lastP || lastP.x < W - SPACING) addPillar((lastP ? lastP.x : W) + SPACING);
+  }
+
+  function drawPillar(x, y, h, capAtBottom) {
+    ctx.fillStyle = "#344058";
+    ctx.fillRect(x, y, PILLAR_W, h);
+    ctx.fillStyle = "#425072";
+    ctx.fillRect(x + 8, y, 10, h);
+    const capY = capAtBottom ? y + h - 22 : y;
+    ctx.fillStyle = "#4f8cff";
+    ctx.beginPath();
+    ctx.roundRect(x - 5, capY, PILLAR_W + 10, 22, 5);
+    ctx.fill();
+  }
+
+  function drawBird() {
+    const tilt = clamp(bird.vy / 600, -0.5, 1.2);
+    // Wing flaps fast while rising, rests while falling.
+    const wing = state === "ready" ? Math.sin(time * 14) : bird.vy < 0 ? Math.sin(time * 30) : 0.3;
+    ctx.save();
+    ctx.translate(bird.x, bird.y);
+    ctx.rotate(state === "ready" ? 0 : tilt);
+
+    ctx.fillStyle = "#ffd166";
+    ctx.beginPath();
+    ctx.arc(0, 0, bird.r, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#f4b740";
+    ctx.beginPath();
+    ctx.ellipse(-4, 3 + wing * 4, 8, 5, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();
+    ctx.arc(5, -5, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#0f1115";
+    ctx.beginPath();
+    ctx.arc(6.5, -5, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#ff9f5c";
+    ctx.beginPath();
+    ctx.moveTo(11, -1);
+    ctx.lineTo(20, 2);
+    ctx.lineTo(11, 6);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+
+    const sky = ctx.createLinearGradient(0, 0, 0, H - GROUND);
+    sky.addColorStop(0, "#141824");
+    sky.addColorStop(1, "#1e2638");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, H - GROUND);
+
+    for (const s of stars) {
+      ctx.fillStyle = s.layer > 0.2 ? "rgba(232,232,234,0.5)" : "rgba(232,232,234,0.25)";
+      ctx.fillRect(s.x, s.y, s.size, s.size);
+    }
+
+    for (const p of pillars) {
+      drawPillar(p.x, 0, p.gapY, true);
+      drawPillar(p.x, p.gapY + p.gap, H - GROUND - (p.gapY + p.gap), false);
+    }
+
+    // Ground with scrolling stripes
+    ctx.fillStyle = "#232833";
+    ctx.fillRect(0, H - GROUND, W, GROUND);
+    ctx.fillStyle = "#2f3645";
+    for (let x = -groundX; x < W; x += 24) ctx.fillRect(x, H - GROUND + 8, 12, 6);
+    ctx.fillStyle = "#4f8cff";
+    ctx.fillRect(0, H - GROUND, W, 3);
+
+    drawBird();
+
+    ctx.textAlign = "center";
+    if (state === "play" || state === "dying") {
+      ctx.fillStyle = "rgba(232,232,234,0.9)";
+      ctx.font = "bold 44px system-ui, sans-serif";
+      ctx.fillText(score, W / 2, 80);
+    }
+
+    if (state === "ready" || state === "over") {
+      ctx.fillStyle = "rgba(0,0,0,0.5)";
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = "#e8e8ea";
+      ctx.font = "bold 28px system-ui, sans-serif";
+      ctx.fillText(state === "over" ? "Game over" : "Ready?", W / 2, H / 2 - 70);
+      ctx.font = "16px system-ui, sans-serif";
+      ctx.fillText(state === "over" ? `Score: ${score} · Best: ${best}` : "Flap through the gaps.", W / 2, H / 2 - 40);
+    }
+  }
+
+  const STEP = 1 / 120;
+  let last = 0, acc = 0;
+  function loop(t) {
+    const dt = last ? Math.min(0.1, (t - last) / 1000) : 0;
+    last = t;
+    acc += dt;
+    while (acc >= STEP) { update(STEP); acc -= STEP; }
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  function startGame() {
+    reset();
+    state = "play";
+    startBtn.blur();
+    flap();
+  }
+
+  function endGame() {
+    state = "over";
+    overAt = performance.now();
+    startBtn.textContent = "Play again";
+    if (score > 0 && score >= best) sfx.best();
+    else sfx.over();
+  }
+
+  // One input for everything: start, flap, or restart.
+  function action() {
+    if (state === "ready") startGame();
+    else if (state === "play") flap();
+    // A short delay stops a frantic flap from instantly restarting.
+    else if (state === "over" && performance.now() - overAt > 400) startGame();
+  }
+
+  window.addEventListener("keydown", (e) => {
+    if (e.key === " " || e.key === "ArrowUp" || e.key === "w" || e.key === "W" || e.key === "Enter") {
+      e.preventDefault();
+      if (!e.repeat) action();
+    }
+    if (e.key === "m" || e.key === "M") toggleMute();
+  });
+  canvas.addEventListener("pointerdown", (e) => { e.preventDefault(); action(); });
+  startBtn.addEventListener("click", () => { if (state !== "play" && state !== "dying") startGame(); });
+
+  reset();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
