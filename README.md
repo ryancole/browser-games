@@ -1,6 +1,6 @@
 # Browser Games
 
-A collection of small games for the browser. Each game is a self-contained folder under `src/` with no dependencies or build step.
+A collection of small games for the browser. Each game is a self-contained folder under `src/` with no build step. Most have no dependencies at all; Powder Run loads Three.js from a CDN.
 
 Play them at https://rycole.com/browser-games/.
 
@@ -11,3 +11,4 @@ Play them at https://rycole.com/browser-games/.
 | [Catch It](src/catch-it/) | Catch the green blocks, dodge the red ones. |
 | [Brick Breaker](src/brick-breaker/) | Bounce the ball off your paddle and smash every brick. |
 | [Sky Hop](src/sky-hop/) | Tap to flap through the gaps between the pillars. |
+| [Powder Run](src/powder-run/) | Snowboard down a 3D mountain, spinning and grabbing off the kickers. |
