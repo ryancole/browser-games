@@ -2,6 +2,8 @@
 
 A 3D snowboarding game for the browser. Race computer rivals or your friends down a winding mountain run, launch off the kickers, and spin, flip and grab in the air for points. Your final score is your trick points plus a time bonus for finishing under par.
 
+It's a snowy, overcast day on the mountain: snow falls around you, powder blows across the slope, and fog hides the far end of the run.
+
 It's a single HTML file with no build step or asset files. The 3D graphics use [Three.js](https://threejs.org/) (r170), loaded from the jsDelivr CDN through an import map, so the page needs an internet connection the first time it loads. The course, trees and riders are generated in code, and the sound effects and music are made with the Web Audio API. Multiplayer uses [PeerJS](https://peerjs.com/) 1.5.4, which is loaded from jsDelivr only when you host or join a lobby.
 
 ## Play
