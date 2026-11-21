@@ -136,6 +136,7 @@
   <div class="grp">
     <button data-t="left">◀</button>
     <button data-t="right">▶</button>
+    <button data-t="brake">BRAKE</button>
   </div>
   <div class="grp">
     <button data-t="tuck">TUCK</button>
@@ -164,6 +165,10 @@ const G_AIR = 28;          // gravity in the air (a little floaty-but-snappy)
 const TURN_RATE = 2.0;     // rad/s carve rate
 const SPIN_RATE = 6.8;     // rad/s spin rate in the air
 const SPIN_POINTS = [0, 100, 250, 450, 700, 1000, 1400, 1800];
+const FLIP_RATE = 6.0;     // rad/s flip rate in the air
+const FLIP_POINTS = [0, 600, 1500, 2800, 4500];
+const FLIP_LAND_TOL = 0.75; // rad of leftover flip rotation you can still ride away from
+const FLIP_PIVOT = 0.9;     // flips rotate about the rider's middle, not their feet
 
 function mulberry32(seed) {
   return () => {
@@ -590,14 +595,14 @@ function updateAudio(speed, slip) {
 // Input
 // ---------------------------------------------------------------------------
 const keys = new Set();
-const touch = { left: false, right: false, tuck: false, grab: false, jump: false };
+const touch = { left: false, right: false, tuck: false, brake: false, grab: false, jump: false };
 const has = (...codes) => codes.some((c) => keys.has(c));
 function readInput() {
   return {
     left: has("ArrowLeft", "KeyA") || touch.left,
     right: has("ArrowRight", "KeyD") || touch.right,
-    tuck: has("ArrowDown", "KeyS") || touch.tuck,
-    brake: has("ArrowUp", "KeyW"),
+    tuck: has("ArrowUp", "KeyW") || touch.tuck,
+    brake: has("ArrowDown", "KeyS") || touch.brake,
     grab: has("KeyJ", "KeyX", "ShiftLeft", "ShiftRight") || touch.grab,
     jump: has("Space", "KeyK") || touch.jump,
   };
@@ -635,7 +640,7 @@ let best = Number(store.get("powderrun-best")) || 0;
 function resetPlayer() {
   Object.assign(P, {
     x: center(0), z: 0, y: 0, vx: 0, vy: 0, vz: 0,
-    heading: 0, spin: 0, sw: false, takeoffSw: false,
+    heading: 0, spin: 0, flip: 0, flipYaw: 0, sw: false, takeoffSw: false,
     grounded: true, groundVy: 0, airTime: 0, slip: 0,
     charge: 0, popped: false, grabbing: false, grabTime: 0, grabName: "",
     crashT: 0, crashSpin: 0, lean: 0, crouch: 0,
@@ -648,8 +653,11 @@ const canControl = () => state === "run" && P.crashT <= 0;
 function leaveGround(y, vy) {
   P.grounded = false;
   P.y = y; P.vy = vy;
-  P.airTime = 0; P.spin = 0; P.grabTime = 0; P.grabbing = false; P.popped = false;
+  P.airTime = 0; P.spin = 0; P.flip = 0; P.grabTime = 0; P.grabbing = false; P.popped = false;
   P.takeoffSw = P.sw;
+  // Flips turn about the axis across the direction of travel at takeoff, so
+  // "forward" always means toward where you're headed, whichever way you've spun.
+  P.flipYaw = Math.hypot(P.vx, P.vz) > 1 ? Math.atan2(P.vx, P.vz) : P.heading;
 }
 
 function ollie(late) {
@@ -664,7 +672,7 @@ function crash(reason) {
   if (P.crashT > 0) return;
   P.crashT = 1.6;
   P.crashSpin = 0;
-  P.grabbing = false; P.spin = 0; P.charge = 0;
+  P.grabbing = false; P.spin = 0; P.flip = 0; P.charge = 0;
   P.vx *= 0.35; P.vz *= 0.35;
   sfx.crash();
   showPopup(reason, "WIPEOUT", true);
@@ -743,6 +751,8 @@ function airStep(h, inp) {
   if (ctl) {
     const steer = (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
     P.spin -= steer * SPIN_RATE * h;
+    const pitch = (inp.tuck ? 1 : 0) - (inp.brake ? 1 : 0);
+    P.flip += pitch * FLIP_RATE * h;
     if (inp.grab) {
       if (!P.grabbing) {
         P.grabbing = true;
@@ -770,25 +780,37 @@ function land(ground) {
   const grabTime = P.grabTime, grabName = P.grabName;
   P.grabbing = false; P.grabName = "";
 
-  if (P.crashT > 0 || state !== "run") { P.spin = 0; return; }
+  if (P.crashT > 0 || state !== "run") { P.spin = 0; P.flip = 0; return; }
 
   const phi = Math.atan2(P.vx, P.vz);
   const rel = wrapAngle(P.heading + (P.sw ? Math.PI : 0) + P.spin - phi);
-  const spin = P.spin;
-  P.spin = 0;
+  const spin = P.spin, flip = P.flip;
+  const flipLeft = wrapAngle(flip);
+  P.spin = 0; P.flip = 0;
+  if (Math.abs(flipLeft) > FLIP_LAND_TOL) {
+    if (Math.abs(flip) < Math.PI * 2 - FLIP_LAND_TOL) return crash(Math.abs(flipLeft) > 2.2 ? "Landed on your head!" : "Under-rotated!");
+    return crash(Math.abs(flipLeft) > 2.2 ? "Landed on your head!" : "Over-rotated!");
+  }
   if (wasGrabbing && airTime > 0.3) return crash("Still grabbing!");
   if (Math.abs(rel) < 0.75) P.sw = false;
   else if (Math.abs(rel) > Math.PI - 0.75) P.sw = true;
   else return crash("Landed sideways!");
   P.heading = phi;
   if (airTime > 0.25) sfx.land();
-  scoreTrick(airTime, spin, grabTime, grabName);
+  scoreTrick(airTime, spin, flip, grabTime, grabName);
 }
 
-function scoreTrick(airTime, spin, grabTime, grabName) {
+const FLIP_COUNT = ["", "", "Double ", "Triple ", "Quad "];
+function scoreTrick(airTime, spin, flip, grabTime, grabName) {
   const n180 = Math.round(Math.abs(spin) / Math.PI);
+  const nFlip = Math.round(Math.abs(flip) / (Math.PI * 2));
   const parts = [];
   let pts = 0;
+  if (nFlip > 0) {
+    const i = Math.min(nFlip, FLIP_POINTS.length - 1);
+    parts.push(`${FLIP_COUNT[nFlip] ?? nFlip + "x "}${flip > 0 ? "Frontflip" : "Backflip"}`);
+    pts += FLIP_POINTS[i];
+  }
   if (n180 > 0) {
     parts.push(`${spin > 0 ? "Frontside" : "Backside"} ${n180 * 180}`);
     pts += SPIN_POINTS[Math.min(n180, SPIN_POINTS.length - 1)];
@@ -800,7 +822,8 @@ function scoreTrick(airTime, spin, grabTime, grabName) {
   if (parts.length === 0 && airTime > 0.8) parts.push("Big Air");
   if (airTime > 0.6) pts += Math.round(airTime * 60);
   if (parts.length === 0) return;
-  if (n180 > 0 && grabTime > 0.12) pts = Math.round(pts * 1.5);
+  const kinds = (nFlip > 0) + (n180 > 0) + (grabTime > 0.12);
+  if (kinds >= 2) pts = Math.round(pts * (kinds === 3 ? 2 : 1.5));
   if (P.takeoffSw) { parts.unshift("Switch"); pts = Math.round(pts * 1.25); }
   trickScore += pts;
   sfx.trick();
@@ -903,6 +926,7 @@ function update(dt) {
 // ---------------------------------------------------------------------------
 const UP = new THREE.Vector3(0, 1, 0);
 const vN = new THREE.Vector3(), qa = new THREE.Quaternion(), qy = new THREE.Quaternion();
+const qf = new THREE.Quaternion(), flipAxis = new THREE.Vector3();
 
 function updateRider(dt, inp) {
   rider.position.set(P.x, P.y, P.z);
@@ -913,6 +937,18 @@ function updateRider(dt, inp) {
   qa.setFromUnitVectors(UP, vN);
   qy.setFromAxisAngle(UP, P.heading + (P.sw ? Math.PI : 0) + P.spin);
   qa.multiply(qy);
+  if (P.flip !== 0) {
+    // Flip about the world axis across the takeoff direction, applied on top of the spin.
+    const s = Math.sin(P.flipYaw), c = Math.cos(P.flipYaw);
+    flipAxis.set(c, 0, -s);
+    qf.setFromAxisAngle(flipAxis, P.flip);
+    qa.premultiply(qf);
+    // Pivot about the rider's middle so the body doesn't swing through the snow.
+    const fs = Math.sin(P.flip), fc = Math.cos(P.flip);
+    rider.position.x -= FLIP_PIVOT * fs * s;
+    rider.position.z -= FLIP_PIVOT * fs * c;
+    rider.position.y += FLIP_PIVOT * (1 - fc);
+  }
   rider.quaternion.slerp(qa, 1 - Math.exp(-(P.grounded ? 14 : 40) * dt));
 
   const ctl = canControl();
@@ -923,6 +959,7 @@ function updateRider(dt, inp) {
   let crouchT = 0.1;
   if (P.charge > 0) crouchT = 0.3 + 0.5 * P.charge;
   else if (P.grabbing) crouchT = 0.75;
+  else if (!P.grounded && ctl && (inp.tuck || inp.brake)) crouchT = 0.65;
   else if (ctl && inp.tuck && P.grounded) crouchT = 0.6;
   else if (!P.grounded) crouchT = 0.3;
   P.crouch += (crouchT - P.crouch) * (1 - Math.exp(-12 * dt));
@@ -995,8 +1032,8 @@ function showPopup(text, pts, bad) {
 const CONTROLS = `
   <table>
     <tr><td>Steer / spin in the air</td><td><kbd>←</kbd> <kbd>→</kbd> or <kbd>A</kbd> <kbd>D</kbd></td></tr>
-    <tr><td>Tuck for speed</td><td><kbd>↓</kbd> or <kbd>S</kbd></td></tr>
-    <tr><td>Brake / skid</td><td><kbd>↑</kbd> or <kbd>W</kbd></td></tr>
+    <tr><td>Tuck for speed · front flip in the air</td><td><kbd>↑</kbd> or <kbd>W</kbd></td></tr>
+    <tr><td>Brake / skid · back flip in the air</td><td><kbd>↓</kbd> or <kbd>S</kbd></td></tr>
     <tr><td>Hold &amp; release to jump</td><td><kbd>Space</kbd></td></tr>
     <tr><td>Grab (in the air)</td><td><kbd>J</kbd>, <kbd>X</kbd> or <kbd>Shift</kbd></td></tr>
     <tr><td>Restart · Sound</td><td><kbd>R</kbd> · <kbd>M</kbd></td></tr>
@@ -1005,7 +1042,7 @@ const CONTROLS = `
 function showMenu() {
   card.innerHTML = `
     <h1>POWDER RUN</h1>
-    <p>Race down the mountain. Hit the orange-lipped kickers, spin and grab for points, and land with your board pointing downhill.</p>
+    <p>Race down the mountain. Hit the orange-lipped kickers, spin, flip and grab for points, and land upright with your board pointing downhill.</p>
     <div class="keys-only">${CONTROLS}</div>
     <button id="go">Start</button>`;
   $("go").addEventListener("click", startRace);
