@@ -11,7 +11,7 @@ Serve the `src/` folder from any static web server and open `powder-run/`. Openi
 ## How to play
 
 - Solo, you race three bots: Juniper, Blaze and Nova, from easiest to hardest. Your place is shown in the HUD, and the results screen lists the finishing order, filling in live as other riders cross the line. Riders pass through each other.
-- Carve left and right to follow the run. The banks on either side are steep and lined with trees, and hitting a tree wipes you out.
+- Carve left and right to follow the run. The banks on either side are steep and lined with trees, and hitting a tree wipes you out. Orange safety nets part way up each bank stop you leaving the course: you can't jump over them, and riding into one turns you along it and scrubs off a little speed.
 - Tuck to go faster. Brake to skid and turn more sharply.
 - Each kicker has an orange lip. Hold jump on the approach to charge an ollie and release it at the lip to get more air. You can also release just after leaving the lip.
 - In the air, steer to spin, hold tuck to front flip or brake to back flip, and hold grab to grab the board. Hold tuck or brake as you start a grab for a Tail or Nose grab.
