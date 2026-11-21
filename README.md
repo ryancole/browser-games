@@ -12,3 +12,4 @@ Play them at https://rycole.com/browser-games/.
 | [Brick Breaker](src/brick-breaker/) | Bounce the ball off your paddle and smash every brick. |
 | [Sky Hop](src/sky-hop/) | Tap to flap through the gaps between the pillars. |
 | [Powder Run](src/powder-run/) | Snowboard down a 3D mountain, spinning and grabbing off the kickers. |
+| [Footbag Jam](src/footbag-jam/) | Keep the footbag in the air on an 8-bit beach with heads, knees, toes and back kicks. |

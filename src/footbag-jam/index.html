@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Footbag Jam</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: #0f1115;
+    color: #e8e8ea;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 0.75rem; font-weight: 600; letter-spacing: 0.04em; }
+  canvas {
+    display: block;
+    width: min(96vw, 768px, calc(72vh * 4 / 3));
+    height: auto;
+    border: 1px solid #2a2f3a;
+    border-radius: 10px;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    background: #2b1b4a;
+  }
+  #hint { margin-top: 0.75rem; font-size: 0.85rem; opacity: 0.6; text-align: center; padding: 0 1rem; line-height: 1.5; }
+  kbd {
+    font: inherit;
+    padding: 0 0.3em;
+    border: 1px solid #3a4050;
+    border-radius: 4px;
+    background: #171a21;
+  }
+  .row { display: flex; gap: 0.5rem; margin-top: 1rem; }
+  button {
+    padding: 0.6rem 1.4rem;
+    font-size: 1rem;
+    border: none;
+    border-radius: 8px;
+    background: #4f8cff;
+    color: white;
+    cursor: pointer;
+  }
+  button:hover { background: #3a78f0; }
+  button.alt { background: #2a2f3a; }
+  button.alt:hover { background: #363c4a; }
+
+  /* On-screen controls for touch screens. */
+  #pad {
+    display: none;
+    width: min(96vw, 768px);
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+  }
+  #pad .group { display: flex; gap: 0.5rem; }
+  #pad .kicks { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
+  #pad button {
+    padding: 0.9rem 0;
+    min-width: 4.2rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    background: #2a2f3a;
+    touch-action: none;
+  }
+  #pad button.on { background: #4f8cff; }
+  @media (pointer: coarse) {
+    #pad { display: flex; }
+    #hint .keys { display: none; }
+  }
+</style>
+</head>
+<body>
+<h1>FOOTBAG JAM</h1>
+<canvas id="game" width="192" height="144"></canvas>
+<div id="pad">
+  <div class="group">
+    <button data-hold="left" aria-label="Move left">◀</button>
+    <button data-hold="right" aria-label="Move right">▶</button>
+  </div>
+  <div class="kicks">
+    <button data-kick="head">HEAD</button>
+    <button data-kick="knee">KNEE</button>
+    <button data-kick="back">BACK</button>
+    <button data-kick="toe">TOE</button>
+  </div>
+</div>
+<div id="hint">
+  <span class="keys"><kbd>←</kbd> <kbd>→</kbd> move · <kbd>↑</kbd> head · <kbd>Z</kbd> knee · <kbd>X</kbd> toe · <kbd>C</kbd> back kick<br></span>
+  Keep the footbag off the ground. Use all four kicks for a Full Set bonus.
+</div>
+<div class="row">
+  <button id="start">Start</button>
+  <button id="mute" class="alt">Sound: on</button>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width, H = canvas.height;
+  const HORIZON = 78;  // where the sea meets the sky
+  const G = 124;       // the line the player's feet stand on
+
+  const startBtn = document.getElementById("start");
+  const muteBtn = document.getElementById("mute");
+
+  const loadNum = (k) => { try { return Number(localStorage.getItem(k)) || 0; } catch { return 0; } };
+  const saveNum = (k, v) => { try { localStorage.setItem(k, String(v)); } catch {} };
+
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  const rand = (lo, hi) => lo + Math.random() * (hi - lo);
+  const lerp = (a, b, t) => a + (b - a) * t;
+
+  // ---------------------------------------------------------------------------
+  // Sound: synthesized 8-bit effects and a looping chiptune (no audio files)
+  // ---------------------------------------------------------------------------
+  let audioCtx = null;
+  let muted = false;
+  try { muted = localStorage.getItem("footbag-muted") === "1"; } catch {}
+
+  function getAudio() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    }
+    if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+    return audioCtx;
+  }
+
+  function tone(freq, t, dur, type, gain, slide = 1) {
+    const ac = audioCtx;
+    const osc = ac.createOscillator();
+    const g = ac.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t);
+    if (slide !== 1) osc.frequency.exponentialRampToValueAtTime(Math.max(30, freq * slide), t + dur);
+    g.gain.setValueAtTime(gain, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(g).connect(ac.destination);
+    osc.start(t);
+    osc.stop(t + dur + 0.02);
+  }
+
+  // Play a sequence of notes: [frequency Hz, duration seconds]
+  function blip(notes, { type = "square", gain = 0.08, slide = 1 } = {}) {
+    if (muted) return;
+    const ac = getAudio();
+    if (!ac) return;
+    let t = ac.currentTime;
+    for (const [freq, dur] of notes) { tone(freq, t, dur, type, gain, slide); t += dur; }
+  }
+
+  const sfx = {
+    toss: () => blip([[440, 0.06]], { type: "triangle", gain: 0.12, slide: 1.6 }),
+    toe: () => blip([[330, 0.07]], { gain: 0.07, slide: 0.5 }),
+    knee: () => blip([[220, 0.08]], { type: "triangle", gain: 0.18, slide: 0.5 }),
+    head: () => blip([[587, 0.04], [440, 0.05]], { gain: 0.06 }),
+    back: () => blip([[294, 0.04], [440, 0.06]], { gain: 0.07 }),
+    set: () => blip([[523, 0.06], [659, 0.06], [784, 0.06], [1047, 0.06], [1319, 0.16]], { gain: 0.07 }),
+    streak: () => blip([[784, 0.06], [988, 0.1]], { gain: 0.06 }),
+    bird: () => blip([[900, 0.05], [650, 0.05], [1000, 0.09]], { type: "sawtooth", gain: 0.06 }),
+    drop: () => blip([[392, 0.12], [330, 0.12], [262, 0.12], [196, 0.36]], { type: "triangle", gain: 0.2 }),
+    best: () => blip([[523, 0.08], [659, 0.08], [784, 0.08], [1047, 0.08], [784, 0.08], [1047, 0.24]], { gain: 0.07 }),
+  };
+
+  // Chiptune: four bars (C, Am, F, G) of eighth notes. Triangle bass, square lead.
+  const midi = (n) => 440 * Math.pow(2, (n - 69) / 12);
+  const BASS_ROOTS = [36, 33, 29, 31];
+  const LEAD = [
+    72, 0, 76, 79, 0, 76, 72, 74,
+    76, 0, 72, 69, 0, 72, 76, 0,
+    77, 0, 76, 72, 0, 69, 72, 74,
+    74, 0, 71, 67, 0, 74, 79, 0,
+  ];
+  const EIGHTH = 60 / 138 / 2;
+  let musicTimer = null, nextNote = 0, musicStep = 0;
+
+  function scheduleMusic() {
+    const ac = audioCtx;
+    while (nextNote < ac.currentTime + 0.15) {
+      const root = BASS_ROOTS[Math.floor(musicStep / 8)];
+      tone(midi(musicStep % 2 ? root + 12 : root), nextNote, EIGHTH * 0.9, "triangle", 0.12);
+      const lead = LEAD[musicStep];
+      if (lead) tone(midi(lead), nextNote, EIGHTH * 0.8, "square", 0.025);
+      nextNote += EIGHTH;
+      musicStep = (musicStep + 1) % LEAD.length;
+    }
+  }
+  function startMusic() {
+    if (muted || musicTimer) return;
+    const ac = getAudio();
+    if (!ac) return;
+    nextNote = ac.currentTime + 0.05;
+    musicStep = 0;
+    musicTimer = setInterval(scheduleMusic, 40);
+  }
+  function stopMusic() {
+    clearInterval(musicTimer);
+    musicTimer = null;
+  }
+
+  function toggleMute() {
+    muted = !muted;
+    try { localStorage.setItem("footbag-muted", muted ? "1" : "0"); } catch {}
+    muteBtn.textContent = muted ? "Sound: off" : "Sound: on";
+    if (muted) stopMusic();
+    else if (state === "play") startMusic();
+  }
+  muteBtn.textContent = muted ? "Sound: off" : "Sound: on";
+  muteBtn.addEventListener("click", () => { toggleMute(); muteBtn.blur(); });
+
+  // ---------------------------------------------------------------------------
+  // Pixel drawing helpers
+  // ---------------------------------------------------------------------------
+  function rect(g, x, y, w, h, c) {
+    g.fillStyle = c;
+    g.fillRect(Math.floor(x), Math.floor(y), w, h);
+  }
+
+  // Bresenham line drawn with a square brush of size t.
+  function line(g, x0, y0, x1, y1, c, t = 1) {
+    x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1);
+    g.fillStyle = c;
+    const dx = Math.abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+    const dy = -Math.abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+    let err = dx + dy;
+    for (;;) {
+      g.fillRect(x0, y0, t, t);
+      if (x0 === x1 && y0 === y1) break;
+      const e2 = 2 * err;
+      if (e2 >= dy) { err += dy; x0 += sx; }
+      if (e2 <= dx) { err += dx; y0 += sy; }
+    }
+  }
+
+  // Draw a sprite given as rows of palette characters ('.' is transparent).
+  function sprite(g, rows, x, y, pal, flip = false) {
+    const w = rows[0].length;
+    for (let j = 0; j < rows.length; j++) {
+      for (let i = 0; i < w; i++) {
+        const ch = rows[j][i];
+        if (ch === ".") continue;
+        g.fillStyle = pal[ch];
+        g.fillRect(Math.floor(x) + (flip ? w - 1 - i : i), Math.floor(y) + j, 1, 1);
+      }
+    }
+  }
+
+  // 3x5 bitmap font.
+  const FONT = {
+    A: "010101111101101", B: "110101110101110", C: "011100100100011", D: "110101101101110",
+    E: "111100110100111", F: "111100110100100", G: "011100101101011", H: "101101111101101",
+    I: "111010010010111", J: "001001001101010", K: "101101110101101", L: "100100100100111",
+    M: "101111111101101", N: "110101101101101", O: "010101101101010", P: "110101110100100",
+    Q: "010101101110011", R: "110101110101101", S: "011100010001110", T: "111010010010010",
+    U: "101101101101111", V: "101101101101010", W: "101101111111101", X: "101101010101101",
+    Y: "101101010010010", Z: "111001010100111",
+    0: "111101101101111", 1: "010110010010111", 2: "110001010100111", 3: "110001010001110",
+    4: "101101111001001", 5: "111100110001110", 6: "011100111101111", 7: "111001010010010",
+    8: "111101111101111", 9: "111101111001110",
+    "!": "010010010000010", "+": "000010111010000", "-": "000000111000000", ":": "000010000010000",
+    ".": "000000000000010", "/": "001001010100100", "?": "110001010000010", " ": "000000000000000",
+  };
+  const textWidth = (s, scale = 1) => s.length * 4 * scale - scale;
+
+  function text(s, x, y, color, { scale = 1, align = "left", shadow = "#1a1020" } = {}) {
+    s = String(s).toUpperCase();
+    if (align === "center") x -= Math.floor(textWidth(s, scale) / 2);
+    else if (align === "right") x -= textWidth(s, scale);
+    x = Math.floor(x); y = Math.floor(y);
+    const pass = (ox, oy, c) => {
+      ctx.fillStyle = c;
+      for (let n = 0; n < s.length; n++) {
+        const glyph = FONT[s[n]] || FONT["?"];
+        for (let k = 0; k < 15; k++) {
+          if (glyph[k] === "1") ctx.fillRect(x + ox + n * 4 * scale + (k % 3) * scale, y + oy + Math.floor(k / 3) * scale, scale, scale);
+        }
+      }
+    };
+    if (shadow) pass(scale, scale, shadow);
+    pass(0, 0, color);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Background, drawn once to an offscreen canvas
+  // ---------------------------------------------------------------------------
+  let seed = 7;
+  const srand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+
+  const SKY = [[0, "#2b1b4a"], [16, "#4a2463"], [30, "#7a2e6e"], [42, "#b23f6b"], [53, "#e0605e"], [63, "#f2904c"], [71, "#fbc15c"]];
+  const skyAt = (y) => { let c = SKY[0][1]; for (const [s, col] of SKY) if (y >= s) c = col; return c; };
+
+  const SAND = "#e6bf78", SAND_DARK = "#c9a160";
+
+  function buildBackground() {
+    const c = document.createElement("canvas");
+    c.width = W; c.height = H;
+    const g = c.getContext("2d");
+
+    // Banded sunset sky with dithered seams.
+    for (let y = 0; y < HORIZON; y++) rect(g, 0, y, W, 1, skyAt(y));
+    for (let i = 1; i < SKY.length; i++) {
+      const s = SKY[i][0];
+      for (let x = 0; x < W; x += 2) {
+        rect(g, x, s - 1, 1, 1, SKY[i][1]);
+        rect(g, x + 1, s, 1, 1, SKY[i - 1][1]);
+      }
+    }
+
+    // Striped setting sun.
+    const sunX = 128, sunR = 15;
+    for (let y = HORIZON - sunR; y < HORIZON; y++) {
+      if (y === 71 || y === 74 || y === 76) continue;
+      const hw = Math.floor(Math.sqrt(sunR * sunR - (HORIZON - y) * (HORIZON - y)));
+      rect(g, sunX - hw, y, hw * 2, 1, y < 68 ? "#fff0b0" : "#ffe48a");
+    }
+
+    // Sea, with the sun's reflection broken into dashes.
+    for (let y = HORIZON; y < 97; y++) rect(g, 0, y, W, 1, y < 85 ? "#3a4f9f" : y < 91 ? "#2e428f" : "#283a82");
+    const refl = [[79, 26], [81, 20], [83, 22], [86, 14], [89, 16], [92, 10], [95, 6]];
+    for (const [y, w] of refl) {
+      for (let x = sunX - w; x < sunX + w; x += 5) {
+        const len = 2 + Math.floor(srand() * 3);
+        rect(g, x, y, len, 1, srand() < 0.5 ? "#f9c35c" : "#ffe48a");
+      }
+    }
+
+    // Surf line.
+    rect(g, 0, 97, W, 1, "#9fd0f0");
+    for (let x = 0; x < W; x += 6) rect(g, x + (Math.floor(x / 6) % 2) * 2, 98, 4, 1, "#e8f4ff");
+    rect(g, 0, 99, W, 1, "#c9e6f0");
+
+    // Wet sand, then dry sand with specks.
+    rect(g, 0, 100, W, 4, "#c99a5a");
+    for (let x = 0; x < W; x += 2) rect(g, x, 103, 1, 1, SAND);
+    rect(g, 0, 104, W, H - 104, SAND);
+    for (let i = 0; i < 320; i++) {
+      const x = Math.floor(srand() * W), y = 104 + Math.floor(srand() * (H - 104));
+      rect(g, x, y, 1, 1, srand() < 0.6 ? "#d2a45e" : "#f3d796");
+    }
+
+    // Palm tree on the left.
+    for (let i = 0; i < 15; i++) {
+      const y = 112 - i * 4, x = 18 + Math.round(i * i * 0.06);
+      rect(g, x, y - 4, 5, 4, i % 2 ? "#8a5a2b" : "#7a4c24");
+      rect(g, x, y - 4, 1, 4, "#5a3416");
+      rect(g, x + 1, y - 1, 3, 1, "#5a3416");
+    }
+    const top = [33, 54];
+    const fronds = [
+      [[0, 0], [-10, -6], [-21, 2]], [[0, 0], [-7, -10], [-16, -11]], [[0, 0], [2, -10], [9, -14]],
+      [[0, 0], [10, -7], [21, -1]], [[0, 0], [12, -1], [19, 9]], [[0, 0], [-11, 0], [-18, 10]],
+    ];
+    for (const f of fronds) {
+      for (let k = 0; k < f.length - 1; k++) {
+        const [ax, ay] = f[k], [bx, by] = f[k + 1];
+        line(g, top[0] + ax, top[1] + ay + 1, top[0] + bx, top[1] + by + 1, "#1d5e29", 2);
+        line(g, top[0] + ax, top[1] + ay, top[0] + bx, top[1] + by, "#2f8a3c", 2);
+        // Leaflets hanging off each frond.
+        for (let s = 0.25; s < 1; s += 0.25) {
+          const x = Math.round(top[0] + lerp(ax, bx, s)), y = Math.round(top[1] + lerp(ay, by, s));
+          rect(g, x, y + 2, 1, 2, "#1d5e29");
+        }
+      }
+    }
+    for (const [x, y] of [[31, 55], [34, 56], [32, 57]]) rect(g, x, y, 2, 2, "#5a3416");
+
+    // Beach umbrella, towel and cooler on the right.
+    rect(g, 158, 115, 18, 2, SAND_DARK);
+    rect(g, 162, 117, 10, 1, SAND_DARK);
+    rect(g, 166, 85, 1, 32, "#d8d8d8");
+    for (let dy = 0; dy < 8; dy++) {
+      const hw = Math.round(4 + dy * 1.8);
+      for (let x = 166 - hw; x <= 166 + hw; x++) {
+        rect(g, x, 82 + dy, 1, 1, Math.floor((x - 166 + 40) / 5) % 2 ? "#d83a3a" : "#f4efe4");
+      }
+    }
+    for (let x = 166 - 16; x <= 166 + 16; x += 2) rect(g, x, 90, 1, 1, Math.floor((x - 166 + 40) / 5) % 2 ? "#d83a3a" : "#f4efe4");
+    rect(g, 138, 108, 20, 5, "#3fa7d6");
+    for (let x = 138; x < 158; x += 4) rect(g, x, 108, 2, 5, "#f4efe4");
+    rect(g, 176, 105, 9, 7, "#2e6fd0");
+    rect(g, 176, 105, 9, 2, "#f4efe4");
+    rect(g, 176, 111, 9, 1, "#1d4c96");
+
+    return c;
+  }
+  const background = buildBackground();
+
+  // Checkerboard used to dim the screen, NES style.
+  const dither = (() => {
+    const c = document.createElement("canvas");
+    c.width = W; c.height = H;
+    const g = c.getContext("2d");
+    g.fillStyle = "#1a1020";
+    for (let y = 0; y < H; y++) for (let x = (y % 2); x < W; x += 2) g.fillRect(x, y, 1, 1);
+    return c;
+  })();
+
+  const clouds = [
+    { x: 20, y: 14, v: 2.0, parts: [[0, 2, 14, 3], [3, 0, 7, 2], [10, 1, 6, 2]] },
+    { x: 96, y: 26, v: 1.4, parts: [[0, 1, 10, 2], [2, 0, 5, 1]] },
+    { x: 150, y: 8, v: 2.6, parts: [[0, 2, 18, 3], [4, 0, 8, 2], [12, 1, 5, 1]] },
+  ];
+
+  // ---------------------------------------------------------------------------
+  // Player, footbag and gull
+  // ---------------------------------------------------------------------------
+  const PAL = {
+    h: "#3a2210", b: "#e04848", s: "#f0b088", k: "#1a1020",
+  };
+  const HEAD = [
+    "..hhhh.",
+    ".hhhhhh",
+    "hhbbbbb",
+    "hhsssss",
+    "hssskss",
+    "hhsssss",
+    ".hssss.",
+    "...ss..",
+  ];
+  const SKIN = "#f0b088", SKIN_DARK = "#c98a64";
+  const SHIRT = "#2bb3a6", SHIRT_STRIPE = "#f4efe4", SHORTS = "#6a3fb5";
+
+  // Joint positions relative to the player's centre at ground level, facing right.
+  // a = front (kicking) leg/arm, b = back leg/arm. K = knee, F = foot, H = hand.
+  const POSES = {
+    idle: { aK: [1, -6], aF: [2, 0], bK: [-1, -6], bF: [-2, 0], aH: [4, -13], bH: [-4, -13], dy: 0 },
+    knee: { aK: [6, -14], aF: [5, -8], bK: [-1, -6], bF: [-2, 0], aH: [7, -19], bH: [-7, -18], dy: 0 },
+    toe: { aK: [4, -7], aF: [10, -6], bK: [-1, -6], bF: [-2, 0], aH: [-2, -12], bH: [-8, -18], dy: 0 },
+    back: { aK: [-2, -5], aF: [-8, -9], bK: [1, -6], bF: [1, 0], aH: [7, -18], bH: [-3, -14], dy: 0 },
+    head: { aK: [2, -6], aF: [2, 0], bK: [-2, -6], bF: [-2, 0], aH: [7, -24], bH: [-7, -24], dy: -2 },
+  };
+
+  // Where each kick can meet the bag (relative to the player, facing right).
+  const ZONES = {
+    head: { x0: -6, x1: 6, y0: -40, y1: -29, cx: 0 },
+    knee: { x0: 0, x1: 11, y0: -23, y1: -11, cx: 6 },
+    toe: { x0: 3, x1: 16, y0: -13, y1: 0, cx: 9 },
+    back: { x0: -16, x1: -3, y0: -15, y1: 0, cx: -9 },
+  };
+  const KICKS = {
+    head: { vy: -120, pts: 25, letter: "H" },
+    knee: { vy: -150, pts: 10, letter: "K" },
+    toe: { vy: -170, pts: 10, letter: "T" },
+    back: { vy: -185, pts: 25, letter: "B" },
+  };
+  const PART_ORDER = ["head", "knee", "toe", "back"];
+
+  const GRAVITY = 300;
+  const SPEED = 70;
+  const KICK_DUR = 0.24;      // how long a kick pose lasts
+  const KICK_ACTIVE = [0.02, 0.17]; // window in which the kick can meet the bag
+  const KICK_READY = 0.18;    // when the next kick can start
+  const FULL_SET_BONUS = 250, BIRD_BONUS = 100;
+
+  const player = { x: W / 2, facing: 1, walk: 0, moving: false, kick: null };
+  const sack = { x: 0, y: 0, vx: 0, vy: 0, spin: 0, cool: 0 };
+  let gull = null, gullTimer = 0;
+  let popups = [], particles = [];
+
+  let state = "ready"; // ready | play | dropped | over
+  let score = 0, kicks = 0, best = loadNum("footbag-best"), bestKicks = loadNum("footbag-best-kicks");
+  let lastPart = null, set = new Set(), newBest = false;
+  let time = 0, stateTime = 0;
+
+  const keys = { left: false, right: false };
+
+  function popup(s, x, y, color, big = false) {
+    popups.push({ s, x, y, color, t: 0, big });
+  }
+
+  function puff(x, y) {
+    for (let i = 0; i < 6; i++) {
+      particles.push({ x, y, vx: rand(-40, 40), vy: rand(-50, -5), t: 0, life: rand(0.2, 0.4), c: i % 2 ? "#f4efe4" : "#fbc15c" });
+    }
+  }
+
+  function setState(s) {
+    state = s;
+    stateTime = 0;
+  }
+
+  function reset() {
+    score = 0;
+    kicks = 0;
+    lastPart = null;
+    set = new Set();
+    newBest = false;
+    popups = [];
+    particles = [];
+    gull = null;
+    gullTimer = rand(6, 10);
+    player.kick = null;
+  }
+
+  function startGame() {
+    reset();
+    setState("play");
+    startBtn.blur();
+    startBtn.textContent = "Restart";
+    // Toss the bag up out of the hand so it falls onto the toe.
+    sack.x = player.x + player.facing * 7;
+    sack.y = G - 15;
+    sack.vx = 0;
+    sack.vy = -120;
+    sack.cool = 0.25;
+    sfx.toss();
+    startMusic();
+  }
+
+  function endGame() {
+    setState("over");
+    stopMusic();
+    if (newBest) sfx.best();
+  }
+
+  function startKick(part) {
+    if (state === "ready") { startGame(); return; }
+    if (state === "over") { if (stateTime > 0.5) startGame(); return; }
+    if (state !== "play") return;
+    if (player.kick && player.kick.t < KICK_READY) return;
+    player.kick = { part, t: 0, hit: false };
+  }
+
+  function zoneHit(part) {
+    const z = ZONES[part], f = player.facing;
+    const lx = (sack.x - player.x) * f;
+    const ly = sack.y - G;
+    const pad = 2;
+    return lx >= z.x0 - pad && lx <= z.x1 + pad && ly >= z.y0 - pad && ly <= z.y1 + pad;
+  }
+
+  function hitSack(part) {
+    const k = KICKS[part], z = ZONES[part], f = player.facing;
+    player.kick.hit = true;
+    kicks++;
+
+    // The bag drifts more the longer the streak goes on.
+    const spread = 6 + Math.min(28, kicks * 1.1);
+    let vx;
+    if (part === "back") vx = f * rand(18, 32) + rand(-spread, spread) * 0.4;
+    else vx = (sack.x - (player.x + f * z.cx)) * 4 + rand(-spread, spread);
+    vx += (W / 2 - sack.x) * 0.12; // nudge back toward the middle
+    sack.vx = clamp(vx, -55, 55);
+    sack.vy = k.vy + rand(-10, 10);
+    sack.cool = 0.12;
+
+    let pts = k.pts;
+    if (part === lastPart) pts = Math.ceil(pts / 2);
+    lastPart = part;
+    popup("+" + pts, sack.x, sack.y - 6, "#f4efe4");
+
+    set.add(part);
+    if (set.size === PART_ORDER.length) {
+      pts += FULL_SET_BONUS;
+      set.clear();
+      popup("FULL SET +" + FULL_SET_BONUS, W / 2, 30, "#fbc15c", true);
+      sfx.set();
+    } else if (kicks % 10 === 0) {
+      const bonus = kicks * 5;
+      pts += bonus;
+      popup(kicks + " KICKS +" + bonus, W / 2, 30, "#9fd0f0", true);
+      sfx.streak();
+    } else {
+      sfx[part]();
+    }
+    addScore(pts);
+    puff(sack.x, sack.y + 2);
+  }
+
+  function addScore(pts) {
+    score += pts;
+    if (score > best) {
+      best = score;
+      newBest = true;
+      saveNum("footbag-best", best);
+    }
+    if (kicks > bestKicks) {
+      bestKicks = kicks;
+      saveNum("footbag-best-kicks", bestKicks);
+    }
+  }
+
+  function updateGull(dt) {
+    if (!gull) {
+      if (state !== "play" || kicks < 3) return;
+      gullTimer -= dt;
+      if (gullTimer > 0) return;
+      const dir = Math.random() < 0.5 ? 1 : -1;
+      gull = { x: dir > 0 ? -10 : W + 10, y: rand(32, 70), vx: dir * rand(38, 52), vy: 0, hit: false, flap: 0 };
+      gullTimer = rand(9, 16);
+      return;
+    }
+    gull.flap += dt * (gull.hit ? 18 : 8);
+    gull.x += gull.vx * dt;
+    gull.y += gull.vy * dt + Math.sin(gull.flap * 0.5) * 0.08;
+    if (!gull.hit && state === "play" && Math.abs(gull.x - sack.x) < 6 && Math.abs(gull.y - sack.y) < 5) {
+      gull.hit = true;
+      gull.vy = -45;
+      gull.vx *= 1.6;
+      sack.vy = Math.abs(sack.vy) * 0.3 + 10;
+      sack.vx *= -0.5;
+      addScore(BIRD_BONUS);
+      popup("BIRD BONUS +" + BIRD_BONUS, W / 2, 30, "#f9a0c0", true);
+      puff(sack.x, sack.y);
+      sfx.bird();
+    }
+    if (gull.x < -20 || gull.x > W + 20 || gull.y < -10) gull = null;
+  }
+
+  function update(dt) {
+    time += dt;
+    stateTime += dt;
+
+    for (const c of clouds) {
+      c.x += c.v * dt;
+      if (c.x > W + 4) c.x = -24;
+    }
+
+    // Movement works on every screen so you can warm up before starting.
+    const dir = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+    player.moving = dir !== 0 && state !== "dropped" && state !== "over";
+    if (player.moving) {
+      player.facing = dir;
+      player.x = clamp(player.x + dir * (player.kick ? SPEED * 0.5 : SPEED) * dt, 10, W - 10);
+      player.walk += dt * 14;
+    } else {
+      player.walk = 0;
+    }
+
+    if (player.kick) {
+      player.kick.t += dt;
+      if (player.kick.t >= KICK_DUR) player.kick = null;
+    }
+
+    for (const p of particles) {
+      p.t += dt;
+      p.vy += 200 * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+    }
+    particles = particles.filter(p => p.t < p.life);
+    for (const p of popups) p.t += dt;
+    popups = popups.filter(p => p.t < (p.big ? 1.6 : 0.8));
+
+    updateGull(dt);
+
+    if (state === "ready") {
+      // Bag rests in the front hand.
+      sack.x = player.x + player.facing * 5;
+      sack.y = G - 15;
+      return;
+    }
+
+    if (state === "over") return;
+
+    // Footbag physics.
+    sack.vy += GRAVITY * dt;
+    sack.x += sack.vx * dt;
+    sack.y += sack.vy * dt;
+    sack.spin += Math.abs(sack.vx) * dt * 0.25 + dt * 3;
+    sack.cool -= dt;
+    if (sack.x < 4) { sack.x = 4; sack.vx = Math.abs(sack.vx) * 0.6; }
+    if (sack.x > W - 4) { sack.x = W - 4; sack.vx = -Math.abs(sack.vx) * 0.6; }
+
+    if (state === "play") {
+      const k = player.kick;
+      if (k && !k.hit && sack.cool <= 0 && sack.vy > -30 && k.t >= KICK_ACTIVE[0] && k.t <= KICK_ACTIVE[1] && zoneHit(k.part)) {
+        hitSack(k.part);
+      }
+      if (sack.y >= G - 3) {
+        sack.y = G - 3;
+        sack.vy = -sack.vy * 0.4;
+        sack.vx *= 0.6;
+        setState("dropped");
+        popup("DROP!", W / 2, 30, "#e04848", true);
+        sfx.drop();
+        stopMusic();
+      }
+      return;
+    }
+
+    // Dropped: let the bag bounce and settle, then show the results.
+    if (sack.y >= G - 3) {
+      sack.y = G - 3;
+      sack.vy = sack.vy > 30 ? -sack.vy * 0.4 : 0;
+      sack.vx *= 0.6;
+    }
+    if (stateTime > 1.3) endGame();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Drawing
+  // ---------------------------------------------------------------------------
+  function currentPose() {
+    const base = { ...POSES.idle };
+    if (player.moving && !player.kick) {
+      const s = Math.sin(player.walk);
+      base.aF = [1 + 3 * s, -Math.max(0, s) * 2];
+      base.aK = [1 + 1.5 * s, -6];
+      base.bF = [-1 - 3 * s, -Math.max(0, -s) * 2];
+      base.bK = [-1 - 1.5 * s, -6];
+      base.aH = [4 - 2 * s, -13];
+      base.bH = [-4 + 2 * s, -13];
+    }
+    if (!player.kick) return base;
+    // Snap out fast, hold, then ease back to standing.
+    const t = player.kick.t;
+    const amt = t < 0.05 ? t / 0.05 : t < 0.16 ? 1 : 1 - (t - 0.16) / (KICK_DUR - 0.16);
+    const target = POSES[player.kick.part];
+    const out = {};
+    for (const key of ["aK", "aF", "bK", "bF", "aH", "bH"]) {
+      out[key] = [lerp(base[key][0], target[key][0], amt), lerp(base[key][1], target[key][1], amt)];
+    }
+    out.dy = Math.round(lerp(base.dy, target.dy, amt));
+    return out;
+  }
+
+  function drawPlayer() {
+    const p = currentPose();
+    const f = player.facing, cx = Math.round(player.x), by = G + p.dy;
+    const off = f > 0 ? 0 : -1; // keeps 2px brushes symmetric when mirrored
+    const sx = (pt) => cx + f * Math.round(pt[0]);
+    const sy = (pt) => by + Math.round(pt[1]);
+    const limb = (a, b, c) => line(ctx, sx(a) + off, sy(a) - 1, sx(b) + off, sy(b) - 1, c, 2);
+    const shoe = (pt) => {
+      const x = sx(pt), y = sy(pt);
+      const left = f > 0 ? x - 1 : x - 2;
+      rect(ctx, left, y - 1, 4, 1, "#f4f4f4");
+      rect(ctx, left, y, 4, 1, "#c03030");
+    };
+
+    // Shadow.
+    rect(ctx, cx - 6, G + 1, 12, 1, SAND_DARK);
+    rect(ctx, cx - 4, G + 2, 8, 1, SAND_DARK);
+
+    // Back arm and leg.
+    limb([-2, -21], p.bH, SKIN_DARK);
+    limb([-1, -11], p.bK, SKIN_DARK);
+    limb(p.bK, p.bF, SKIN_DARK);
+    shoe(p.bF);
+
+    // Torso: tank top and shorts.
+    const left = f > 0 ? cx - 3 : cx - 2;
+    rect(ctx, left, by - 23, 6, 8, SHIRT);
+    rect(ctx, left, by - 19, 6, 1, SHIRT_STRIPE);
+    rect(ctx, left, by - 15, 6, 4, SHORTS);
+
+    sprite(ctx, HEAD, cx - 3, by - 31, PAL, f < 0);
+
+    // Front leg and arm.
+    limb([1, -11], p.aK, SKIN);
+    limb(p.aK, p.aF, SKIN);
+    shoe(p.aF);
+    rect(ctx, left, by - 15, 6, 2, SHORTS); // shorts over the top of the thigh
+    limb([2, -21], p.aH, SKIN);
+  }
+
+  const SACK = [
+    "..ooo..",
+    ".oabbo.",
+    "oaabbco",
+    "oabbcco",
+    "obbccao",
+    ".occao.",
+    "..ooo..",
+  ];
+  const SACK_COLORS = ["#e04848", "#f4d03f", "#3fae5a"];
+
+  function drawSack() {
+    // Shadow shrinks as the bag rises, to help judge where it will land.
+    const h = G - sack.y;
+    const w = Math.max(2, 7 - Math.floor(h / 10));
+    rect(ctx, Math.round(sack.x) - Math.floor(w / 2), G + 1, w, 1, SAND_DARK);
+
+    const r = Math.floor(sack.spin) % 3;
+    const pal = { o: "#1a1020", a: SACK_COLORS[r], b: SACK_COLORS[(r + 1) % 3], c: SACK_COLORS[(r + 2) % 3] };
+    sprite(ctx, SACK, Math.round(sack.x) - 3, Math.round(sack.y) - 3, pal, Math.floor(sack.spin * 0.5) % 2 === 1);
+  }
+
+  const GULL_UP = [
+    "g.......g",
+    ".ww...ww.",
+    "...wwwwo.",
+    "....w....",
+  ];
+  const GULL_DOWN = [
+    ".........",
+    "...wwwwo.",
+    ".ww...ww.",
+    "g.......g",
+  ];
+  const GULL_PAL = { w: "#f4f4f4", g: "#6a6a80", o: "#f29b38" };
+
+  function drawGull() {
+    if (!gull) return;
+    const frame = Math.floor(gull.flap) % 2 ? GULL_UP : GULL_DOWN;
+    sprite(ctx, frame, Math.round(gull.x) - 4, Math.round(gull.y) - 2, GULL_PAL, gull.vx < 0);
+  }
+
+  function drawHud() {
+    text("SCORE " + String(score).padStart(5, "0"), 3, 3, "#f4efe4");
+    text("BEST " + String(best).padStart(5, "0"), W - 3, 3, "#f4efe4", { align: "right" });
+    if (state === "ready") return;
+    text("KICKS " + kicks, W / 2, 3, "#fbc15c", { align: "center" });
+    // Kicks used toward the next Full Set.
+    PART_ORDER.forEach((part, i) => {
+      const lit = set.has(part);
+      text(KICKS[part].letter, 3 + i * 6, 10, lit ? "#fbc15c" : "#7a5a8a");
+    });
+  }
+
+  function drawPopups() {
+    for (const p of popups) {
+      if (p.big) {
+        const life = 1.6;
+        if (p.t > life - 0.4 && Math.floor(p.t * 12) % 2) continue;
+        text(p.s, p.x, p.y, p.color, { align: "center" });
+      } else {
+        text(p.s, p.x, p.y - p.t * 16, p.color, { align: "center" });
+      }
+    }
+  }
+
+  function draw() {
+    ctx.drawImage(background, 0, 0);
+
+    for (const c of clouds) {
+      for (const [x, y, w, h] of c.parts) rect(ctx, c.x + x, c.y + y, w, h, "#f2a0a8");
+      for (const [x, y, w] of c.parts) rect(ctx, c.x + x, c.y + y, w, 1, "#ffd0c8");
+    }
+
+    // Glints on the water.
+    for (let i = 0; i < 14; i++) {
+      const x = Math.floor((i * 37 + time * 6 * ((i % 3) + 1)) % W);
+      const y = 80 + (i * 7) % 16;
+      if ((Math.floor(time * 3) + i) % 3) rect(ctx, x, y, 2, 1, "#8fb4ff");
+    }
+
+    drawGull();
+    drawPlayer();
+    drawSack();
+
+    for (const p of particles) rect(ctx, p.x, p.y, 1, 1, p.c);
+
+    drawPopups();
+    drawHud();
+
+    const blink = Math.floor(time * 2.5) % 2 === 0;
+    if (state === "ready") {
+      text("FOOTBAG JAM", W / 2, 24, "#fbc15c", { scale: 2, align: "center" });
+      text("KEEP IT IN THE AIR", W / 2, 42, "#f4efe4", { align: "center" });
+      if (blink) text("KICK TO START", W / 2, 54, "#f4efe4", { align: "center" });
+    } else if (state === "over") {
+      ctx.drawImage(dither, 0, 0);
+      text("DROPPED!", W / 2, 28, "#e04848", { scale: 2, align: "center" });
+      text("SCORE " + score, W / 2, 50, "#f4efe4", { align: "center" });
+      text("KICKS " + kicks + "   MOST " + bestKicks, W / 2, 58, "#f4efe4", { align: "center" });
+      if (newBest && blink) text("NEW BEST!", W / 2, 70, "#fbc15c", { align: "center" });
+      if (stateTime > 0.5) text("KICK TO PLAY AGAIN", W / 2, 86, "#9fd0f0", { align: "center" });
+    }
+  }
+
+  const STEP = 1 / 120;
+  let last = 0, acc = 0;
+  function loop(t) {
+    const dt = last ? Math.min(0.1, (t - last) / 1000) : 0;
+    last = t;
+    acc += dt;
+    while (acc >= STEP) { update(STEP); acc -= STEP; }
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Input
+  // ---------------------------------------------------------------------------
+  const KEY_KICKS = {
+    ArrowUp: "head", w: "head", W: "head",
+    z: "knee", Z: "knee", j: "knee", J: "knee",
+    x: "toe", X: "toe", k: "toe", K: "toe", " ": "toe", Enter: "toe",
+    c: "back", C: "back", l: "back", L: "back", ArrowDown: "back", s: "back", S: "back",
+  };
+
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") { keys.left = true; e.preventDefault(); }
+    else if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") { keys.right = true; e.preventDefault(); }
+    else if (KEY_KICKS[e.key]) {
+      e.preventDefault();
+      if (!e.repeat) startKick(KEY_KICKS[e.key]);
+    } else if (e.key === "m" || e.key === "M") toggleMute();
+  });
+  window.addEventListener("keyup", (e) => {
+    if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") keys.left = false;
+    else if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") keys.right = false;
+  });
+  window.addEventListener("blur", () => { keys.left = keys.right = false; });
+
+  for (const btn of document.querySelectorAll("#pad [data-hold]")) {
+    const dir = btn.dataset.hold;
+    const on = (e) => { e.preventDefault(); keys[dir] = true; btn.classList.add("on"); };
+    const off = () => { keys[dir] = false; btn.classList.remove("on"); };
+    btn.addEventListener("pointerdown", on);
+    btn.addEventListener("pointerup", off);
+    btn.addEventListener("pointercancel", off);
+    btn.addEventListener("pointerleave", off);
+  }
+  for (const btn of document.querySelectorAll("#pad [data-kick]")) {
+    btn.addEventListener("pointerdown", (e) => { e.preventDefault(); startKick(btn.dataset.kick); });
+  }
+  canvas.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    if (state === "ready" || state === "over") startKick("toe");
+  });
+  startBtn.addEventListener("click", () => startGame());
+  document.addEventListener("visibilitychange", () => { if (document.hidden) stopMusic(); else if (state === "play") startMusic(); });
+
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
