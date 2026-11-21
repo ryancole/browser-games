@@ -93,6 +93,24 @@
   .card th { padding: 0 0.6rem 0.2rem; font-size: 0.72rem; font-weight: 600; opacity: 0.55; text-align: left; }
   .card th.num { text-align: right; }
   .card .standings .me td { color: #ffd84f; opacity: 1; font-weight: 600; }
+  .card .buttons { display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap; }
+  .card .mp { border-top: 1px solid #2a2f3a; margin-top: 1.1rem; padding-top: 0.9rem; }
+  .card .mp h2 { font-size: 0.75rem; letter-spacing: 0.08em; opacity: 0.6; margin: 0 0 0.5rem; font-weight: 600; }
+  .card .row { display: flex; gap: 0.5rem; margin: 0.45rem 0; }
+  .card .row input { flex: 1; min-width: 0; }
+  .card .wide { flex: 1; }
+  .card input {
+    font: inherit; font-size: 0.95rem; padding: 0.45rem 0.6rem; border-radius: 8px;
+    border: 1px solid #2a2f3a; background: #0f1115; color: inherit; user-select: text;
+  }
+  .card #code { text-transform: uppercase; letter-spacing: 0.15em; }
+  .card p.err { color: #ff8a80; opacity: 1; }
+  .card .code { font-size: 2.2rem; font-weight: 800; letter-spacing: 0.25em; margin: 0.1rem 0 0.6rem; user-select: text; }
+  .card ul.players { list-style: none; padding: 0; margin: 0.8rem auto; max-width: 280px; text-align: left; }
+  .card ul.players li { display: flex; justify-content: space-between; padding: 0.3rem 0; border-bottom: 1px solid #2a2f3a; }
+  .card .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 0.5rem; }
+  .card .tag { font-size: 0.75rem; opacity: 0.6; }
+  .card button.small { padding: 0.15rem 0.6rem; }
   kbd {
     font-family: inherit; font-size: 0.8em;
     padding: 0.05rem 0.35rem; border: 1px solid #2a2f3a; border-radius: 4px; background: #0f1115;
@@ -131,6 +149,7 @@
 <div id="top-right">
   <button id="mute" class="secondary">Sound: on</button>
   <button id="restart" class="secondary">Restart</button>
+  <button id="leave-lobby" class="secondary" style="display: none">Leave lobby</button>
 </div>
 <div id="popup"></div>
 <div id="count"></div>
@@ -643,12 +662,14 @@ function readInput() {
 }
 const GAME_KEYS = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space"]);
 window.addEventListener("keydown", (e) => {
+  if (e.target instanceof HTMLInputElement) return; // typing a name or lobby code
   if (GAME_KEYS.has(e.code)) e.preventDefault();
   if (e.repeat) { keys.add(e.code); return; }
   keys.add(e.code);
   if (e.code === "KeyM") toggleMute();
-  else if (e.code === "KeyR") startRace();
-  else if (e.code === "Enter" && (state === "menu" || resultsShown)) startRace();
+  else if (e.code === "KeyR" && state !== "menu") requestRestart();
+  else if (e.code === "Enter" && state === "menu" && !net.role) startRace();
+  else if (e.code === "Enter" && resultsShown) requestRestart();
 });
 window.addEventListener("keyup", (e) => keys.delete(e.code));
 window.addEventListener("blur", () => { keys.clear(); for (const k in touch) touch[k] = false; });
@@ -664,25 +685,84 @@ document.querySelectorAll("#touch button").forEach((btn) => {
 
 // ---------------------------------------------------------------------------
 // Riders. Every rider runs the same physics and is driven by a controls object
-// ({left, right, tuck, brake, grab, jump}) from the keyboard, a bot, or (later)
-// the network.
+// ({left, right, tuck, brake, grab, jump}) from the keyboard or a bot. Riders
+// owned by other players' browsers are "remote": they don't run physics here,
+// they follow the state their owner sends.
 // ---------------------------------------------------------------------------
-const BOTS = [
-  { name: "Juniper", skill: 0.35, lane: -6, jacket: 0x3fbf7f, pants: 0x2a2f3a, board: 0x4f8cff, helmet: 0xe8e8ea, tagColor: "#8fe8b4" },
-  { name: "Blaze", skill: 0.6, lane: 5, jacket: 0xe0443a, pants: 0x1d1f26, board: 0xffd84f, helmet: 0x2a2f3a, tagColor: "#ff9a90" },
-  { name: "Nova", skill: 0.85, lane: 10, jacket: 0x9b6dff, pants: 0x243a6b, board: 0x2ad1c9, helmet: 0xffffff, tagColor: "#c8b0ff" },
+const LOOKS = [
+  // Players, in lobby order.
+  { jacket: 0xff7a2f, pants: 0x243a6b, board: 0xd6336c, helmet: 0x2a2f3a, tagColor: "#ffb07a" },
+  { jacket: 0x2f9bff, pants: 0x1d1f26, board: 0xf2f2f2, helmet: 0xffd84f, tagColor: "#8cc8ff" },
+  { jacket: 0xf2c94c, pants: 0x3a2a4a, board: 0x2a2f3a, helmet: 0xe0443a, tagColor: "#ffe08a" },
+  { jacket: 0xff5fa2, pants: 0x243a6b, board: 0x7fe0a8, helmet: 0xffffff, tagColor: "#ffa8cf" },
+  { jacket: 0x2ad1c9, pants: 0x2a2f3a, board: 0xff7a2f, helmet: 0x1d1f26, tagColor: "#8ff0ea" },
+  { jacket: 0xf2f2f2, pants: 0x1d1f26, board: 0xe0443a, helmet: 0x4f8cff, tagColor: "#ffffff" },
+  { jacket: 0xa0703c, pants: 0x243a6b, board: 0xffd84f, helmet: 0xf2f2f2, tagColor: "#e0b98a" },
+  { jacket: 0x6b7cff, pants: 0x1d1f26, board: 0xff5fa2, helmet: 0xf2f2f2, tagColor: "#b0baff" },
+  // Bots.
+  { jacket: 0x3fbf7f, pants: 0x2a2f3a, board: 0x4f8cff, helmet: 0xe8e8ea, tagColor: "#8fe8b4" },
+  { jacket: 0xe0443a, pants: 0x1d1f26, board: 0xffd84f, helmet: 0x2a2f3a, tagColor: "#ff9a90" },
+  { jacket: 0x9b6dff, pants: 0x243a6b, board: 0x2ad1c9, helmet: 0xffffff, tagColor: "#c8b0ff" },
 ];
+const PLAYER_LOOKS = 8;
+const MAX_RIDERS = 8;
+const BOTS = [
+  { name: "Juniper", skill: 0.35, look: 8 },
+  { name: "Blaze", skill: 0.6, look: 9 },
+  { name: "Nova", skill: 0.85, look: 10 },
+];
+const LANES = [0, -6, 5, 10, -11, -2, 14, -15]; // start positions across the run, in roster order
 const NO_INPUT = Object.freeze({ left: false, right: false, tuck: false, brake: false, grab: false, jump: false });
 
-const riders = [];
-function makeRider(opts) {
-  const r = { ...opts, model: buildRiderModel(opts), tag: opts.isPlayer ? null : nameTag(opts.name, opts.tagColor) };
-  r.bot = opts.isPlayer ? null : { skill: opts.skill };
-  riders.push(r);
-  return r;
+function newRider(e, isMe) {
+  const look = LOOKS[e.look] || LOOKS[0];
+  return {
+    id: e.id, name: e.name, look: e.look, isPlayer: isMe, bot: null, remote: false, net: null, netRaw: null,
+    model: buildRiderModel(look), tag: isMe ? null : nameTag(e.name, look.tagColor),
+  };
 }
-const me = makeRider({ name: "You", isPlayer: true, lane: 0, jacket: 0xff7a2f, pants: 0x243a6b, board: 0xd6336c, helmet: 0x2a2f3a });
-BOTS.forEach(makeRider);
+function disposeRider(r) {
+  scene.remove(r.model.root);
+  if (r.tag) { scene.remove(r.tag); r.tag.material.map.dispose(); r.tag.material.dispose(); }
+}
+
+const riders = [];
+let me = newRider({ id: "me", name: "You", look: 0 }, true);
+
+// A roster is the list of riders in a race: [{ id, name, look, bot? }], where
+// `bot` is a bot's skill. Every browser in a lobby builds the same roster.
+function setRoster(roster) {
+  for (const r of riders) if (r !== me) disposeRider(r);
+  riders.length = 0;
+  roster.forEach((e, i) => {
+    let r;
+    if (e.id === me.id) {
+      if (me.look !== e.look) { disposeRider(me); me = newRider(e, true); }
+      me.name = e.name;
+      r = me;
+    } else {
+      r = newRider(e, false);
+      // Bots run in solo races and on the host; other browsers follow the host's copy.
+      if (e.bot != null && net.role !== "client") r.bot = { skill: e.bot };
+      else r.remote = true;
+    }
+    r.lane = LANES[i % LANES.length];
+    resetRider(r);
+    riders.push(r);
+  });
+}
+const soloRoster = () => [
+  { id: me.id, name: "You", look: 0 },
+  ...BOTS.map((b, i) => ({ id: `bot${i}`, name: b.name, look: b.look, bot: b.skill })),
+];
+
+function removeRider(id) {
+  const i = riders.findIndex((r) => r.id === id && r !== me);
+  if (i < 0) return;
+  disposeRider(riders[i]);
+  riders.splice(i, 1);
+  if (resultsShown) renderResults();
+}
 
 function resetRider(r) {
   Object.assign(r, {
@@ -691,10 +771,61 @@ function resetRider(r) {
     grounded: true, groundVy: 0, airTime: 0, slip: 0,
     charge: 0, popped: false, jumpPrev: false, grabbing: false, grabTime: 0, grabName: "",
     crashT: 0, crashSpin: 0, lean: 0, crouch: 0,
-    trickScore: 0, finished: false, finishTime: 0, place: 0, inp: NO_INPUT,
+    trickScore: 0, finished: false, finishTime: 0, inp: NO_INPUT, net: null, netRaw: null,
   });
   r.y = terrainH(r.x, r.z);
   if (r.bot) Object.assign(r.bot, { t: 0, phase: Math.random() * 10, kickIdx: -1, plan: null });
+}
+
+// What a browser sends about the riders it runs, about 15 times a second.
+const r2 = (v) => Math.round(v * 100) / 100;
+const NET_KEYS = ["x", "y", "z", "vx", "vy", "vz", "yaw", "fl", "fy", "g", "gr", "c", "ch", "sl", "k", "ts", "fin", "ft"];
+function packRider(r) {
+  if (r.remote) return r.netRaw;
+  const i = r.inp;
+  return {
+    id: r.id, x: r2(r.x), y: r2(r.y), z: r2(r.z), vx: r2(r.vx), vy: r2(r.vy), vz: r2(r.vz),
+    yaw: r2(r.heading + (r.sw ? Math.PI : 0) + r.spin), fl: r2(r.flip), fy: r2(r.flipYaw),
+    g: r.grounded ? 1 : 0, gr: r.grabbing ? 1 : 0, c: r2(r.crashT), ch: r2(r.charge), sl: r2(r.slip),
+    k: (i.left ? 1 : 0) | (i.right ? 2 : 0) | (i.tuck ? 4 : 0) | (i.brake ? 8 : 0),
+    ts: r.trickScore, fin: r.finished ? 1 : 0, ft: r2(r.finishTime),
+  };
+}
+// Incoming state comes from another browser, so only finite numbers are kept.
+function applyNet(r, s) {
+  if (!s || typeof s !== "object") return;
+  const v = { id: r.id };
+  for (const k of NET_KEYS) v[k] = Number.isFinite(s[k]) ? s[k] : 0;
+  r.netRaw = v;
+  r.net = { ...v, at: performance.now() };
+  r.trickScore = v.ts;
+  if (!r.finished && v.fin) {
+    r.finished = true;
+    r.finishTime = v.ft;
+    if (resultsShown) renderResults();
+  }
+}
+// Draw a remote rider where its last update says it should be by now, eased so
+// the 15 updates a second don't show as jumps.
+function followNet(r, dt) {
+  const n = r.net;
+  if (!n) return;
+  const t = Math.min(0.25, (performance.now() - n.at) / 1000);
+  const tx = n.x + n.vx * t, tz = n.z + n.vz * t;
+  const ty = n.g ? terrainH(tx, tz) : n.y + n.vy * t - 0.5 * G_AIR * t * t;
+  const k = 1 - Math.exp(-12 * dt), ka = 1 - Math.exp(-20 * dt);
+  if (Math.hypot(tx - r.x, ty - r.y, tz - r.z) > 8) { r.x = tx; r.y = ty; r.z = tz; }
+  else { r.x += (tx - r.x) * k; r.y += (ty - r.y) * k; r.z += (tz - r.z) * k; }
+  if (n.g) r.y = terrainH(r.x, r.z);
+  r.vx = n.vx; r.vy = n.vy; r.vz = n.vz;
+  r.heading = wrapAngle(r.heading + wrapAngle(n.yaw - r.heading) * ka);
+  r.spin = 0; r.sw = false;
+  r.flip = wrapAngle(r.flip + wrapAngle(n.fl - r.flip) * ka);
+  r.flipYaw = n.fy;
+  r.grounded = !!n.g; r.grabbing = !!n.gr; r.charge = n.ch; r.slip = n.sl;
+  r.crashT = n.c;
+  r.crashSpin = r.crashT > 0 ? r.crashSpin + 9 * dt : 0;
+  r.inp = { left: !!(n.k & 1), right: !!(n.k & 2), tuck: !!(n.k & 4), brake: !!(n.k & 8), grab: r.grabbing, jump: false };
 }
 
 // ---------------------------------------------------------------------------
@@ -702,7 +833,7 @@ function resetRider(r) {
 // ---------------------------------------------------------------------------
 const STEP = 1 / 180;        // fixed physics step, so every rider behaves the same at any frame rate
 let state = "menu";          // menu | countdown | run
-let raceTime = 0, countT = 0, simAcc = 0, finishCount = 0;
+let raceTime = 0, countT = 0, simAcc = 0;
 let resultsShown = false, lastCount = 0, result = null;
 let best = Number(store.get("powderrun-best")) || 0;
 
@@ -930,7 +1061,6 @@ function stepRider(r, h, inp) {
   if (!r.finished && r.z >= COURSE_LEN) {
     r.finished = true;
     r.finishTime = raceTime;
-    r.place = ++finishCount;
     if (r.isPlayer) sfx.finish();
     if (resultsShown) renderResults();
   }
@@ -1021,16 +1151,24 @@ function botControls(r, h) {
   return inp;
 }
 
-function startRace() {
+function startRace(roster = soloRoster()) {
   initAudio();
-  riders.forEach(resetRider);
+  setRoster(roster);
   clearSpray();
-  raceTime = 0; simAcc = 0; finishCount = 0;
+  raceTime = 0; simAcc = 0; netAcc = 0;
   resultsShown = false; result = null;
   countT = 3; lastCount = 4;
   state = "countdown";
   panel.classList.add("hidden");
+  restartBtn.style.display = net.role === "client" ? "none" : "";
+  leaveTopBtn.style.display = net.role ? "" : "none";
   snapCamera();
+}
+
+// R, Restart and "Ride again": a solo race restarts at once; in a lobby only the host can restart.
+function requestRestart() {
+  if (!net.role) startRace();
+  else if (net.role === "host") hostStart();
 }
 
 function update(dt) {
@@ -1046,8 +1184,10 @@ function update(dt) {
     while (simAcc >= STEP) {
       simAcc -= STEP;
       raceTime += STEP;
-      for (const r of riders) stepRider(r, STEP, r.bot ? botControls(r, STEP) : keysIn);
+      for (const r of riders) if (!r.remote) stepRider(r, STEP, r.bot ? botControls(r, STEP) : keysIn);
     }
+    for (const r of riders) if (r.remote) followNet(r, dt);
+    netTick(dt);
     if (me.finished && !resultsShown && raceTime - me.finishTime > 1.6) showResults();
     for (const r of riders) {
       const speed = Math.hypot(r.vx, r.vz);
@@ -1147,9 +1287,10 @@ const $ = (id) => document.getElementById(id);
 const timeEl = $("time"), speedEl = $("speed"), tricksEl = $("tricks"), posEl = $("pos"), bestEl = $("best");
 const countEl = $("count"), popupEl = $("popup"), chargeEl = $("charge");
 const progressEl = document.querySelector("#progress div");
-const panel = $("panel"), card = $("card"), muteBtn = $("mute");
+const panel = $("panel"), card = $("card"), muteBtn = $("mute"), restartBtn = $("restart"), leaveTopBtn = $("leave-lobby");
 const fmt = (n) => n.toLocaleString("en-US");
 const ordinal = (n) => n + (n > 3 && n < 21 ? "th" : ["th", "st", "nd", "rd"][n % 10] || "th");
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 function updateHUD() {
   timeEl.textContent = (me.finished ? me.finishTime : raceTime).toFixed(2);
@@ -1185,15 +1326,65 @@ const CONTROLS = `
     <tr><td>Restart · Sound</td><td><kbd>R</kbd> · <kbd>M</kbd></td></tr>
   </table>`;
 
-function showMenu() {
+const inviteCode = (new URLSearchParams(location.search).get("join") || "").toUpperCase().slice(0, 5);
+
+function showMenu(message = "") {
   card.innerHTML = `
     <h1>POWDER RUN</h1>
-    <p>Race ${BOTS.length} rivals down the mountain. Hit the orange-lipped kickers, spin, flip and grab for points, and land upright with your board pointing downhill.</p>
+    <p>Race down the mountain. Hit the orange-lipped kickers, spin, flip and grab for points, and land upright with your board pointing downhill.</p>
     <div class="keys-only">${CONTROLS}</div>
-    <button id="go">Start</button>`;
-  $("go").addEventListener("click", startRace);
+    <button id="go">Race the bots</button>
+    <div class="mp">
+      <h2>MULTIPLAYER</h2>
+      ${message ? `<p class="err">${esc(message)}</p>` : ""}
+      <div class="row"><input id="name" maxlength="16" placeholder="Your name" value="${esc(myName)}"></div>
+      <div class="row"><button id="host" class="secondary wide">Host a lobby</button></div>
+      <div class="row"><input id="code" maxlength="5" placeholder="Lobby code" autocapitalize="characters" value="${esc(inviteCode)}"><button id="join">Join</button></div>
+    </div>`;
+  $("go").addEventListener("click", () => startRace());
+  $("host").addEventListener("click", hostLobby);
+  $("join").addEventListener("click", () => joinLobby($("code").value));
+  $("code").addEventListener("keydown", (e) => { if (e.key === "Enter") joinLobby($("code").value); });
   panel.classList.remove("hidden");
 }
+
+function showStatus(text) {
+  card.innerHTML = `<h1>POWDER RUN</h1><p>${esc(text)}</p><button id="cancel" class="secondary">Cancel</button>`;
+  $("cancel").addEventListener("click", () => leaveLobby());
+  panel.classList.remove("hidden");
+}
+
+function showLobby() {
+  const isHost = net.role === "host";
+  const bots = lobbyBotCount();
+  const list = net.players.map((p, i) => `
+      <li><span><span class="dot" style="background:${LOOKS[i % PLAYER_LOOKS].tagColor}"></span>${esc(p.name)}</span>
+      <span class="tag">${[i === 0 && "host", p.id === me.id && "you"].filter(Boolean).join(" · ")}</span></li>`).join("");
+  const botLine = isHost
+    ? `<p>Bots <button id="bots-" class="secondary small">−</button> <strong>${bots}</strong> <button id="bots+" class="secondary small">+</button></p>`
+    : `<p>${bots} bot${bots === 1 ? "" : "s"} · ${net.racing ? "A race is on. You'll join the next one." : "Waiting for the host to start the race…"}</p>`;
+  card.innerHTML = `
+    <h1>LOBBY</h1>
+    <p>Share this code, or send the invite link.</p>
+    <div class="code">${esc(net.code)}</div>
+    <div class="buttons"><button id="copy" class="secondary">Copy invite link</button></div>
+    <ul class="players">${list}</ul>
+    ${botLine}
+    <div class="buttons">${isHost ? '<button id="start">Start race</button>' : ""}<button id="leave" class="secondary">Leave</button></div>`;
+  $("copy").addEventListener("click", (e) => {
+    const link = `${location.origin}${location.pathname}?join=${net.code}`;
+    navigator.clipboard?.writeText(link).then(() => (e.target.textContent = "Copied!"), () => (e.target.textContent = link));
+  });
+  $("leave").addEventListener("click", () => leaveLobby());
+  if (isHost) {
+    $("start").addEventListener("click", hostStart);
+    $("bots-").addEventListener("click", () => setBots(bots - 1));
+    $("bots+").addEventListener("click", () => setBots(bots + 1));
+  }
+  panel.classList.remove("hidden");
+}
+// Only redraw the lobby while it's on screen, not over a race or the results.
+const refreshLobby = () => { if (net.role && state === "menu") showLobby(); };
 
 function showResults() {
   resultsShown = true;
@@ -1206,14 +1397,19 @@ function showResults() {
   panel.classList.remove("hidden");
 }
 
-// Re-rendered as each bot crosses the line, so the standings fill in live.
+// Re-rendered as other riders cross the line, so the standings fill in live.
 function renderResults() {
+  if (!result) return;
   const { bonus, total, isBest } = result;
-  const rows = standings().map((r, i) => `
-      <tr${r.isPlayer ? ' class="me"' : ""}><td>${i + 1}</td><td>${r.name}</td>
+  const order = standings();
+  const rows = order.map((r, i) => `
+      <tr${r === me ? ' class="me"' : ""}><td>${i + 1}</td><td>${esc(r.name)}</td>
       <td class="num">${r.finished ? r.finishTime.toFixed(2) + " s" : "racing…"}</td><td class="num">${fmt(r.trickScore)}</td></tr>`).join("");
+  const actions = !net.role ? '<button id="go">Ride again</button><button id="leave" class="secondary">Menu</button>'
+    : net.role === "host" ? '<button id="go">Race again</button><button id="leave" class="secondary">Leave lobby</button>'
+    : '<button id="leave" class="secondary">Leave lobby</button>';
   card.innerHTML = `
-    <h1>${ordinal(me.place).toUpperCase()} PLACE</h1>
+    <h1>${ordinal(order.indexOf(me) + 1).toUpperCase()} PLACE</h1>
     <table>
       <tr><td>Time</td><td class="num">${me.finishTime.toFixed(2)} s</td></tr>
       <tr><td>Trick points</td><td class="num">${fmt(me.trickScore)}</td></tr>
@@ -1224,8 +1420,10 @@ function renderResults() {
       <tr><th></th><th>Rider</th><th class="num">Time</th><th class="num">Tricks</th></tr>${rows}
     </table>
     <p>${isBest ? '<span class="new">New best score!</span>' : `Best: ${fmt(best)}`}</p>
-    <button id="go">Ride again</button>`;
-  $("go").addEventListener("click", startRace);
+    ${net.role === "client" ? "<p>Waiting for the host to start the next race…</p>" : ""}
+    <div class="buttons">${actions}</div>`;
+  $("go")?.addEventListener("click", requestRestart);
+  $("leave")?.addEventListener("click", () => leaveLobby());
 }
 
 function toggleMute() {
@@ -1236,12 +1434,227 @@ function toggleMute() {
 }
 muteBtn.textContent = `Sound: ${muted ? "off" : "on"}`;
 muteBtn.addEventListener("click", () => { initAudio(); toggleMute(); muteBtn.blur(); });
-$("restart").addEventListener("click", (e) => { startRace(); e.currentTarget.blur(); });
+restartBtn.addEventListener("click", (e) => { requestRestart(); e.currentTarget.blur(); });
+leaveTopBtn.addEventListener("click", () => leaveLobby());
+
+// ---------------------------------------------------------------------------
+// Multiplayer. Browsers connect directly to each other over WebRTC using
+// PeerJS. PeerJS's public server is only used to find the host by lobby code.
+// The host runs the bots and relays every rider's state to everyone; each
+// browser runs the physics for its own rider.
+// ---------------------------------------------------------------------------
+const PEERJS_URL = "https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js";
+const PEER_PREFIX = "powderrun-v1-";
+const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+const SEND_RATE = 15;
+const net = { role: null, peer: null, host: null, conns: new Map(), code: "", players: [], bots: BOTS.length, racing: false };
+let netAcc = 0;
+let myName = store.get("powderrun-name") || "";
+
+let peerJS = null;
+function loadPeerJS() {
+  peerJS ??= new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = PEERJS_URL;
+    s.onload = () => resolve(window.Peer);
+    s.onerror = () => { peerJS = null; reject(new Error("Couldn't load the multiplayer library. Check your internet connection.")); };
+    document.head.append(s);
+  });
+  return peerJS;
+}
+
+const makeCode = () => Array.from({ length: 5 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join("");
+const cleanName = (s) => String(s ?? "").replace(/\s+/g, " ").trim().slice(0, 16) || "Rider";
+function readName() {
+  myName = cleanName($("name")?.value);
+  store.set("powderrun-name", myName);
+}
+
+function peerErrorText(err) {
+  switch (err?.type) {
+    case "peer-unavailable": return "No lobby found with that code.";
+    case "browser-incompatible": return "This browser doesn't support the connections multiplayer needs.";
+    case "network": case "server-error": case "socket-error": case "socket-closed":
+      return "Couldn't reach the lobby server. Check your connection and try again.";
+    default: return `Connection problem (${err?.type || "unknown"}).`;
+  }
+}
+
+function sendAll(msg) {
+  for (const c of net.conns.values()) if (c.open) c.send(msg);
+}
+
+// Called every frame during a race; sends at SEND_RATE.
+function netTick(dt) {
+  if (!net.role) return;
+  netAcc += dt;
+  if (netAcc < 1 / SEND_RATE) return;
+  netAcc %= 1 / SEND_RATE;
+  if (net.role === "client") { if (net.host?.open) net.host.send({ t: "me", s: packRider(me) }); }
+  else sendAll({ t: "snap", s: riders.map(packRider).filter(Boolean) });
+}
+
+// --- Host ---
+async function hostLobby() {
+  readName();
+  showStatus("Creating a lobby…");
+  let Peer;
+  try { Peer = await loadPeerJS(); } catch (e) { return leaveLobby(e.message); }
+  const open = (attempt) => {
+    const code = makeCode();
+    const peer = new Peer(PEER_PREFIX + code, { debug: 0 });
+    Object.assign(net, { role: "host", peer, code, conns: new Map(), players: [], racing: false });
+    peer.on("open", (id) => {
+      me.id = id;
+      net.players = [{ id, name: myName }];
+      state = "menu";
+      showLobby();
+    });
+    peer.on("connection", acceptPlayer);
+    // Losing the lobby server only stops new players joining; reconnect so they can.
+    peer.on("disconnected", () => { if (net.peer === peer && !peer.destroyed) peer.reconnect(); });
+    peer.on("error", (err) => {
+      if (net.peer !== peer) return;
+      if (err.type === "unavailable-id" && attempt < 3) { peer.destroy(); open(attempt + 1); }
+      else if (err.type !== "peer-unavailable" && !net.players.length) leaveLobby(peerErrorText(err));
+    });
+  };
+  open(0);
+}
+
+function acceptPlayer(conn) {
+  conn.on("open", () => {
+    if (net.players.length >= MAX_RIDERS) { conn.send({ t: "full" }); setTimeout(() => conn.close(), 500); return; }
+    net.conns.set(conn.peer, conn);
+  });
+  conn.on("data", (m) => onHostData(conn, m));
+  conn.on("close", () => dropPlayer(conn.peer));
+  conn.on("error", () => dropPlayer(conn.peer));
+}
+
+function onHostData(conn, m) {
+  if (!m || typeof m !== "object" || !net.conns.has(conn.peer)) return;
+  if (m.t === "hello") {
+    if (net.players.some((p) => p.id === conn.peer)) return;
+    net.players.push({ id: conn.peer, name: cleanName(m.name) });
+    broadcastLobby();
+    refreshLobby();
+  } else if (m.t === "me") {
+    const r = riders.find((x) => x.id === conn.peer && x.remote);
+    if (r) applyNet(r, m.s);
+  }
+}
+
+function dropPlayer(id) {
+  if (net.role !== "host") return;
+  net.conns.delete(id);
+  const i = net.players.findIndex((p) => p.id === id);
+  if (i < 0) return;
+  net.players.splice(i, 1);
+  removeRider(id);
+  broadcastLobby();
+  refreshLobby();
+}
+
+const lobbyBotCount = () => Math.max(0, Math.min(net.bots, BOTS.length, MAX_RIDERS - net.players.length));
+function setBots(n) {
+  net.bots = Math.max(0, Math.min(BOTS.length, n));
+  broadcastLobby();
+  showLobby();
+}
+function broadcastLobby() {
+  sendAll({ t: "lobby", code: net.code, players: net.players, bots: lobbyBotCount(), racing: net.racing });
+}
+
+function hostStart() {
+  const roster = [
+    ...net.players.map((p, i) => ({ id: p.id, name: p.name, look: i % PLAYER_LOOKS })),
+    ...BOTS.slice(0, lobbyBotCount()).map((b, i) => ({ id: `bot${i}`, name: b.name, look: b.look, bot: b.skill })),
+  ];
+  net.racing = true;
+  sendAll({ t: "start", roster });
+  broadcastLobby();
+  startRace(roster);
+}
+
+// --- Client ---
+async function joinLobby(raw) {
+  const code = String(raw).toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (code.length !== 5) return showMenu("Lobby codes are 5 letters and numbers.");
+  readName();
+  showStatus(`Joining lobby ${code}…`);
+  let Peer;
+  try { Peer = await loadPeerJS(); } catch (e) { return leaveLobby(e.message); }
+  const peer = new Peer({ debug: 0 });
+  Object.assign(net, { role: "client", peer, code, host: null, players: [], racing: false });
+  const timer = setTimeout(() => {
+    if (net.peer === peer && !net.host?.open) {
+      leaveLobby("Couldn't connect to the lobby. The host may have left, or a network between you is blocking direct connections.");
+    }
+  }, 15000);
+  peer.on("open", (id) => {
+    me.id = id;
+    const conn = peer.connect(PEER_PREFIX + code, { reliable: true, serialization: "json" });
+    net.host = conn;
+    conn.on("open", () => { clearTimeout(timer); conn.send({ t: "hello", name: myName }); });
+    conn.on("data", onClientData);
+    conn.on("close", () => { if (net.peer === peer) leaveLobby("The host closed the lobby."); });
+  });
+  peer.on("error", (err) => {
+    if (net.peer !== peer) return;
+    clearTimeout(timer);
+    leaveLobby(peerErrorText(err));
+  });
+}
+
+function onClientData(m) {
+  if (!m || typeof m !== "object") return;
+  if (m.t === "lobby") {
+    net.players = (Array.isArray(m.players) ? m.players : []).slice(0, MAX_RIDERS)
+      .map((p) => ({ id: String(p?.id), name: cleanName(p?.name) }));
+    net.bots = Number.isInteger(m.bots) ? m.bots : 0;
+    net.racing = !!m.racing;
+    // Remove riders whose players have left.
+    for (const r of [...riders]) if (r.remote && r.bot == null && !r.id.startsWith("bot") && !net.players.some((p) => p.id === r.id)) removeRider(r.id);
+    refreshLobby();
+  } else if (m.t === "start") {
+    const roster = (Array.isArray(m.roster) ? m.roster : []).slice(0, MAX_RIDERS).map((e) => ({
+      id: String(e?.id), name: cleanName(e?.name),
+      look: Number.isInteger(e?.look) && e.look >= 0 && e.look < LOOKS.length ? e.look : 0,
+      bot: Number.isFinite(e?.bot) ? e.bot : undefined,
+    }));
+    // Joined after this race was set up: wait in the lobby for the next one.
+    if (roster.some((e) => e.id === me.id)) startRace(roster);
+  } else if (m.t === "snap" && Array.isArray(m.s)) {
+    for (const s of m.s) {
+      const r = s && riders.find((x) => x.id === s.id && x.remote);
+      if (r) applyNet(r, s);
+    }
+  } else if (m.t === "full") {
+    leaveLobby("That lobby is full.");
+  }
+}
+
+// Back to solo play. `message` explains why, if it wasn't the player's choice.
+function leaveLobby(message = "") {
+  const peer = net.peer;
+  Object.assign(net, { role: null, peer: null, host: null, conns: new Map(), code: "", players: [], racing: false });
+  peer?.destroy();
+  me.id = "me";
+  state = "menu";
+  resultsShown = false; result = null;
+  countEl.textContent = "";
+  restartBtn.style.display = "";
+  leaveTopBtn.style.display = "none";
+  setRoster(soloRoster());
+  snapCamera();
+  showMenu(message);
+}
 
 // ---------------------------------------------------------------------------
 // Main loop
 // ---------------------------------------------------------------------------
-riders.forEach(resetRider);
+setRoster(soloRoster());
 for (const r of riders) updateRider(r, 1);
 snapCamera();
 showMenu();
