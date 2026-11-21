@@ -90,6 +90,9 @@
   .card .num { text-align: right; font-variant-numeric: tabular-nums; }
   .card .total td { font-weight: 700; border-top: 1px solid #2a2f3a; padding-top: 0.4rem; opacity: 1; }
   .card .new { color: #ffd84f; font-weight: 600; }
+  .card th { padding: 0 0.6rem 0.2rem; font-size: 0.72rem; font-weight: 600; opacity: 0.55; text-align: left; }
+  .card th.num { text-align: right; }
+  .card .standings .me td { color: #ffd84f; opacity: 1; font-weight: 600; }
   kbd {
     font-family: inherit; font-size: 0.8em;
     padding: 0.05rem 0.35rem; border: 1px solid #2a2f3a; border-radius: 4px; background: #0f1115;
@@ -121,6 +124,7 @@
   <span class="label">TIME</span><strong id="time">0.00</strong>
   <span class="label">SPEED</span><span><strong id="speed">0</strong> km/h</span>
   <span class="label">TRICKS</span><strong id="tricks">0</strong>
+  <span class="label">POS</span><strong id="pos">–</strong>
   <span class="label">BEST</span><span id="best">–</span>
 </div>
 <div id="progress"><div></div></div>
@@ -425,14 +429,14 @@ const mountains = new THREE.Group();
 }
 
 // ---------------------------------------------------------------------------
-// Rider model. Forward is local +Z; the rider stands sideways facing +X.
+// Rider models. Forward is local +Z; the rider stands sideways facing +X.
 // ---------------------------------------------------------------------------
-const rider = new THREE.Group();
-const pose = new THREE.Group();
-const upper = new THREE.Group();
-rider.add(pose);
-scene.add(rider);
-const mat = (color) => new THREE.MeshStandardMaterial({ color, roughness: 0.7, flatShading: true });
+const LEG_H = 0.8;
+const matCache = new Map();
+function mat(color) {
+  if (!matCache.has(color)) matCache.set(color, new THREE.MeshStandardMaterial({ color, roughness: 0.7, flatShading: true }));
+  return matCache.get(color);
+}
 function part(geo, m, parent, x = 0, y = 0, z = 0) {
   const mesh = new THREE.Mesh(geo, m);
   mesh.position.set(x, y, z);
@@ -440,31 +444,61 @@ function part(geo, m, parent, x = 0, y = 0, z = 0) {
   parent.add(mesh);
   return mesh;
 }
-const LEG_H = 0.8;
-part(new THREE.BoxGeometry(0.5, 0.06, 1.7), mat(0xd6336c), pose, 0, 0.03, 0);
-part(new THREE.BoxGeometry(0.52, 0.065, 0.12), mat(0xffd84f), pose, 0, 0.035, 0.55);
-part(new THREE.BoxGeometry(0.52, 0.065, 0.12), mat(0xffd84f), pose, 0, 0.035, -0.55);
+const boardGeo = new THREE.BoxGeometry(0.5, 0.06, 1.7);
+const bindingGeo = new THREE.BoxGeometry(0.52, 0.065, 0.12);
 const legGeo = new THREE.BoxGeometry(0.2, LEG_H, 0.2).translate(0, LEG_H / 2, 0);
-const pants = mat(0x243a6b);
-const legs = [part(legGeo, pants, pose, 0, 0.06, 0.28), part(legGeo, pants, pose, 0, 0.06, -0.28)];
-pose.add(upper);
-const jacket = mat(0xff7a2f);
-part(new THREE.BoxGeometry(0.34, 0.62, 0.52).translate(0, 0.31, 0), jacket, upper);
-part(new THREE.SphereGeometry(0.19, 10, 8), mat(0xf1c9a5), upper, 0, 0.8, 0);
-part(new THREE.SphereGeometry(0.2, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2), mat(0x2a2f3a), upper, 0, 0.82, 0);
-part(new THREE.BoxGeometry(0.08, 0.09, 0.3), mat(0x4fd8ff), upper, 0.17, 0.82, 0);
+const torsoGeo = new THREE.BoxGeometry(0.34, 0.62, 0.52).translate(0, 0.31, 0);
+const headGeo = new THREE.SphereGeometry(0.19, 10, 8);
+const helmetGeo = new THREE.SphereGeometry(0.2, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+const goggleGeo = new THREE.BoxGeometry(0.08, 0.09, 0.3);
 const armGeo = new THREE.BoxGeometry(0.13, 0.58, 0.13).translate(0, -0.27, 0);
-const arms = [new THREE.Group(), new THREE.Group()];
-arms.forEach((g, i) => {
-  g.position.set(0, 0.58, i ? -0.33 : 0.33);
-  part(armGeo, jacket, g);
-  upper.add(g);
-});
+
+function buildRiderModel(look) {
+  const root = new THREE.Group(), pose = new THREE.Group(), upper = new THREE.Group();
+  root.add(pose);
+  scene.add(root);
+  part(boardGeo, mat(look.board), pose, 0, 0.03, 0);
+  part(bindingGeo, mat(0xffd84f), pose, 0, 0.035, 0.55);
+  part(bindingGeo, mat(0xffd84f), pose, 0, 0.035, -0.55);
+  const legs = [part(legGeo, mat(look.pants), pose, 0, 0.06, 0.28), part(legGeo, mat(look.pants), pose, 0, 0.06, -0.28)];
+  pose.add(upper);
+  part(torsoGeo, mat(look.jacket), upper);
+  part(headGeo, mat(0xf1c9a5), upper, 0, 0.8, 0);
+  part(helmetGeo, mat(look.helmet), upper, 0, 0.82, 0);
+  part(goggleGeo, mat(0x4fd8ff), upper, 0.17, 0.82, 0);
+  const arms = [new THREE.Group(), new THREE.Group()];
+  arms.forEach((g, i) => {
+    g.position.set(0, 0.58, i ? -0.33 : 0.33);
+    part(armGeo, mat(look.jacket), g);
+    upper.add(g);
+  });
+  return { root, pose, upper, legs, arms };
+}
+
+// A floating name above other riders' heads.
+function nameTag(text, color) {
+  const c = document.createElement("canvas");
+  c.width = 256; c.height = 64;
+  const g = c.getContext("2d");
+  g.font = "bold 34px system-ui, sans-serif";
+  g.textAlign = "center"; g.textBaseline = "middle";
+  const w = g.measureText(text).width + 30;
+  g.fillStyle = "rgba(15, 17, 21, 0.6)";
+  g.beginPath(); g.roundRect((256 - w) / 2, 8, w, 48, 24); g.fill();
+  g.fillStyle = color;
+  g.fillText(text, 128, 33);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthWrite: false }));
+  s.scale.set(2, 0.5, 1);
+  scene.add(s);
+  return s;
+}
 
 // ---------------------------------------------------------------------------
 // Snow spray particles
 // ---------------------------------------------------------------------------
-const SPRAY_N = 500;
+const SPRAY_N = 1200;
 const sprayPos = new Float32Array(SPRAY_N * 3).fill(-9999);
 const sprayVel = new Float32Array(SPRAY_N * 3);
 const sprayLife = new Float32Array(SPRAY_N);
@@ -488,17 +522,17 @@ scene.add(spray);
 let sprayNext = 0, sprayAcc = 0;
 const tailLocal = new THREE.Vector3();
 
-function emitSpray(rate, dt) {
+function emitSpray(r, rate, dt) {
   sprayAcc += rate * dt;
   while (sprayAcc >= 1) {
     sprayAcc -= 1;
     const i = sprayNext; sprayNext = (sprayNext + 1) % SPRAY_N;
     tailLocal.set((rand() - 0.5) * 0.5, 0.08, -0.75 + rand() * 0.6);
-    rider.localToWorld(tailLocal);
+    r.model.root.localToWorld(tailLocal);
     sprayPos[i * 3] = tailLocal.x; sprayPos[i * 3 + 1] = tailLocal.y; sprayPos[i * 3 + 2] = tailLocal.z;
-    sprayVel[i * 3] = P.vx * 0.3 + (rand() - 0.5) * 4;
+    sprayVel[i * 3] = r.vx * 0.3 + (rand() - 0.5) * 4;
     sprayVel[i * 3 + 1] = 1.5 + rand() * 3;
-    sprayVel[i * 3 + 2] = P.vz * 0.3 + (rand() - 0.5) * 4;
+    sprayVel[i * 3 + 2] = r.vz * 0.3 + (rand() - 0.5) * 4;
     sprayLife[i] = 0.4 + rand() * 0.4;
   }
 }
@@ -583,11 +617,11 @@ const sfx = {
 function updateAudio(speed, slip) {
   if (!ac) return;
   const t = ac.currentTime;
-  const moving = state === "run" || state === "finished";
+  const moving = state === "run";
   const s = moving ? speed : 0;
   windGain.gain.setTargetAtTime(Math.min(0.22, (s / 35) ** 2 * 0.2), t, 0.15);
   windFilter.frequency.setTargetAtTime(250 + s * 25, t, 0.15);
-  const c = moving && P.grounded ? Math.min(0.1, slip * 0.012 + s * 0.0015) : 0;
+  const c = moving && me.grounded ? Math.min(0.1, slip * 0.012 + s * 0.0015) : 0;
   carveGain.gain.setTargetAtTime(c, t, 0.05);
 }
 
@@ -629,179 +663,201 @@ document.querySelectorAll("#touch button").forEach((btn) => {
 });
 
 // ---------------------------------------------------------------------------
-// Game state and physics
+// Riders. Every rider runs the same physics and is driven by a controls object
+// ({left, right, tuck, brake, grab, jump}) from the keyboard, a bot, or (later)
+// the network.
 // ---------------------------------------------------------------------------
-const P = {};
-let state = "menu";          // menu | countdown | run | finished
-let raceTime = 0, trickScore = 0, countT = 0, finishT = 0;
-let resultsShown = false, jumpPrev = false, lastCount = 0;
-let best = Number(store.get("powderrun-best")) || 0;
+const BOTS = [
+  { name: "Juniper", skill: 0.35, lane: -6, jacket: 0x3fbf7f, pants: 0x2a2f3a, board: 0x4f8cff, helmet: 0xe8e8ea, tagColor: "#8fe8b4" },
+  { name: "Blaze", skill: 0.6, lane: 5, jacket: 0xe0443a, pants: 0x1d1f26, board: 0xffd84f, helmet: 0x2a2f3a, tagColor: "#ff9a90" },
+  { name: "Nova", skill: 0.85, lane: 10, jacket: 0x9b6dff, pants: 0x243a6b, board: 0x2ad1c9, helmet: 0xffffff, tagColor: "#c8b0ff" },
+];
+const NO_INPUT = Object.freeze({ left: false, right: false, tuck: false, brake: false, grab: false, jump: false });
 
-function resetPlayer() {
-  Object.assign(P, {
-    x: center(0), z: 0, y: 0, vx: 0, vy: 0, vz: 0,
+const riders = [];
+function makeRider(opts) {
+  const r = { ...opts, model: buildRiderModel(opts), tag: opts.isPlayer ? null : nameTag(opts.name, opts.tagColor) };
+  r.bot = opts.isPlayer ? null : { skill: opts.skill };
+  riders.push(r);
+  return r;
+}
+const me = makeRider({ name: "You", isPlayer: true, lane: 0, jacket: 0xff7a2f, pants: 0x243a6b, board: 0xd6336c, helmet: 0x2a2f3a });
+BOTS.forEach(makeRider);
+
+function resetRider(r) {
+  Object.assign(r, {
+    x: center(0) + r.lane, z: 0, y: 0, vx: 0, vy: 0, vz: 0,
     heading: 0, spin: 0, flip: 0, flipYaw: 0, sw: false, takeoffSw: false,
     grounded: true, groundVy: 0, airTime: 0, slip: 0,
-    charge: 0, popped: false, grabbing: false, grabTime: 0, grabName: "",
+    charge: 0, popped: false, jumpPrev: false, grabbing: false, grabTime: 0, grabName: "",
     crashT: 0, crashSpin: 0, lean: 0, crouch: 0,
+    trickScore: 0, finished: false, finishTime: 0, place: 0, inp: NO_INPUT,
   });
-  P.y = terrainH(P.x, P.z);
+  r.y = terrainH(r.x, r.z);
+  if (r.bot) Object.assign(r.bot, { t: 0, phase: Math.random() * 10, kickIdx: -1, plan: null });
 }
 
-const canControl = () => state === "run" && P.crashT <= 0;
+// ---------------------------------------------------------------------------
+// Game state and physics
+// ---------------------------------------------------------------------------
+const STEP = 1 / 180;        // fixed physics step, so every rider behaves the same at any frame rate
+let state = "menu";          // menu | countdown | run
+let raceTime = 0, countT = 0, simAcc = 0, finishCount = 0;
+let resultsShown = false, lastCount = 0, result = null;
+let best = Number(store.get("powderrun-best")) || 0;
 
-function leaveGround(y, vy) {
-  P.grounded = false;
-  P.y = y; P.vy = vy;
-  P.airTime = 0; P.spin = 0; P.flip = 0; P.grabTime = 0; P.grabbing = false; P.popped = false;
-  P.takeoffSw = P.sw;
+const canControl = (r) => state === "run" && r.crashT <= 0 && !r.finished;
+
+function leaveGround(r, y, vy) {
+  r.grounded = false;
+  r.y = y; r.vy = vy;
+  r.airTime = 0; r.spin = 0; r.flip = 0; r.grabTime = 0; r.grabbing = false; r.popped = false;
+  r.takeoffSw = r.sw;
   // Flips turn about the axis across the direction of travel at takeoff, so
   // "forward" always means toward where you're headed, whichever way you've spun.
-  P.flipYaw = Math.hypot(P.vx, P.vz) > 1 ? Math.atan2(P.vx, P.vz) : P.heading;
+  r.flipYaw = Math.hypot(r.vx, r.vz) > 1 ? Math.atan2(r.vx, r.vz) : r.heading;
 }
 
-function ollie(late) {
-  const base = late ? P.vy : P.groundVy;
-  if (P.grounded) leaveGround(P.y + 0.02, base);
-  P.vy = base + 4 + 4.5 * P.charge;
-  P.popped = true;
-  sfx.jump();
+function ollie(r, late) {
+  const base = late ? r.vy : r.groundVy;
+  if (r.grounded) leaveGround(r, r.y + 0.02, base);
+  r.vy = base + 4 + 4.5 * r.charge;
+  r.popped = true;
+  if (r.isPlayer) sfx.jump();
 }
 
-function crash(reason) {
-  if (P.crashT > 0) return;
-  P.crashT = 1.6;
-  P.crashSpin = 0;
-  P.grabbing = false; P.spin = 0; P.flip = 0; P.charge = 0;
-  P.vx *= 0.35; P.vz *= 0.35;
-  sfx.crash();
-  showPopup(reason, "WIPEOUT", true);
+function crash(r, reason) {
+  if (r.crashT > 0) return;
+  r.crashT = 1.6;
+  r.crashSpin = 0;
+  r.grabbing = false; r.spin = 0; r.flip = 0; r.charge = 0;
+  r.vx *= 0.35; r.vz *= 0.35;
+  if (r.isPlayer) { sfx.crash(); showPopup(reason, "WIPEOUT", true); }
 }
 
-function recover() {
-  const s = Math.hypot(P.vx, P.vz);
-  P.heading = s > 3 ? Math.atan2(P.vx, P.vz) : 0;
-  P.sw = false; P.crashSpin = 0;
+function recover(r) {
+  const s = Math.hypot(r.vx, r.vz);
+  r.heading = s > 3 ? Math.atan2(r.vx, r.vz) : 0;
+  r.sw = false; r.crashSpin = 0;
 }
 
-function groundStep(h, inp) {
-  const ctl = canControl();
-  const [gx, gz] = grad(P.x, P.z);
+function groundStep(r, h, inp) {
+  const ctl = canControl(r);
+  const [gx, gz] = grad(r.x, r.z);
   const inv = 1 / (1 + gx * gx + gz * gz);
-  P.vx += -G_GROUND * gx * inv * h;
-  P.vz += -G_GROUND * gz * inv * h;
+  r.vx += -G_GROUND * gx * inv * h;
+  r.vz += -G_GROUND * gz * inv * h;
 
   const steer = ctl ? (inp.right ? 1 : 0) - (inp.left ? 1 : 0) : 0;
   const brake = ctl && inp.brake;
   const tuck = ctl && inp.tuck && !brake;
-  P.heading -= steer * TURN_RATE * (brake ? 1.3 : 1) * h;
+  r.heading -= steer * TURN_RATE * (brake ? 1.3 : 1) * h;
 
-  const fx = Math.sin(P.heading), fz = Math.cos(P.heading);
-  const sx = Math.cos(P.heading), sz = -Math.sin(P.heading);
-  let vf = P.vx * fx + P.vz * fz;
-  let vs = P.vx * sx + P.vz * sz;
-  P.slip = Math.abs(vs);
+  const fx = Math.sin(r.heading), fz = Math.cos(r.heading);
+  const sx = Math.cos(r.heading), sz = -Math.sin(r.heading);
+  let vf = r.vx * fx + r.vz * fz;
+  let vs = r.vx * sx + r.vz * sz;
+  r.slip = Math.abs(vs);
 
   // Edges bite: sideways speed bleeds off, and most of it is redirected forward when carving.
-  const grip = P.crashT > 0 ? 1.5 : brake ? 3 : 7;
+  const grip = r.crashT > 0 ? 1.5 : brake ? 3 : 7;
   const keep = Math.exp(-grip * h);
   const lost = Math.abs(vs) * (1 - keep);
   vs *= keep;
-  if (P.crashT <= 0) vf += Math.sign(vf || 1) * lost * (brake ? 0.1 : 0.55);
+  if (r.crashT <= 0) vf += Math.sign(vf || 1) * lost * (brake ? 0.1 : 0.55);
 
   const kAir = tuck ? 0.0045 : 0.0085;
   vf -= (0.03 * vf + kAir * vf * Math.abs(vf)) * h;
   if (brake) vf *= Math.exp(-1.2 * h);
-  if (P.crashT > 0) vf *= Math.exp(-1.8 * h);
-  if (state === "finished") { vf *= Math.exp(-1.4 * h); vs *= Math.exp(-3 * h); }
+  if (r.crashT > 0) vf *= Math.exp(-1.8 * h);
+  if (r.finished) { vf *= Math.exp(-1.4 * h); vs *= Math.exp(-3 * h); }
 
-  P.vx = vf * fx + vs * sx;
-  P.vz = vf * fz + vs * sz;
+  r.vx = vf * fx + vs * sx;
+  r.vz = vf * fz + vs * sz;
 
-  const nx = P.x + P.vx * h, nz = P.z + P.vz * h;
+  const nx = r.x + r.vx * h, nz = r.z + r.vz * h;
   const ground = terrainH(nx, nz);
-  const yPred = P.y + P.groundVy * h - 0.5 * G_AIR * h * h;
-  P.x = nx; P.z = nz;
+  const yPred = r.y + r.groundVy * h - 0.5 * G_AIR * h * h;
+  r.x = nx; r.z = nz;
   if (yPred > ground + 0.04) {
     // The ground fell away faster than gravity can pull us down: we're airborne.
-    leaveGround(yPred, P.groundVy - G_AIR * h);
+    leaveGround(r, yPred, r.groundVy - G_AIR * h);
   } else {
     // Keep speed along the surface constant when the slope changes, so riding
     // up a steep bank slows you down instead of handing out free speed.
     const [gx2, gz2] = grad(nx, nz);
-    const sp = Math.hypot(P.vx, P.vz) || 1;
-    const mOld = (gx * P.vx + gz * P.vz) / sp, mNew = (gx2 * P.vx + gz2 * P.vz) / sp;
+    const sp = Math.hypot(r.vx, r.vz) || 1;
+    const mOld = (gx * r.vx + gz * r.vz) / sp, mNew = (gx2 * r.vx + gz2 * r.vz) / sp;
     const scale = Math.sqrt((1 + mOld * mOld) / (1 + mNew * mNew));
-    P.vx *= scale; P.vz *= scale;
+    r.vx *= scale; r.vz *= scale;
     // Use the actual height change rather than the local gradient, so touching
     // down for one substep on a kicker's drop-off doesn't glue us to the snow.
     // Capped so a sudden position change (bouncing off a tree) can't launch us.
-    P.groundVy = Math.min((ground - P.y) / h, Math.max(mOld, mNew) * sp + 2);
-    P.y = ground;
+    r.groundVy = Math.min((ground - r.y) / h, Math.max(mOld, mNew) * sp + 2);
+    r.y = ground;
   }
 }
 
-function airStep(h, inp) {
-  const ctl = canControl();
-  P.vy -= G_AIR * h;
+function airStep(r, h, inp) {
+  r.vy -= G_AIR * h;
   const drag = Math.exp(-0.05 * h);
-  P.vx *= drag; P.vz *= drag;
-  P.x += P.vx * h; P.y += P.vy * h; P.z += P.vz * h;
-  P.airTime += h;
-  if (ctl) {
+  r.vx *= drag; r.vz *= drag;
+  r.x += r.vx * h; r.y += r.vy * h; r.z += r.vz * h;
+  r.airTime += h;
+  if (canControl(r)) {
     const steer = (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
-    P.spin -= steer * SPIN_RATE * h;
+    r.spin -= steer * SPIN_RATE * h;
     const pitch = (inp.tuck ? 1 : 0) - (inp.brake ? 1 : 0);
-    P.flip += pitch * FLIP_RATE * h;
+    r.flip += pitch * FLIP_RATE * h;
     if (inp.grab) {
-      if (!P.grabbing) {
-        P.grabbing = true;
-        if (!P.grabName) P.grabName = inp.tuck ? "Tail" : inp.brake ? "Nose" : steer ? "Method" : "Indy";
+      if (!r.grabbing) {
+        r.grabbing = true;
+        if (!r.grabName) r.grabName = inp.tuck ? "Tail" : inp.brake ? "Nose" : steer ? "Method" : "Indy";
       }
-      P.grabTime += h;
-    } else P.grabbing = false;
+      r.grabTime += h;
+    } else r.grabbing = false;
   }
-  const ground = terrainH(P.x, P.z);
-  if (P.y <= ground) land(ground);
+  const ground = terrainH(r.x, r.z);
+  if (r.y <= ground) land(r, ground);
 }
 
-function land(ground) {
-  P.y = ground;
-  const [gx, gz] = grad(P.x, P.z);
+function land(r, ground) {
+  r.y = ground;
+  const [gx, gz] = grad(r.x, r.z);
   const len = Math.hypot(gx, 1, gz);
   const nx = -gx / len, ny = 1 / len, nz = -gz / len;
-  const vn = P.vx * nx + P.vy * ny + P.vz * nz;
-  if (vn < 0) { P.vx -= vn * nx; P.vy -= vn * ny; P.vz -= vn * nz; }
-  P.grounded = true;
-  P.groundVy = gx * P.vx + gz * P.vz;
-  P.charge = 0;
-  const airTime = P.airTime;
-  const wasGrabbing = P.grabbing;
-  const grabTime = P.grabTime, grabName = P.grabName;
-  P.grabbing = false; P.grabName = "";
+  const vn = r.vx * nx + r.vy * ny + r.vz * nz;
+  if (vn < 0) { r.vx -= vn * nx; r.vy -= vn * ny; r.vz -= vn * nz; }
+  r.grounded = true;
+  r.groundVy = gx * r.vx + gz * r.vz;
+  r.charge = 0;
+  const airTime = r.airTime;
+  const wasGrabbing = r.grabbing;
+  const grabTime = r.grabTime, grabName = r.grabName;
+  r.grabbing = false; r.grabName = "";
 
-  if (P.crashT > 0 || state !== "run") { P.spin = 0; P.flip = 0; return; }
+  if (!canControl(r)) { r.spin = 0; r.flip = 0; return; }
 
-  const phi = Math.atan2(P.vx, P.vz);
-  const rel = wrapAngle(P.heading + (P.sw ? Math.PI : 0) + P.spin - phi);
-  const spin = P.spin, flip = P.flip;
+  const phi = Math.atan2(r.vx, r.vz);
+  const rel = wrapAngle(r.heading + (r.sw ? Math.PI : 0) + r.spin - phi);
+  const spin = r.spin, flip = r.flip;
   const flipLeft = wrapAngle(flip);
-  P.spin = 0; P.flip = 0;
+  r.spin = 0; r.flip = 0;
   if (Math.abs(flipLeft) > FLIP_LAND_TOL) {
-    if (Math.abs(flip) < Math.PI * 2 - FLIP_LAND_TOL) return crash(Math.abs(flipLeft) > 2.2 ? "Landed on your head!" : "Under-rotated!");
-    return crash(Math.abs(flipLeft) > 2.2 ? "Landed on your head!" : "Over-rotated!");
+    if (Math.abs(flipLeft) > 2.2) return crash(r, "Landed on your head!");
+    return crash(r, Math.abs(flip) < Math.PI * 2 - FLIP_LAND_TOL ? "Under-rotated!" : "Over-rotated!");
   }
-  if (wasGrabbing && airTime > 0.3) return crash("Still grabbing!");
-  if (Math.abs(rel) < 0.75) P.sw = false;
-  else if (Math.abs(rel) > Math.PI - 0.75) P.sw = true;
-  else return crash("Landed sideways!");
-  P.heading = phi;
-  if (airTime > 0.25) sfx.land();
-  scoreTrick(airTime, spin, flip, grabTime, grabName);
+  if (wasGrabbing && airTime > 0.3) return crash(r, "Still grabbing!");
+  if (Math.abs(rel) < 0.75) r.sw = false;
+  else if (Math.abs(rel) > Math.PI - 0.75) r.sw = true;
+  else return crash(r, "Landed sideways!");
+  r.heading = phi;
+  if (airTime > 0.25 && r.isPlayer) sfx.land();
+  scoreTrick(r, airTime, spin, flip, grabTime, grabName);
 }
 
 const FLIP_COUNT = ["", "", "Double ", "Triple ", "Quad "];
-function scoreTrick(airTime, spin, flip, grabTime, grabName) {
+function scoreTrick(r, airTime, spin, flip, grabTime, grabName) {
   const n180 = Math.round(Math.abs(spin) / Math.PI);
   const nFlip = Math.round(Math.abs(flip) / (Math.PI * 2));
   const parts = [];
@@ -824,101 +880,187 @@ function scoreTrick(airTime, spin, flip, grabTime, grabName) {
   if (parts.length === 0) return;
   const kinds = (nFlip > 0) + (n180 > 0) + (grabTime > 0.12);
   if (kinds >= 2) pts = Math.round(pts * (kinds === 3 ? 2 : 1.5));
-  if (P.takeoffSw) { parts.unshift("Switch"); pts = Math.round(pts * 1.25); }
-  trickScore += pts;
-  sfx.trick();
-  showPopup(parts.join(" + "), `+${pts}`, false);
+  if (r.takeoffSw) { parts.unshift("Switch"); pts = Math.round(pts * 1.25); }
+  r.trickScore += pts;
+  if (r.isPlayer) { sfx.trick(); showPopup(parts.join(" + "), `+${pts}`, false); }
 }
 
-function checkTrees() {
-  const key = Math.floor(P.z / BUCKET);
+function checkTrees(r) {
+  const key = Math.floor(r.z / BUCKET);
   for (let k = key - 1; k <= key + 1; k++) {
     const list = treeBuckets.get(k);
     if (!list) continue;
     for (const t of list) {
-      const dx = P.x - t.x, dz = P.z - t.z;
-      const r = 0.45 * t.s + 0.35;
-      if (dx * dx + dz * dz >= r * r || P.y > t.y + 5.5 * t.s) continue;
+      const dx = r.x - t.x, dz = r.z - t.z;
+      const rad = 0.45 * t.s + 0.35;
+      if (dx * dx + dz * dz >= rad * rad || r.y > t.y + 5.5 * t.s) continue;
       const d = Math.hypot(dx, dz) || 1;
-      P.x = t.x + (dx / d) * (r + 0.05);
-      P.z = t.z + (dz / d) * (r + 0.05);
-      P.vx = (dx / d) * 3; P.vz = Math.max(P.vz * 0.15, 1);
-      if (state === "run") crash("Tree!");
+      r.x = t.x + (dx / d) * (rad + 0.05);
+      r.z = t.z + (dz / d) * (rad + 0.05);
+      r.vx = (dx / d) * 3; r.vz = Math.max(r.vz * 0.15, 1);
+      if (!r.finished) crash(r, "Tree!");
     }
   }
 }
 
-function step(h, inp) {
-  if (P.grounded) groundStep(h, inp); else airStep(h, inp);
-  checkTrees();
+function handleJump(r, inp, h) {
+  const held = inp.jump && canControl(r);
+  if (held) {
+    if (r.grounded) r.charge = Math.min(1, r.charge + h / 0.5);
+  } else if (r.jumpPrev && canControl(r)) {
+    // Release: pop off the ground, or a late pop just after leaving a lip.
+    if (r.grounded) ollie(r, false);
+    else if (r.airTime < 0.18 && !r.popped) ollie(r, true);
+    r.charge = 0;
+  }
+  if (!canControl(r)) r.charge = 0;
+  r.jumpPrev = held;
 }
 
-function handleJump(inp, dt) {
-  const held = inp.jump && canControl();
-  if (held) {
-    if (P.grounded) P.charge = Math.min(1, P.charge + dt / 0.5);
-  } else if (jumpPrev && canControl()) {
-    // Release: pop off the ground, or a late pop just after leaving a lip.
-    if (P.grounded) ollie(false);
-    else if (P.airTime < 0.18 && !P.popped) ollie(true);
-    P.charge = 0;
+function stepRider(r, h, inp) {
+  r.inp = inp;
+  handleJump(r, inp, h);
+  if (r.grounded) groundStep(r, h, inp); else airStep(r, h, inp);
+  checkTrees(r);
+  if (r.crashT > 0) {
+    r.crashT -= h;
+    r.crashSpin += h * 9;
+    if (r.crashT <= 0) recover(r);
   }
-  if (!canControl()) P.charge = 0;
-  jumpPrev = held;
+  if (!r.finished && r.z >= COURSE_LEN) {
+    r.finished = true;
+    r.finishTime = raceTime;
+    r.place = ++finishCount;
+    if (r.isPlayer) sfx.finish();
+    if (resultsShown) renderResults();
+  }
+}
+
+// Finished riders by finishing time, then everyone else by distance down the hill.
+function standings() {
+  return [...riders].sort((a, b) =>
+    a.finished !== b.finished ? (a.finished ? -1 : 1) : a.finished ? a.finishTime - b.finishTime : b.z - a.z);
+}
+
+// ---------------------------------------------------------------------------
+// Bots. A bot only produces controls, exactly like the keyboard does.
+// ---------------------------------------------------------------------------
+function predictAirTime(r) {
+  let { x, y, z, vx, vy, vz } = r, t = 0;
+  const dt = 1 / 60;
+  while (t < 5) {
+    vy -= G_AIR * dt;
+    x += vx * dt; y += vy * dt; z += vz * dt; t += dt;
+    if (y <= terrainH(x, z)) break;
+  }
+  return t;
+}
+
+function planTrick(r, b) {
+  const left = predictAirTime(r);
+  // Weaker bots leave a bigger margin, but sometimes try more than they have time for.
+  const greedy = Math.random() < 0.3 * (1 - b.skill);
+  const avail = left - (0.3 - 0.2 * b.skill) + (greedy ? 0.45 : 0);
+  if (avail < 0.35) return null;
+  const flipTime = (Math.PI * 2) / FLIP_RATE, halfSpin = Math.PI / SPIN_RATE;
+  let flips = 0;
+  if (avail > flipTime && Math.random() < 0.3 + 0.45 * b.skill) flips = avail > flipTime * 2 && Math.random() < b.skill - 0.4 ? 2 : 1;
+  const maxHalves = Math.min(6, Math.floor(avail / halfSpin));
+  const halves = Math.round(maxHalves * Math.random() * (0.5 + 0.5 * b.skill) + (flips ? 0 : 0.3));
+  const end = r.airTime + left;
+  return {
+    spin: halves * Math.PI, spinDir: Math.random() < 0.5 ? 1 : -1,
+    flip: flips * Math.PI * 2, flipDir: Math.random() < 0.65 ? -1 : 1,
+    grab: Math.random() < 0.55, grabFrom: r.airTime + 0.1, grabTo: end - (greedy ? 0.1 : 0.3),
+  };
+}
+
+function botControls(r, h) {
+  const b = r.bot;
+  const inp = { left: false, right: false, tuck: false, brake: false, grab: false, jump: false };
+  if (!canControl(r)) return inp;
+  b.t += h;
+
+  if (!r.grounded) {
+    if (!b.plan && r.airTime > 0.04) b.plan = planTrick(r, b) || { spin: 0, flip: 0, grab: false };
+    const p = b.plan;
+    if (!p) return inp;
+    if (Math.abs(r.spin) < p.spin - SPIN_RATE * h * 0.5) inp[p.spinDir > 0 ? "left" : "right"] = true;
+    if (Math.abs(r.flip) < p.flip - FLIP_RATE * h * 0.5) inp[p.flipDir > 0 ? "tuck" : "brake"] = true;
+    inp.grab = p.grab && r.airTime > p.grabFrom && r.airTime < p.grabTo;
+    return inp;
+  }
+  b.plan = null;
+
+  // Pick the next kicker and decide how to ride it.
+  let idx = kickers.findIndex((k) => k.z > r.z - 1);
+  if (idx !== b.kickIdx) {
+    b.kickIdx = idx;
+    b.goKick = Math.random() < 0.5 + 0.45 * b.skill;
+    b.kickOff = (Math.random() - 0.5) * 3;
+    b.popAt = 0.3 + Math.random() * 1.6 * (1 - b.skill);
+  }
+  const k = kickers[idx];
+  const toKick = k ? k.z - r.z : Infinity;
+  const speed = Math.hypot(r.vx, r.vz);
+
+  // Steer toward a point a little way down the run, or at the kicker.
+  const look = Math.max(7, speed * 0.7);
+  let tx = center(r.z + look) + 5 * Math.sin(b.t * 0.25 + b.phase);
+  if (k && b.goKick && toKick < 40) tx = k.x + b.kickOff;
+  const err = wrapAngle(Math.atan2(tx - r.x, look) - r.heading);
+  if (err > 0.04) inp.left = true;
+  else if (err < -0.04) inp.right = true;
+
+  const vmax = 19 + 11 * b.skill;
+  if (speed > vmax || (Math.abs(err) > 0.6 && speed > 12)) inp.brake = true;
+  else if (Math.abs(err) < 0.25) inp.tuck = true;
+
+  // Charge an ollie on the ramp and pop just before the lip.
+  inp.jump = !!(k && b.goKick && toKick < 9 && toKick > b.popAt && Math.abs(r.x - k.x) < KICK_HALF);
+  return inp;
 }
 
 function startRace() {
   initAudio();
-  resetPlayer();
+  riders.forEach(resetRider);
   clearSpray();
-  raceTime = 0; trickScore = 0; finishT = 0;
-  resultsShown = false; jumpPrev = false;
+  raceTime = 0; simAcc = 0; finishCount = 0;
+  resultsShown = false; result = null;
   countT = 3; lastCount = 4;
   state = "countdown";
   panel.classList.add("hidden");
   snapCamera();
 }
 
-function finish() {
-  state = "finished";
-  finishT = 0;
-  sfx.finish();
-}
-
 function update(dt) {
-  const inp = readInput();
+  const keysIn = readInput();
   if (state === "countdown") {
     countT -= dt;
     const c = Math.ceil(countT);
     if (c !== lastCount && c > 0) { lastCount = c; sfx.count(); countEl.textContent = c; }
     if (countT <= 0) { state = "run"; sfx.go(); countEl.textContent = "GO!"; setTimeout(() => { if (countEl.textContent === "GO!") countEl.textContent = ""; }, 700); }
   }
-  if (state === "run" || state === "finished") {
-    if (state === "run") raceTime += dt;
-    handleJump(inp, dt);
-    const n = 3;
-    for (let i = 0; i < n; i++) step(dt / n, inp);
-    if (P.crashT > 0) {
-      P.crashT -= dt;
-      P.crashSpin += dt * 9;
-      if (P.crashT <= 0) recover();
+  if (state === "run") {
+    simAcc += dt;
+    while (simAcc >= STEP) {
+      simAcc -= STEP;
+      raceTime += STEP;
+      for (const r of riders) stepRider(r, STEP, r.bot ? botControls(r, STEP) : keysIn);
     }
-    if (state === "run" && P.z >= COURSE_LEN) finish();
-    if (state === "finished") {
-      finishT += dt;
-      if (finishT > 1.6 && !resultsShown) showResults();
-    }
-    const speed = Math.hypot(P.vx, P.vz);
-    if (P.grounded && speed > 3) {
-      const rate = P.crashT > 0 ? 200 : speed * 2.5 + P.slip * 25 + (inp.brake && canControl() ? speed * 6 : 0);
-      emitSpray(rate, dt);
+    if (me.finished && !resultsShown && raceTime - me.finishTime > 1.6) showResults();
+    for (const r of riders) {
+      const speed = Math.hypot(r.vx, r.vz);
+      if (!r.grounded || speed <= 3) continue;
+      const rate = r.crashT > 0 ? 200 : speed * 2.5 + r.slip * 25 + (r.inp.brake && canControl(r) ? speed * 6 : 0);
+      emitSpray(r, rate, dt);
     }
   }
-  updateRider(dt, inp);
+  for (const r of riders) updateRider(r, dt);
   updateSpray(dt);
   updateCamera(dt);
   updateHUD();
-  updateAudio(Math.hypot(P.vx, P.vz), P.slip);
+  updateAudio(Math.hypot(me.vx, me.vz), me.slip);
 }
 
 // ---------------------------------------------------------------------------
@@ -928,70 +1070,72 @@ const UP = new THREE.Vector3(0, 1, 0);
 const vN = new THREE.Vector3(), qa = new THREE.Quaternion(), qy = new THREE.Quaternion();
 const qf = new THREE.Quaternion(), flipAxis = new THREE.Vector3();
 
-function updateRider(dt, inp) {
-  rider.position.set(P.x, P.y, P.z);
-  if (P.grounded) {
-    const [gx, gz] = grad(P.x, P.z);
+function updateRider(r, dt) {
+  const m = r.model, inp = r.inp;
+  m.root.position.set(r.x, r.y, r.z);
+  if (r.grounded) {
+    const [gx, gz] = grad(r.x, r.z);
     vN.set(-gx, 1, -gz).normalize();
   } else vN.copy(UP);
   qa.setFromUnitVectors(UP, vN);
-  qy.setFromAxisAngle(UP, P.heading + (P.sw ? Math.PI : 0) + P.spin);
+  qy.setFromAxisAngle(UP, r.heading + (r.sw ? Math.PI : 0) + r.spin);
   qa.multiply(qy);
-  if (P.flip !== 0) {
+  if (r.flip !== 0) {
     // Flip about the world axis across the takeoff direction, applied on top of the spin.
-    const s = Math.sin(P.flipYaw), c = Math.cos(P.flipYaw);
+    const s = Math.sin(r.flipYaw), c = Math.cos(r.flipYaw);
     flipAxis.set(c, 0, -s);
-    qf.setFromAxisAngle(flipAxis, P.flip);
+    qf.setFromAxisAngle(flipAxis, r.flip);
     qa.premultiply(qf);
     // Pivot about the rider's middle so the body doesn't swing through the snow.
-    const fs = Math.sin(P.flip), fc = Math.cos(P.flip);
-    rider.position.x -= FLIP_PIVOT * fs * s;
-    rider.position.z -= FLIP_PIVOT * fs * c;
-    rider.position.y += FLIP_PIVOT * (1 - fc);
+    const fs = Math.sin(r.flip), fc = Math.cos(r.flip);
+    m.root.position.x -= FLIP_PIVOT * fs * s;
+    m.root.position.z -= FLIP_PIVOT * fs * c;
+    m.root.position.y += FLIP_PIVOT * (1 - fc);
   }
-  rider.quaternion.slerp(qa, 1 - Math.exp(-(P.grounded ? 14 : 40) * dt));
+  m.root.quaternion.slerp(qa, 1 - Math.exp(-(r.grounded ? 14 : 40) * dt));
+  if (r.tag) r.tag.position.set(r.x, r.y + 2.5, r.z);
 
-  const ctl = canControl();
-  const speed = Math.hypot(P.vx, P.vz);
+  const ctl = canControl(r);
+  const speed = Math.hypot(r.vx, r.vz);
   const steer = ctl ? (inp.right ? 1 : 0) - (inp.left ? 1 : 0) : 0;
-  const leanT = P.grounded && ctl ? steer * 0.38 * Math.min(1, speed / 12) * (P.sw ? -1 : 1) : 0;
-  P.lean += (leanT - P.lean) * (1 - Math.exp(-8 * dt));
+  const leanT = r.grounded && ctl ? steer * 0.38 * Math.min(1, speed / 12) * (r.sw ? -1 : 1) : 0;
+  r.lean += (leanT - r.lean) * (1 - Math.exp(-8 * dt));
   let crouchT = 0.1;
-  if (P.charge > 0) crouchT = 0.3 + 0.5 * P.charge;
-  else if (P.grabbing) crouchT = 0.75;
-  else if (!P.grounded && ctl && (inp.tuck || inp.brake)) crouchT = 0.65;
-  else if (ctl && inp.tuck && P.grounded) crouchT = 0.6;
-  else if (!P.grounded) crouchT = 0.3;
-  P.crouch += (crouchT - P.crouch) * (1 - Math.exp(-12 * dt));
+  if (r.charge > 0) crouchT = 0.3 + 0.5 * r.charge;
+  else if (r.grabbing) crouchT = 0.75;
+  else if (!r.grounded && ctl && (inp.tuck || inp.brake)) crouchT = 0.65;
+  else if (ctl && inp.tuck && r.grounded) crouchT = 0.6;
+  else if (!r.grounded) crouchT = 0.3;
+  r.crouch += (crouchT - r.crouch) * (1 - Math.exp(-12 * dt));
 
-  pose.rotation.set(P.crashT > 0 ? P.crashSpin : 0, 0, P.lean);
-  const legScale = 1 - 0.45 * P.crouch;
-  legs.forEach((l) => (l.scale.y = legScale));
-  upper.position.y = 0.06 + LEG_H * legScale;
-  upper.rotation.z = -P.crouch * 0.35;
-  const reach = P.grabbing ? 1.1 : 0;
-  arms[0].rotation.set(0.35 - reach * 0.2, 0, reach);
-  arms[1].rotation.set(-0.35 + reach * 0.2, 0, reach * 0.3);
+  m.pose.rotation.set(r.crashT > 0 ? r.crashSpin : 0, 0, r.lean);
+  const legScale = 1 - 0.45 * r.crouch;
+  m.legs.forEach((l) => (l.scale.y = legScale));
+  m.upper.position.y = 0.06 + LEG_H * legScale;
+  m.upper.rotation.z = -r.crouch * 0.35;
+  const reach = r.grabbing ? 1.1 : 0;
+  m.arms[0].rotation.set(0.35 - reach * 0.2, 0, reach);
+  m.arms[1].rotation.set(-0.35 + reach * 0.2, 0, reach * 0.3);
 }
 
 let camYaw = 0;
 const camTarget = new THREE.Vector3();
 function updateCamera(dt, snap = false) {
-  const speed = Math.hypot(P.vx, P.vz);
-  const want = speed > 2 ? Math.atan2(P.vx, P.vz) : P.heading;
+  const speed = Math.hypot(me.vx, me.vz);
+  const want = speed > 2 ? Math.atan2(me.vx, me.vz) : me.heading;
   camYaw = snap ? want : camYaw + wrapAngle(want - camYaw) * (1 - Math.exp(-3 * dt));
   const back = 8.5 + Math.min(speed, 35) * 0.06;
   const fx = Math.sin(camYaw), fz = Math.cos(camYaw);
-  camTarget.set(P.x - fx * back, P.y + 4.2, P.z - fz * back);
+  camTarget.set(me.x - fx * back, me.y + 4.2, me.z - fz * back);
   if (snap) camera.position.copy(camTarget);
   else camera.position.lerp(camTarget, 1 - Math.exp(-6 * dt));
   camera.position.y = Math.max(camera.position.y, terrainH(camera.position.x, camera.position.z) + 1.5);
-  camera.lookAt(P.x + fx * 4, P.y + 1.2, P.z + fz * 4);
+  camera.lookAt(me.x + fx * 4, me.y + 1.2, me.z + fz * 4);
   camera.fov = 62 + Math.min(speed, 40) * 0.3;
   camera.updateProjectionMatrix();
 
-  sun.position.set(P.x - 25, P.y + 45, P.z - 15);
-  sun.target.position.set(P.x, P.y, P.z);
+  sun.position.set(me.x - 25, me.y + 45, me.z - 15);
+  sun.target.position.set(me.x, me.y, me.z);
   mountains.position.set(camera.position.x, camera.position.y, camera.position.z);
 }
 const snapCamera = () => updateCamera(0, true);
@@ -1000,20 +1144,22 @@ const snapCamera = () => updateCamera(0, true);
 // HUD and panels
 // ---------------------------------------------------------------------------
 const $ = (id) => document.getElementById(id);
-const timeEl = $("time"), speedEl = $("speed"), tricksEl = $("tricks"), bestEl = $("best");
+const timeEl = $("time"), speedEl = $("speed"), tricksEl = $("tricks"), posEl = $("pos"), bestEl = $("best");
 const countEl = $("count"), popupEl = $("popup"), chargeEl = $("charge");
 const progressEl = document.querySelector("#progress div");
 const panel = $("panel"), card = $("card"), muteBtn = $("mute");
 const fmt = (n) => n.toLocaleString("en-US");
+const ordinal = (n) => n + (n > 3 && n < 21 ? "th" : ["th", "st", "nd", "rd"][n % 10] || "th");
 
 function updateHUD() {
-  timeEl.textContent = raceTime.toFixed(2);
-  speedEl.textContent = Math.round(Math.hypot(P.vx, P.vz) * 3.6);
-  tricksEl.textContent = fmt(trickScore);
+  timeEl.textContent = (me.finished ? me.finishTime : raceTime).toFixed(2);
+  speedEl.textContent = Math.round(Math.hypot(me.vx, me.vz) * 3.6);
+  tricksEl.textContent = fmt(me.trickScore);
+  posEl.textContent = `${standings().indexOf(me) + 1} / ${riders.length}`;
   bestEl.textContent = best ? fmt(best) : "–";
-  progressEl.style.width = `${Math.min(100, Math.max(0, (P.z / COURSE_LEN) * 100))}%`;
-  chargeEl.style.opacity = P.charge > 0 ? 1 : 0;
-  chargeEl.firstElementChild.style.width = `${P.charge * 100}%`;
+  progressEl.style.width = `${Math.min(100, Math.max(0, (me.z / COURSE_LEN) * 100))}%`;
+  chargeEl.style.opacity = me.charge > 0 ? 1 : 0;
+  chargeEl.firstElementChild.style.width = `${me.charge * 100}%`;
 }
 
 let popupTimer = 0;
@@ -1042,7 +1188,7 @@ const CONTROLS = `
 function showMenu() {
   card.innerHTML = `
     <h1>POWDER RUN</h1>
-    <p>Race down the mountain. Hit the orange-lipped kickers, spin, flip and grab for points, and land upright with your board pointing downhill.</p>
+    <p>Race ${BOTS.length} rivals down the mountain. Hit the orange-lipped kickers, spin, flip and grab for points, and land upright with your board pointing downhill.</p>
     <div class="keys-only">${CONTROLS}</div>
     <button id="go">Start</button>`;
   $("go").addEventListener("click", startRace);
@@ -1051,22 +1197,35 @@ function showMenu() {
 
 function showResults() {
   resultsShown = true;
-  const bonus = Math.max(0, Math.round((PAR_TIME - raceTime) * 50));
-  const total = trickScore + bonus;
+  const bonus = Math.max(0, Math.round((PAR_TIME - me.finishTime) * 50));
+  const total = me.trickScore + bonus;
   const isBest = total > best;
   if (isBest) { best = total; store.set("powderrun-best", String(best)); }
+  result = { bonus, total, isBest };
+  renderResults();
+  panel.classList.remove("hidden");
+}
+
+// Re-rendered as each bot crosses the line, so the standings fill in live.
+function renderResults() {
+  const { bonus, total, isBest } = result;
+  const rows = standings().map((r, i) => `
+      <tr${r.isPlayer ? ' class="me"' : ""}><td>${i + 1}</td><td>${r.name}</td>
+      <td class="num">${r.finished ? r.finishTime.toFixed(2) + " s" : "racing…"}</td><td class="num">${fmt(r.trickScore)}</td></tr>`).join("");
   card.innerHTML = `
-    <h1>FINISHED</h1>
+    <h1>${ordinal(me.place).toUpperCase()} PLACE</h1>
     <table>
-      <tr><td>Time</td><td class="num">${raceTime.toFixed(2)} s</td></tr>
-      <tr><td>Trick points</td><td class="num">${fmt(trickScore)}</td></tr>
+      <tr><td>Time</td><td class="num">${me.finishTime.toFixed(2)} s</td></tr>
+      <tr><td>Trick points</td><td class="num">${fmt(me.trickScore)}</td></tr>
       <tr><td>Time bonus</td><td class="num">${fmt(bonus)}</td></tr>
       <tr class="total"><td>Total</td><td class="num">${fmt(total)}</td></tr>
+    </table>
+    <table class="standings">
+      <tr><th></th><th>Rider</th><th class="num">Time</th><th class="num">Tricks</th></tr>${rows}
     </table>
     <p>${isBest ? '<span class="new">New best score!</span>' : `Best: ${fmt(best)}`}</p>
     <button id="go">Ride again</button>`;
   $("go").addEventListener("click", startRace);
-  panel.classList.remove("hidden");
 }
 
 function toggleMute() {
@@ -1082,7 +1241,8 @@ $("restart").addEventListener("click", (e) => { startRace(); e.currentTarget.blu
 // ---------------------------------------------------------------------------
 // Main loop
 // ---------------------------------------------------------------------------
-resetPlayer();
+riders.forEach(resetRider);
+for (const r of riders) updateRider(r, 1);
 snapCamera();
 showMenu();
 let last = performance.now();

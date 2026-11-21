@@ -1,6 +1,6 @@
 # Powder Run
 
-A 3D snowboarding game for the browser. Race down a winding mountain run, launch off the kickers, and spin, flip and grab in the air for points. Your final score is your trick points plus a time bonus for finishing under par.
+A 3D snowboarding game for the browser. Race three computer rivals down a winding mountain run, launch off the kickers, and spin, flip and grab in the air for points. Your final score is your trick points plus a time bonus for finishing under par.
 
 It's a single HTML file with no build step or asset files. The 3D graphics use [Three.js](https://threejs.org/) (r170), loaded from the jsDelivr CDN through an import map, so the page needs an internet connection the first time it loads. The course, trees and rider are generated in code, and the sound effects are made with the Web Audio API.
 
@@ -10,6 +10,7 @@ Serve the `src/` folder from any static web server and open `powder-run/`. Openi
 
 ## How to play
 
+- You race against three bots, Juniper, Blaze and Nova, from easiest to hardest. Your place is shown in the HUD, and the results screen lists the finishing order, filling in live as the bots cross the line. Riders pass through each other.
 - Carve left and right to follow the run. The banks on either side are steep and lined with trees, and hitting a tree wipes you out.
 - Tuck to go faster. Brake to skid and turn more sharply.
 - Each kicker has an orange lip. Hold jump on the approach to charge an ollie and release it at the lip to get more air. You can also release just after leaving the lip.
