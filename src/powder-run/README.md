@@ -30,6 +30,10 @@ Scarves, beanie pom-poms and tails, and jacket hems flap in the wind. They aren'
 
 The soundtrack is an original eight-bar loop at 122 BPM, played live by a small sequencer in the page rather than from an audio file. The menus get a soft pad and arpeggio. The bass comes in for the countdown and the drums for the race, and the music gets brighter the faster you go. It starts on your first click or key press, because browsers block sound until then.
 
+## Announcer
+
+An announcer calls out your tricks as you land them ("Backflip, backside three-sixty! Clean!"), with extra hype for big scores, and reacts when you wipe out. It uses the browser's built-in text-to-speech, so there are no audio files. The voice depends on your browser and operating system: Edge and Chrome often have natural-sounding online voices, while others may sound more robotic. The announcer only calls out your own tricks, not other riders'. Turn it off with the **Voice** button or `V`.
+
 ## Multiplayer
 
 Up to 8 riders can race in a lobby, with the host's choice of 0 to 3 bots filling spare places.
@@ -71,7 +75,8 @@ How it works:
 | Restart (host only in a lobby) | `R`                      | Restart button |
 | Toggle sound             | `M`                            | Sound button |
 | Toggle music             | `N`                            | Music button |
+| Toggle announcer         | `V`                            | Voice button |
 
 ## Saved settings
 
-Your best score, the sound and music settings and your multiplayer name are kept in the browser's `localStorage` under the keys `powderrun-best`, `powderrun-muted`, `powderrun-music` and `powderrun-name`.
+Your best score, the sound, music and announcer settings and your multiplayer name are kept in the browser's `localStorage` under the keys `powderrun-best`, `powderrun-muted`, `powderrun-music`, `powderrun-voice` and `powderrun-name`.

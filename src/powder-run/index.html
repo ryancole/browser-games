@@ -147,6 +147,7 @@
 </div>
 <div id="progress"><div></div></div>
 <div id="top-right">
+  <button id="voice" class="secondary">Voice: on</button>
   <button id="music" class="secondary">Music: on</button>
   <button id="mute" class="secondary">Sound: on</button>
   <button id="restart" class="secondary">Restart</button>
@@ -1066,6 +1067,58 @@ const snare = (t, gain) => noiseHit(t, "bandpass", 1800, gain, 0.16);
 const hat = (t, gain) => noiseHit(t, "highpass", 7500, gain, 0.045);
 
 // ---------------------------------------------------------------------------
+// Announcer: spoken callouts for your tricks and wipeouts, using the browser's
+// built-in text-to-speech. Which voice you hear depends on the browser and
+// operating system.
+// ---------------------------------------------------------------------------
+const speech = window.speechSynthesis || null;
+let voiceOn = store.get("powderrun-voice") !== "0";
+let announcerVoice = null;
+function pickVoice() {
+  const en = speech.getVoices().filter((v) => /^en([-_]|$)/i.test(v.lang));
+  announcerVoice =
+    en.find((v) => /natural|neural|online/i.test(v.name)) ||
+    en.find((v) => /google|aria|jenny|guy|samantha|daniel/i.test(v.name)) ||
+    en.find((v) => /en[-_]us/i.test(v.lang)) || en[0] || null;
+}
+if (speech) { pickVoice(); speech.addEventListener?.("voiceschanged", pickVoice); }
+
+// Spins are said the way riders say them.
+const SPIN_WORDS = { 180: "one-eighty", 360: "three-sixty", 540: "five-forty", 720: "seven-twenty", 900: "nine hundred", 1080: "ten-eighty", 1260: "twelve-sixty" };
+const pickOne = (list) => list[Math.floor(Math.random() * list.length)];
+
+function say(text, rate = 1.08) {
+  if (!speech || !voiceOn || muted) return;
+  speech.cancel(); // only ever say the latest thing, never a backlog
+  const u = new SpeechSynthesisUtterance(text);
+  if (announcerVoice) u.voice = announcerVoice;
+  u.lang = announcerVoice?.lang || "en-US";
+  u.rate = rate;
+  speech.speak(u);
+}
+
+function announceTrick(parts, pts) {
+  const words = parts.map((p) => p.replace(/\d+/, (n) => SPIN_WORDS[n] || n)).join(", ");
+  const hype = pts >= 4000 ? pickOne(["Unbelievable!", "Are you kidding me?", "Legendary!"])
+    : pts >= 2000 ? pickOne(["Huge!", "Massive!", "Sending it!"])
+    : pts >= 900 ? pickOne(["Nice!", "Clean!", "Stomped it!"])
+    : "";
+  say(`${words}! ${hype}`.trim());
+}
+
+function announceWipeout() {
+  say(pickOne(["Ouch!", "Wipeout!", "Oof. Shake it off.", "Yard sale!", "That's gonna leave a mark."]), 1.12);
+}
+
+function toggleVoice() {
+  voiceOn = !voiceOn;
+  store.set("powderrun-voice", voiceOn ? "1" : "0");
+  if (!voiceOn) speech?.cancel();
+  voiceBtn.textContent = `Voice: ${voiceOn ? "on" : "off"}`;
+  if (voiceOn) say("Announcer on.");
+}
+
+// ---------------------------------------------------------------------------
 // Input
 // ---------------------------------------------------------------------------
 const keys = new Set();
@@ -1089,6 +1142,7 @@ window.addEventListener("keydown", (e) => {
   keys.add(e.code);
   if (e.code === "KeyM") toggleMute();
   else if (e.code === "KeyN") toggleMusic();
+  else if (e.code === "KeyV") toggleVoice();
   else if (e.code === "KeyR" && state !== "menu") requestRestart();
   else if (e.code === "Enter" && state === "menu" && !net.role) startRace();
   else if (e.code === "Enter" && resultsShown) requestRestart();
@@ -1289,7 +1343,7 @@ function crash(r, reason) {
   r.crashSpin = 0;
   r.grabbing = false; r.spin = 0; r.flip = 0; r.charge = 0;
   r.vx *= 0.35; r.vz *= 0.35;
-  if (r.isPlayer) { sfx.crash(); showPopup(reason, "WIPEOUT", true); }
+  if (r.isPlayer) { sfx.crash(); showPopup(reason, "WIPEOUT", true); announceWipeout(); }
 }
 
 function recover(r) {
@@ -1442,7 +1496,7 @@ function scoreTrick(r, airTime, spin, flip, grabTime, grabName) {
   if (kinds >= 2) pts = Math.round(pts * (kinds === 3 ? 2 : 1.5));
   if (r.takeoffSw) { parts.unshift("Switch"); pts = Math.round(pts * 1.25); }
   r.trickScore += pts;
-  if (r.isPlayer) { sfx.trick(); showPopup(parts.join(" + "), `+${pts}`, false); }
+  if (r.isPlayer) { sfx.trick(); showPopup(parts.join(" + "), `+${pts}`, false); announceTrick(parts, pts); }
 }
 
 // Riding into a net stops you going further out and you slide along it,
@@ -1603,6 +1657,7 @@ function botControls(r, h) {
 
 function startRace(roster = soloRoster()) {
   initAudio();
+  speech?.cancel();
   setRoster(roster);
   clearSpray();
   raceTime = 0; simAcc = 0; netAcc = 0;
@@ -1739,7 +1794,7 @@ const $ = (id) => document.getElementById(id);
 const timeEl = $("time"), speedEl = $("speed"), tricksEl = $("tricks"), posEl = $("pos"), bestEl = $("best");
 const countEl = $("count"), popupEl = $("popup"), chargeEl = $("charge");
 const progressEl = document.querySelector("#progress div");
-const panel = $("panel"), card = $("card"), muteBtn = $("mute"), musicBtn = $("music"), restartBtn = $("restart"), leaveTopBtn = $("leave-lobby");
+const panel = $("panel"), card = $("card"), muteBtn = $("mute"), musicBtn = $("music"), voiceBtn = $("voice"), restartBtn = $("restart"), leaveTopBtn = $("leave-lobby");
 const fmt = (n) => n.toLocaleString("en-US");
 const ordinal = (n) => n + (n > 3 && n < 21 ? "th" : ["th", "st", "nd", "rd"][n % 10] || "th");
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -1775,7 +1830,7 @@ const CONTROLS = `
     <tr><td>Brake / skid · back flip in the air</td><td><kbd>↓</kbd> or <kbd>S</kbd></td></tr>
     <tr><td>Hold &amp; release to jump</td><td><kbd>Space</kbd></td></tr>
     <tr><td>Grab (in the air)</td><td><kbd>J</kbd>, <kbd>X</kbd> or <kbd>Shift</kbd></td></tr>
-    <tr><td>Restart · Sound · Music</td><td><kbd>R</kbd> · <kbd>M</kbd> · <kbd>N</kbd></td></tr>
+    <tr><td>Restart · Sound · Music · Voice</td><td><kbd>R</kbd> · <kbd>M</kbd> · <kbd>N</kbd> · <kbd>V</kbd></td></tr>
   </table>`;
 
 const inviteCode = (new URLSearchParams(location.search).get("join") || "").toUpperCase().slice(0, 5);
@@ -1887,6 +1942,9 @@ function toggleMute() {
 muteBtn.textContent = `Sound: ${muted ? "off" : "on"}`;
 musicBtn.textContent = `Music: ${musicOn ? "on" : "off"}`;
 musicBtn.addEventListener("click", () => { initAudio(); toggleMusic(); musicBtn.blur(); });
+voiceBtn.textContent = `Voice: ${voiceOn ? "on" : "off"}`;
+voiceBtn.style.display = speech ? "" : "none"; // no text-to-speech in this browser
+voiceBtn.addEventListener("click", () => { toggleVoice(); voiceBtn.blur(); });
 muteBtn.addEventListener("click", () => { initAudio(); toggleMute(); muteBtn.blur(); });
 restartBtn.addEventListener("click", (e) => { requestRestart(); e.currentTarget.blur(); });
 leaveTopBtn.addEventListener("click", () => leaveLobby());
