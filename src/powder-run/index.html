@@ -502,12 +502,49 @@ const mountains = new THREE.Group();
 
 // ---------------------------------------------------------------------------
 // Rider models. Forward is local +Z; the rider stands sideways facing +X.
+// Each rider wears an outfit rolled from a seed, so every browser in a lobby
+// dresses a rider the same way. The jacket colour comes from the rider's slot
+// so riders stay easy to tell apart; everything else is random.
 // ---------------------------------------------------------------------------
-const LEG_H = 0.8;
+const LEG_BASE = 0.18; // top of the boots, where the legs start
+const LEG_H = 0.7;
+const GEAR = {
+  pants: [0x1d1f26, 0x2a2f3a, 0x46503a, 0x5a4632, 0x243a6b, 0xd9d4c7, 0x6b2a2a, 0x2f5f8f, 0x8a8f99],
+  accent: [0xffd84f, 0xf2f2f2, 0x2ad1c9, 0xff5fa2, 0x1d1f26, 0x7fe0a8, 0xff7a2f, 0x4f8cff],
+  boots: [0x1d1f26, 0x5a3e2b, 0xe8e8ea, 0x8a5a2b, 0x3a3f4a, 0xb0413e],
+  gloves: [0x1d1f26, 0x2a2f3a, 0xe0443a, 0xffd84f, 0xf2f2f2, 0x5a3e2b, 0x2ad1c9],
+  knit: [0xe0443a, 0x1d1f26, 0xf2f2f2, 0xffd84f, 0x2ad1c9, 0xff7a2f, 0x9b6dff, 0x3fbf7f, 0x8a5a2b, 0xff5fa2],
+  lenses: [0xff8a2a, 0x4fd8ff, 0xb86bff, 0xffc23a, 0x46e08a, 0xff4f7a, 0xc0c8d4],
+  straps: [0x1d1f26, 0xf2f2f2, 0xff5fa2, 0x2ad1c9, 0xffd84f, 0xe0443a],
+  skin: [0xf1c9a5, 0xe0ac85, 0xc68863, 0x9c6644, 0x6e4630],
+  boards: [0xd6336c, 0x1d1f26, 0xf2f2f2, 0x4f8cff, 0x3fbf7f, 0xffd84f, 0x9b6dff, 0xff7a2f],
+  heads: ["beanie-pom", "beanie-cuff", "beanie-slouch", "helmet"],
+};
+function rollGear(seed) {
+  const rnd = mulberry32(seed >>> 0);
+  const pick = (list) => list[Math.floor(rnd() * list.length)];
+  return {
+    head: pick(GEAR.heads), headColor: pick(GEAR.knit), headAccent: pick(GEAR.accent),
+    lens: pick(GEAR.lenses), strap: pick(GEAR.straps), frame: rnd() < 0.5 ? 0xf2f2f2 : 0x1d1f26,
+    skin: pick(GEAR.skin),
+    longJacket: rnd() < 0.5, hood: rnd() < 0.6, yoke: rnd() < 0.5 ? pick(GEAR.accent) : null,
+    scarf: rnd() < 0.5 ? pick(GEAR.knit) : null,
+    pants: pick(GEAR.pants), baggy: rnd() < 0.6, knee: rnd() < 0.3 ? pick(GEAR.accent) : null,
+    boots: pick(GEAR.boots), gloves: pick(GEAR.gloves),
+    board: pick(GEAR.boards), stripe: pick(GEAR.accent), binding: pick(GEAR.accent),
+  };
+}
+const randomSeed = () => Math.floor(Math.random() * 2 ** 32);
+
 const matCache = new Map();
-function mat(color) {
-  if (!matCache.has(color)) matCache.set(color, new THREE.MeshStandardMaterial({ color, roughness: 0.7, flatShading: true }));
-  return matCache.get(color);
+function mat(color, kind = "cloth") {
+  const key = `${kind}:${color}`;
+  if (!matCache.has(key)) {
+    matCache.set(key, kind === "lens"
+      ? new THREE.MeshStandardMaterial({ color, metalness: 0.7, roughness: 0.15, emissive: color, emissiveIntensity: 0.3 })
+      : new THREE.MeshStandardMaterial({ color, roughness: kind === "shiny" ? 0.35 : 0.85, flatShading: true }));
+  }
+  return matCache.get(key);
 }
 function part(geo, m, parent, x = 0, y = 0, z = 0) {
   const mesh = new THREE.Mesh(geo, m);
@@ -516,35 +553,139 @@ function part(geo, m, parent, x = 0, y = 0, z = 0) {
   parent.add(mesh);
   return mesh;
 }
-const boardGeo = new THREE.BoxGeometry(0.5, 0.06, 1.7);
-const bindingGeo = new THREE.BoxGeometry(0.52, 0.065, 0.12);
-const legGeo = new THREE.BoxGeometry(0.2, LEG_H, 0.2).translate(0, LEG_H / 2, 0);
-const torsoGeo = new THREE.BoxGeometry(0.34, 0.62, 0.52).translate(0, 0.31, 0);
-const headGeo = new THREE.SphereGeometry(0.19, 10, 8);
-const helmetGeo = new THREE.SphereGeometry(0.2, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2);
-const goggleGeo = new THREE.BoxGeometry(0.08, 0.09, 0.3);
-const armGeo = new THREE.BoxGeometry(0.13, 0.58, 0.13).translate(0, -0.27, 0);
+const box = (w, h, d, x = 0, y = 0, z = 0) => new THREE.BoxGeometry(w, h, d).translate(x, y, z);
 
-function buildRiderModel(look) {
-  const root = new THREE.Group(), pose = new THREE.Group(), upper = new THREE.Group();
+// Cloth that flaps: a chain of thin panels hanging from a pivot. updateGear
+// points the chain along the wind and gravity (plus a "rest" pull for stiffer
+// bits like a pom-pom) and ripples it.
+const V_DOWN = new THREE.Vector3(0, -1, 0), V_UP = new THREE.Vector3(0, 1, 0);
+function makeFlap(parent, [x, y, z], { segs = 2, len = 0.1, width = 0.1, thick = 0.025, color, taper = 1, rest = V_DOWN, stiff = 0, end = null }) {
+  const root = new THREE.Group();
+  root.position.set(x, y, z);
+  parent.add(root);
+  const chain = [];
+  let p = root;
+  for (let i = 0; i < segs; i++) {
+    const s = new THREE.Group();
+    if (i) s.position.y = -len;
+    p.add(s);
+    const w = width * (1 - (1 - taper) * (i / Math.max(1, segs - 1)));
+    part(box(thick, len, w, 0, -len / 2), mat(color), s);
+    chain.push(s);
+    p = s;
+  }
+  if (end) part(new THREE.SphereGeometry(end.r, 8, 6).translate(0, -len, 0), mat(end.color), p);
+  return { root, chain, rest: rest.clone().normalize(), stiff, phase: Math.random() * 10 };
+}
+
+function buildRiderModel(look, g) {
+  const root = new THREE.Group(), pose = new THREE.Group(), upper = new THREE.Group(), torso = new THREE.Group();
   root.add(pose);
   scene.add(root);
-  part(boardGeo, mat(look.board), pose, 0, 0.03, 0);
-  part(bindingGeo, mat(0xffd84f), pose, 0, 0.035, 0.55);
-  part(bindingGeo, mat(0xffd84f), pose, 0, 0.035, -0.55);
-  const legs = [part(legGeo, mat(look.pants), pose, 0, 0.06, 0.28), part(legGeo, mat(look.pants), pose, 0, 0.06, -0.28)];
-  pose.add(upper);
-  part(torsoGeo, mat(look.jacket), upper);
-  part(headGeo, mat(0xf1c9a5), upper, 0, 0.8, 0);
-  part(helmetGeo, mat(look.helmet), upper, 0, 0.82, 0);
-  part(goggleGeo, mat(0x4fd8ff), upper, 0.17, 0.82, 0);
-  const arms = [new THREE.Group(), new THREE.Group()];
-  arms.forEach((g, i) => {
-    g.position.set(0, 0.58, i ? -0.33 : 0.33);
-    part(armGeo, mat(look.jacket), g);
-    upper.add(g);
+  const jacket = look.jacket;
+  const flaps = [];
+
+  // Board, bindings and boots stay planted; the legs above them crouch.
+  part(box(0.5, 0.06, 1.7, 0, 0.03), mat(g.board, "shiny"), pose);
+  part(box(0.14, 0.062, 1.5, 0, 0.032), mat(g.stripe, "shiny"), pose);
+  for (const z of [0.28, -0.28]) {
+    part(box(0.34, 0.06, 0.26, 0, 0.09, z), mat(g.binding), pose);
+    part(box(0.3, 0.2, 0.2, 0.02, 0.17, z), mat(g.boots), pose);
+    part(box(0.31, 0.05, 0.22, 0.02, 0.22, z), mat(g.binding), pose); // strap over the boot
+  }
+  const legW = g.baggy ? 0.28 : 0.22;
+  const legs = [0.28, -0.28].map((z) => {
+    const leg = new THREE.Group();
+    leg.position.set(0, LEG_BASE, z);
+    pose.add(leg);
+    part(box(legW, LEG_H, legW, 0, LEG_H / 2), mat(g.pants), leg);
+    if (g.baggy) part(box(legW + 0.03, 0.1, legW + 0.03, 0, 0.04), mat(g.pants), leg); // cuff over the boot
+    if (g.knee) part(box(0.03, 0.16, legW * 0.75, legW / 2, LEG_H * 0.45), mat(g.knee), leg);
+    return leg;
   });
-  return { root, pose, upper, legs, arms };
+
+  // Jacket.
+  pose.add(upper);
+  upper.add(torso);
+  part(box(0.42, 0.64, 0.56, 0, 0.3), mat(jacket), torso);
+  if (g.longJacket) part(box(0.45, 0.2, 0.59, 0, -0.06), mat(jacket), torso);
+  if (g.yoke) part(box(0.44, 0.16, 0.58, 0, 0.55), mat(g.yoke), torso);
+  part(box(0.02, g.longJacket ? 0.78 : 0.6, 0.04, 0.215, g.longJacket ? 0.23 : 0.3), mat(0x1d1f26), torso); // zip
+  if (g.hood) part(box(0.16, 0.2, 0.36, -0.21, 0.6), mat(jacket), torso);
+  flaps.push(makeFlap(torso, [-0.22, g.longJacket ? -0.15 : 0, 0], {
+    segs: 2, len: g.longJacket ? 0.12 : 0.07, width: 0.5, thick: 0.03, color: jacket, stiff: 18,
+  }));
+
+  // Head, scarf, headwear and goggles.
+  part(new THREE.SphereGeometry(0.19, 10, 8).translate(0, 0.82, 0), mat(g.skin), upper);
+  if (g.scarf) {
+    part(new THREE.CylinderGeometry(0.15, 0.17, 0.12, 10).translate(0, 0.66, 0), mat(g.scarf), upper);
+    flaps.push(makeFlap(upper, [-0.16, 0.66, 0.08], { segs: 3, len: 0.15, width: 0.12, thick: 0.035, color: g.scarf }));
+    flaps.push(makeFlap(upper, [-0.16, 0.64, -0.08], { segs: 3, len: 0.12, width: 0.11, thick: 0.035, color: g.scarf }));
+  }
+  if (g.head === "helmet") {
+    part(new THREE.SphereGeometry(0.215, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2).translate(0, 0.84, 0), mat(g.headColor, "shiny"), upper);
+    part(box(0.36, 0.03, 0.07, -0.01, 1.045), mat(g.headAccent, "shiny"), upper);
+  } else {
+    part(new THREE.SphereGeometry(0.205, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55).translate(0, 0.84, 0), mat(g.headColor), upper);
+    if (g.head === "beanie-cuff" || g.head === "beanie-pom") {
+      part(new THREE.CylinderGeometry(0.214, 0.214, 0.08, 12).translate(0, 0.88, 0), mat(g.head === "beanie-cuff" ? g.headAccent : g.headColor), upper);
+    }
+    if (g.head === "beanie-pom") {
+      flaps.push(makeFlap(upper, [0, 1.03, 0], {
+        segs: 1, len: 0.06, width: 0.03, thick: 0.03, color: g.headColor, rest: V_UP, stiff: 22, end: { r: 0.065, color: g.headAccent },
+      }));
+    } else if (g.head === "beanie-slouch") {
+      flaps.push(makeFlap(upper, [-0.1, 1.0, 0], {
+        segs: 2, len: 0.12, width: 0.22, thick: 0.1, taper: 0.55, color: g.headColor, rest: new THREE.Vector3(-1, -0.4, 0), stiff: 14,
+      }));
+    }
+  }
+  part(new THREE.CylinderGeometry(0.214, 0.214, 0.045, 12, 1, true).translate(0, 0.8, 0), mat(g.strap), upper);
+  part(box(0.07, 0.12, 0.34, 0.18, 0.8), mat(g.frame), upper);
+  part(box(0.02, 0.09, 0.3, 0.218, 0.8), mat(g.lens, "lens"), upper);
+
+  // Sleeves and gloves.
+  const arms = [0.34, -0.34].map((z) => {
+    const a = new THREE.Group();
+    a.position.set(0, 0.56, z);
+    upper.add(a);
+    part(box(0.16, 0.52, 0.16, 0, -0.24), mat(jacket), a);
+    if (g.yoke) part(box(0.17, 0.12, 0.17, 0, -0.02), mat(g.yoke), a);
+    part(box(0.17, 0.13, 0.17, 0, -0.55), mat(g.gloves), a);
+    return a;
+  });
+
+  return { root, pose, upper, torso, legs, arms, flaps };
+}
+
+// Point each flap along the air rushing past (the weather's wind minus the
+// rider's own motion) and gravity, then ripple it faster the harder it blows.
+const qInv = new THREE.Quaternion(), qAim = new THREE.Quaternion();
+const vAir = new THREE.Vector3(), vPull = new THREE.Vector3(), vGrav = new THREE.Vector3();
+function updateGear(r, dt) {
+  const m = r.model;
+  vAir.set(windX - r.vx, r.grounded ? 0 : -r.vy, windZ - r.vz);
+  const air = vAir.length();
+  const t = performance.now() / 1000;
+  const amp = Math.min(0.7, 0.08 + air * 0.022), freq = 5 + air * 0.45;
+  for (const f of m.flaps) {
+    f.root.parent.getWorldQuaternion(qInv).invert();
+    vPull.copy(vAir).multiplyScalar(0.03 * air).applyQuaternion(qInv);
+    vGrav.set(0, -4, 0).applyQuaternion(qInv);
+    vPull.add(vGrav).addScaledVector(f.rest, f.stiff);
+    if (vPull.lengthSq() < 1e-6) continue;
+    qAim.setFromUnitVectors(V_DOWN, vPull.normalize());
+    f.root.quaternion.slerp(qAim, 1 - Math.exp(-12 * dt));
+    f.chain.forEach((s, i) => {
+      const ph = t * freq + f.phase - i * 1.3;
+      s.rotation.z = amp * Math.sin(ph) * (0.5 + i * 0.5);
+      s.rotation.x = amp * 0.35 * Math.sin(ph * 1.37 + 1);
+    });
+  }
+  // The jacket puffs in and out a little at speed.
+  const b = 1 + Math.min(1, air / 25) * 0.035 * Math.sin(t * freq * 0.7 + m.flaps[0].phase);
+  m.torso.scale.set(b, 1, b);
 }
 
 // A floating name above other riders' heads.
@@ -674,12 +815,13 @@ const puffs = Array.from({ length: PUFFS }, () => {
   return s;
 });
 
-let weatherT = 0;
+let weatherT = 0, windX = 0, windZ = 0;
 const camDir = new THREE.Vector3();
 function updateWeather(dt) {
   weatherT += dt;
   // A gusty wind that slowly changes strength and direction.
   const wx = 1.2 + Math.sin(weatherT * 0.23) * 1.6, wz = Math.cos(weatherT * 0.17) * 0.9;
+  windX = wx; windZ = wz;
   camera.getWorldDirection(camDir);
   const cx = camera.position.x + camDir.x * 22, cz = camera.position.z + camDir.z * 22, cy = camera.position.y;
 
@@ -971,18 +1113,18 @@ document.querySelectorAll("#touch button").forEach((btn) => {
 // ---------------------------------------------------------------------------
 const LOOKS = [
   // Players, in lobby order.
-  { jacket: 0xff7a2f, pants: 0x243a6b, board: 0xd6336c, helmet: 0x2a2f3a, tagColor: "#ffb07a" },
-  { jacket: 0x2f9bff, pants: 0x1d1f26, board: 0xf2f2f2, helmet: 0xffd84f, tagColor: "#8cc8ff" },
-  { jacket: 0xf2c94c, pants: 0x3a2a4a, board: 0x2a2f3a, helmet: 0xe0443a, tagColor: "#ffe08a" },
-  { jacket: 0xff5fa2, pants: 0x243a6b, board: 0x7fe0a8, helmet: 0xffffff, tagColor: "#ffa8cf" },
-  { jacket: 0x2ad1c9, pants: 0x2a2f3a, board: 0xff7a2f, helmet: 0x1d1f26, tagColor: "#8ff0ea" },
-  { jacket: 0xf2f2f2, pants: 0x1d1f26, board: 0xe0443a, helmet: 0x4f8cff, tagColor: "#ffffff" },
-  { jacket: 0xa0703c, pants: 0x243a6b, board: 0xffd84f, helmet: 0xf2f2f2, tagColor: "#e0b98a" },
-  { jacket: 0x6b7cff, pants: 0x1d1f26, board: 0xff5fa2, helmet: 0xf2f2f2, tagColor: "#b0baff" },
+  { jacket: 0xff7a2f, tagColor: "#ffb07a" },
+  { jacket: 0x2f9bff, tagColor: "#8cc8ff" },
+  { jacket: 0xf2c94c, tagColor: "#ffe08a" },
+  { jacket: 0xff5fa2, tagColor: "#ffa8cf" },
+  { jacket: 0x2ad1c9, tagColor: "#8ff0ea" },
+  { jacket: 0xf2f2f2, tagColor: "#ffffff" },
+  { jacket: 0xa0703c, tagColor: "#e0b98a" },
+  { jacket: 0x6b7cff, tagColor: "#b0baff" },
   // Bots.
-  { jacket: 0x3fbf7f, pants: 0x2a2f3a, board: 0x4f8cff, helmet: 0xe8e8ea, tagColor: "#8fe8b4" },
-  { jacket: 0xe0443a, pants: 0x1d1f26, board: 0xffd84f, helmet: 0x2a2f3a, tagColor: "#ff9a90" },
-  { jacket: 0x9b6dff, pants: 0x243a6b, board: 0x2ad1c9, helmet: 0xffffff, tagColor: "#c8b0ff" },
+  { jacket: 0x3fbf7f, tagColor: "#8fe8b4" },
+  { jacket: 0xe0443a, tagColor: "#ff9a90" },
+  { jacket: 0x9b6dff, tagColor: "#c8b0ff" },
 ];
 const PLAYER_LOOKS = 8;
 const MAX_RIDERS = 8;
@@ -997,17 +1139,21 @@ const NO_INPUT = Object.freeze({ left: false, right: false, tuck: false, brake: 
 function newRider(e, isMe) {
   const look = LOOKS[e.look] || LOOKS[0];
   return {
-    id: e.id, name: e.name, look: e.look, isPlayer: isMe, bot: null, remote: false, net: null, netRaw: null,
-    model: buildRiderModel(look), tag: isMe ? null : nameTag(e.name, look.tagColor),
+    id: e.id, name: e.name, look: e.look, gear: e.gear, isPlayer: isMe, bot: null, remote: false, net: null, netRaw: null,
+    model: buildRiderModel(look, rollGear(e.gear ?? 0)), tag: isMe ? null : nameTag(e.name, look.tagColor),
   };
 }
 function disposeRider(r) {
   scene.remove(r.model.root);
+  r.model.root.traverse((o) => o.geometry?.dispose()); // materials are shared, geometry isn't
   if (r.tag) { scene.remove(r.tag); r.tag.material.map.dispose(); r.tag.material.dispose(); }
 }
 
 const riders = [];
-let me = newRider({ id: "me", name: "You", look: 0 }, true);
+// Outfits for you and the bots are rolled once per visit; in a lobby the host shares everyone's.
+const myGear = randomSeed();
+const botGear = BOTS.map(randomSeed);
+let me = newRider({ id: "me", name: "You", look: 0, gear: myGear }, true);
 
 // A roster is the list of riders in a race: [{ id, name, look, bot? }], where
 // `bot` is a bot's skill. Every browser in a lobby builds the same roster.
@@ -1017,7 +1163,7 @@ function setRoster(roster) {
   roster.forEach((e, i) => {
     let r;
     if (e.id === me.id) {
-      if (me.look !== e.look) { disposeRider(me); me = newRider(e, true); }
+      if (me.look !== e.look || me.gear !== e.gear) { disposeRider(me); me = newRider(e, true); }
       me.name = e.name;
       r = me;
     } else {
@@ -1032,8 +1178,8 @@ function setRoster(roster) {
   });
 }
 const soloRoster = () => [
-  { id: me.id, name: "You", look: 0 },
-  ...BOTS.map((b, i) => ({ id: `bot${i}`, name: b.name, look: b.look, bot: b.skill })),
+  { id: me.id, name: "You", look: 0, gear: myGear },
+  ...BOTS.map((b, i) => ({ id: `bot${i}`, name: b.name, look: b.look, bot: b.skill, gear: botGear[i] })),
 ];
 
 function removeRider(id) {
@@ -1556,11 +1702,12 @@ function updateRider(r, dt) {
   m.pose.rotation.set(r.crashT > 0 ? r.crashSpin : 0, 0, r.lean);
   const legScale = 1 - 0.45 * r.crouch;
   m.legs.forEach((l) => (l.scale.y = legScale));
-  m.upper.position.y = 0.06 + LEG_H * legScale;
+  m.upper.position.y = LEG_BASE + LEG_H * legScale;
   m.upper.rotation.z = -r.crouch * 0.35;
   const reach = r.grabbing ? 1.1 : 0;
   m.arms[0].rotation.set(0.35 - reach * 0.2, 0, reach);
   m.arms[1].rotation.set(-0.35 + reach * 0.2, 0, reach * 0.3);
+  updateGear(r, dt);
 }
 
 let camYaw = 0;
@@ -1771,6 +1918,7 @@ function loadPeerJS() {
 }
 
 const makeCode = () => Array.from({ length: 5 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join("");
+const gearSeed = (v) => (Number.isFinite(v) ? v >>> 0 : 0);
 const cleanName = (s) => String(s ?? "").replace(/\s+/g, " ").trim().slice(0, 16) || "Rider";
 function readName() {
   myName = cleanName($("name")?.value);
@@ -1813,7 +1961,7 @@ async function hostLobby() {
     Object.assign(net, { role: "host", peer, code, conns: new Map(), players: [], racing: false });
     peer.on("open", (id) => {
       me.id = id;
-      net.players = [{ id, name: myName }];
+      net.players = [{ id, name: myName, gear: myGear }];
       state = "menu";
       showLobby();
     });
@@ -1843,7 +1991,7 @@ function onHostData(conn, m) {
   if (!m || typeof m !== "object" || !net.conns.has(conn.peer)) return;
   if (m.t === "hello") {
     if (net.players.some((p) => p.id === conn.peer)) return;
-    net.players.push({ id: conn.peer, name: cleanName(m.name) });
+    net.players.push({ id: conn.peer, name: cleanName(m.name), gear: gearSeed(m.gear) });
     broadcastLobby();
     refreshLobby();
   } else if (m.t === "me") {
@@ -1875,8 +2023,8 @@ function broadcastLobby() {
 
 function hostStart() {
   const roster = [
-    ...net.players.map((p, i) => ({ id: p.id, name: p.name, look: i % PLAYER_LOOKS })),
-    ...BOTS.slice(0, lobbyBotCount()).map((b, i) => ({ id: `bot${i}`, name: b.name, look: b.look, bot: b.skill })),
+    ...net.players.map((p, i) => ({ id: p.id, name: p.name, look: i % PLAYER_LOOKS, gear: p.gear })),
+    ...BOTS.slice(0, lobbyBotCount()).map((b, i) => ({ id: `bot${i}`, name: b.name, look: b.look, bot: b.skill, gear: botGear[i] })),
   ];
   net.racing = true;
   sendAll({ t: "start", roster });
@@ -1903,7 +2051,7 @@ async function joinLobby(raw) {
     me.id = id;
     const conn = peer.connect(PEER_PREFIX + code, { reliable: true, serialization: "json" });
     net.host = conn;
-    conn.on("open", () => { clearTimeout(timer); conn.send({ t: "hello", name: myName }); });
+    conn.on("open", () => { clearTimeout(timer); conn.send({ t: "hello", name: myName, gear: myGear }); });
     conn.on("data", onClientData);
     conn.on("close", () => { if (net.peer === peer) leaveLobby("The host closed the lobby."); });
   });
@@ -1918,7 +2066,7 @@ function onClientData(m) {
   if (!m || typeof m !== "object") return;
   if (m.t === "lobby") {
     net.players = (Array.isArray(m.players) ? m.players : []).slice(0, MAX_RIDERS)
-      .map((p) => ({ id: String(p?.id), name: cleanName(p?.name) }));
+      .map((p) => ({ id: String(p?.id), name: cleanName(p?.name), gear: gearSeed(p?.gear) }));
     net.bots = Number.isInteger(m.bots) ? m.bots : 0;
     net.racing = !!m.racing;
     // Remove riders whose players have left.
@@ -1929,6 +2077,7 @@ function onClientData(m) {
       id: String(e?.id), name: cleanName(e?.name),
       look: Number.isInteger(e?.look) && e.look >= 0 && e.look < LOOKS.length ? e.look : 0,
       bot: Number.isFinite(e?.bot) ? e.bot : undefined,
+      gear: gearSeed(e?.gear),
     }));
     // Joined after this race was set up: wait in the lobby for the next one.
     if (roster.some((e) => e.id === me.id)) startRace(roster);

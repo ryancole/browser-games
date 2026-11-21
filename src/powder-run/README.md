@@ -20,6 +20,12 @@ Serve the `src/` folder from any static web server and open `powder-run/`. Openi
 - Spins and flips combine, so you can throw a backflip with a 360 in it.
 - Let go of the grab and line your board up with the direction you're travelling before you touch down. Landing sideways, upside down, part way through a flip or while still grabbing is a wipeout. Landing backwards counts, and you ride switch until your next trick.
 
+## Riders' gear
+
+Every rider wears snowboarding gear: boots strapped into bindings, warm pants, a jacket and gloves, goggles, and a helmet or one of three beanies (pom-pom, cuffed or slouchy). Some riders also get a scarf, a hood, a longer jacket, baggy pants, knee patches or two-tone shoulders. The jacket colour comes from your slot in the race, so riders stay easy to tell apart, and everything else is picked at random from a seed. You and the bots get a new outfit each time the page loads. In a lobby each player's seed is shared, so everyone sees the same outfits.
+
+Scarves, beanie pom-poms and tails, and jacket hems flap in the wind. They aren't physics objects: each one points along the air rushing past the rider (your speed plus the weather's wind) and gravity, and ripples faster the faster you go.
+
 ## Music
 
 The soundtrack is an original eight-bar loop at 122 BPM, played live by a small sequencer in the page rather than from an audio file. The menus get a soft pad and arpeggio. The bass comes in for the countdown and the drums for the race, and the music gets brighter the faster you go. It starts on your first click or key press, because browsers block sound until then.
