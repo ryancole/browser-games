@@ -77,6 +77,12 @@ How it works:
 | Toggle music             | `N`                            | Music button |
 | Toggle announcer         | `V`                            | Voice button |
 
+## High scores
+
+Each time you finish a race, solo or in a lobby, the run is saved to your high scores. **High scores** on the main menu lists your 10 best, each with its score, time, finishing place, whether it was in a lobby, and the date and time you set it. The results screen tells you when a run makes the list. **Clear history** empties the list after a second click to confirm.
+
+High scores are stored only in this browser, so they don't follow you to other browsers or devices, and clearing the site's data removes them.
+
 ## Saved settings
 
-Your best score, the sound, music and announcer settings and your multiplayer name are kept in the browser's `localStorage` under the keys `powderrun-best`, `powderrun-muted`, `powderrun-music`, `powderrun-voice` and `powderrun-name`.
+Your high scores, best score, the sound, music and announcer settings and your multiplayer name are kept in the browser's `localStorage` under the keys `powderrun-scores`, `powderrun-best`, `powderrun-muted`, `powderrun-music`, `powderrun-voice` and `powderrun-name`.

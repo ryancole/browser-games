@@ -43,6 +43,11 @@
   }
   #hud .label { opacity: 0.6; font-size: 0.72rem; letter-spacing: 0.08em; align-self: center; }
   #top-right { position: fixed; top: 12px; right: 12px; display: flex; gap: 0.5rem; }
+  /* On narrow screens, wrap the top-right buttons rather than run them under the HUD. */
+  @media (max-width: 640px) {
+    #top-right { flex-wrap: wrap; justify-content: flex-end; max-width: calc(100vw - 150px); gap: 0.35rem; }
+    #top-right button { padding: 0.35rem 0.6rem; font-size: 0.78rem; }
+  }
   #progress {
     position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
     width: min(34vw, 300px); height: 6px;
@@ -93,6 +98,10 @@
   .card th { padding: 0 0.6rem 0.2rem; font-size: 0.72rem; font-weight: 600; opacity: 0.55; text-align: left; }
   .card th.num { text-align: right; }
   .card .standings .me td { color: #ffd84f; opacity: 1; font-weight: 600; }
+  .card .scroll { overflow-x: auto; margin: 0.4rem 0 1rem; }
+  .card table.scores { margin: 0 auto; font-size: 0.82rem; }
+  .card table.scores td { white-space: nowrap; vertical-align: top; }
+  .card table.scores .sub { display: block; font-size: 0.72rem; opacity: 0.6; }
   .card .buttons { display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap; }
   .card .mp { border-top: 1px solid #2a2f3a; margin-top: 1.1rem; padding-top: 0.9rem; }
   .card .mp h2 { font-size: 0.75rem; letter-spacing: 0.08em; opacity: 0.6; margin: 0 0 0.5rem; font-weight: 600; }
@@ -1315,7 +1324,28 @@ const STEP = 1 / 180;        // fixed physics step, so every rider behaves the s
 let state = "menu";          // menu | countdown | run
 let raceTime = 0, countT = 0, simAcc = 0;
 let resultsShown = false, lastCount = 0, result = null;
-let best = Number(store.get("powderrun-best")) || 0;
+// High scores: your 10 best finished runs, kept in this browser's localStorage.
+const SCORES_KEY = "powderrun-scores", MAX_SCORES = 10;
+function loadScores() {
+  let list;
+  try { list = JSON.parse(store.get(SCORES_KEY) || "[]"); } catch { list = []; }
+  if (!Array.isArray(list)) return [];
+  return list.filter((s) => Number.isFinite(s?.score) && Number.isFinite(s?.date)).map((s) => ({
+    score: s.score, date: s.date,
+    tricks: Number(s.tricks) || 0, time: Number(s.time) || 0,
+    place: Math.max(0, Math.round(Number(s.place) || 0)), riders: Math.max(0, Math.round(Number(s.riders) || 0)),
+    mode: s.mode === "lobby" ? "lobby" : "solo",
+  })).sort((a, b) => b.score - a.score || a.date - b.date).slice(0, MAX_SCORES);
+}
+// Adds a run and returns its rank on the list (1 is best), or 0 if it didn't make the top 10.
+function saveScore(entry) {
+  const list = [...loadScores(), entry]
+    .sort((a, b) => b.score - a.score || a.date - b.date)
+    .slice(0, MAX_SCORES);
+  store.set(SCORES_KEY, JSON.stringify(list));
+  return list.indexOf(entry) + 1;
+}
+let best = Math.max(Number(store.get("powderrun-best")) || 0, loadScores()[0]?.score || 0);
 
 const canControl = (r) => state === "run" && r.crashT <= 0 && !r.finished;
 
@@ -1840,7 +1870,7 @@ function showMenu(message = "") {
     <h1>POWDER RUN</h1>
     <p>Race down the mountain. Hit the orange-lipped kickers, spin, flip and grab for points, and land upright with your board pointing downhill.</p>
     <div class="keys-only">${CONTROLS}</div>
-    <button id="go">Race the bots</button>
+    <div class="buttons"><button id="go">Race the bots</button><button id="scores" class="secondary">High scores</button></div>
     <div class="mp">
       <h2>MULTIPLAYER</h2>
       ${message ? `<p class="err">${esc(message)}</p>` : ""}
@@ -1849,9 +1879,40 @@ function showMenu(message = "") {
       <div class="row"><input id="code" maxlength="5" placeholder="Lobby code" autocapitalize="characters" value="${esc(inviteCode)}"><button id="join">Join</button></div>
     </div>`;
   $("go").addEventListener("click", () => startRace());
+  $("scores").addEventListener("click", () => showScores());
   $("host").addEventListener("click", hostLobby);
   $("join").addEventListener("click", () => joinLobby($("code").value));
   $("code").addEventListener("keydown", (e) => { if (e.key === "Enter") joinLobby($("code").value); });
+  panel.classList.remove("hidden");
+}
+
+const fmtDate = (ms) => new Date(ms).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+const fmtClock = (ms) => new Date(ms).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+
+// Clearing takes two clicks so a stray tap can't wipe the list.
+function showScores(confirming = false) {
+  const list = loadScores();
+  const rows = list.map((s, i) => `
+      <tr><td>${i + 1}</td><td class="num"><strong>${fmt(s.score)}</strong><span class="sub">${s.time.toFixed(2)} s</span></td>
+      <td>${s.place && s.riders ? `${ordinal(s.place)} of ${s.riders}` : "–"}${s.mode === "lobby" ? '<span class="sub">lobby</span>' : ""}</td>
+      <td>${esc(fmtDate(s.date))}<span class="sub">${esc(fmtClock(s.date))}</span></td></tr>`).join("");
+  card.innerHTML = `
+    <h1>HIGH SCORES</h1>
+    ${list.length
+      ? `<div class="scroll"><table class="standings scores">
+          <tr><th></th><th class="num">Score · time</th><th>Place</th><th>Date</th></tr>${rows}
+        </table></div>`
+      : `<p>No finished runs yet. Your ${MAX_SCORES} best scores will show up here, with the date you set them.</p>`}
+    <div class="buttons"><button id="back">Back</button>${list.length
+      ? `<button id="clear" class="secondary">${confirming ? "Click again to clear" : "Clear history"}</button>` : ""}</div>`;
+  $("back").addEventListener("click", () => showMenu());
+  $("clear")?.addEventListener("click", () => {
+    if (!confirming) return showScores(true);
+    store.set(SCORES_KEY, "[]");
+    store.set("powderrun-best", "0");
+    best = 0;
+    showScores();
+  });
   panel.classList.remove("hidden");
 }
 
@@ -1899,7 +1960,11 @@ function showResults() {
   const total = me.trickScore + bonus;
   const isBest = total > best;
   if (isBest) { best = total; store.set("powderrun-best", String(best)); }
-  result = { bonus, total, isBest };
+  const rank = saveScore({
+    score: total, date: Date.now(), tricks: me.trickScore, time: r2(me.finishTime),
+    place: standings().indexOf(me) + 1, riders: riders.length, mode: net.role ? "lobby" : "solo",
+  });
+  result = { bonus, total, isBest, rank };
   renderResults();
   panel.classList.remove("hidden");
 }
@@ -1907,7 +1972,7 @@ function showResults() {
 // Re-rendered as other riders cross the line, so the standings fill in live.
 function renderResults() {
   if (!result) return;
-  const { bonus, total, isBest } = result;
+  const { bonus, total, isBest, rank } = result;
   const order = standings();
   const rows = order.map((r, i) => `
       <tr${r === me ? ' class="me"' : ""}><td>${i + 1}</td><td>${esc(r.name)}</td>
@@ -1926,7 +1991,9 @@ function renderResults() {
     <table class="standings">
       <tr><th></th><th>Rider</th><th class="num">Time</th><th class="num">Tricks</th></tr>${rows}
     </table>
-    <p>${isBest ? '<span class="new">New best score!</span>' : `Best: ${fmt(best)}`}</p>
+    <p>${isBest ? '<span class="new">New best score!</span>'
+      : rank ? `<span class="new">#${rank} on your high scores</span> · Best: ${fmt(best)}`
+      : `Best: ${fmt(best)}`}</p>
     ${net.role === "client" ? "<p>Waiting for the host to start the next race…</p>" : ""}
     <div class="buttons">${actions}</div>`;
   $("go")?.addEventListener("click", requestRestart);
