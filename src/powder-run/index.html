@@ -147,6 +147,7 @@
 </div>
 <div id="progress"><div></div></div>
 <div id="top-right">
+  <button id="music" class="secondary">Music: on</button>
   <button id="mute" class="secondary">Sound: on</button>
   <button id="restart" class="secondary">Restart</button>
   <button id="leave-lobby" class="secondary" style="display: none">Leave lobby</button>
@@ -604,7 +605,11 @@ function initAudio() {
   carve.connect(hp).connect(carveGain).connect(master);
   wind.start();
   carve.start(0, 0.7);
+  startMusic(buf);
 }
+// Browsers only allow sound after the player interacts, so start it on the first click or key.
+window.addEventListener("pointerdown", initAudio, { once: true });
+window.addEventListener("keydown", initAudio, { once: true });
 
 function blip(notes, { type = "square", gain = 0.1, slide = false, rise = false } = {}) {
   if (!ac || muted) return;
@@ -642,7 +647,142 @@ function updateAudio(speed, slip) {
   windFilter.frequency.setTargetAtTime(250 + s * 25, t, 0.15);
   const c = moving && me.grounded ? Math.min(0.1, slip * 0.012 + s * 0.0015) : 0;
   carveGain.gain.setTargetAtTime(c, t, 0.05);
+  // The music opens up as you pick up speed.
+  if (musicFilter) musicFilter.frequency.setTargetAtTime(moving ? 900 + Math.min(s, 35) * 120 : 1800, t, 0.3);
 }
+
+// ---------------------------------------------------------------------------
+// Music: an eight-bar loop sequenced live with the Web Audio API. Menus get
+// the pad and arpeggio; the bass joins for the countdown and the drums for the
+// race itself.
+// ---------------------------------------------------------------------------
+const BPM = 122;
+const SIXTEENTH = 60 / BPM / 4;
+const MUSIC_VOL = 0.55;
+const midi = (n) => 440 * 2 ** ((n - 69) / 12);
+// One chord per bar: Dm Bb F C | Gm Bb F A. `bass` is the bass note, `pad` the chord.
+const SONG = [
+  { bass: 38, pad: [62, 65, 69] },
+  { bass: 34, pad: [62, 65, 70] },
+  { bass: 41, pad: [60, 65, 69] },
+  { bass: 36, pad: [60, 64, 67] },
+  { bass: 43, pad: [62, 67, 70] },
+  { bass: 34, pad: [62, 65, 70] },
+  { bass: 41, pad: [60, 65, 69] },
+  { bass: 33, pad: [61, 64, 69] },
+];
+const ARP = [0, 1, 2, 3, 4, 3, 2, 1];
+const BASS_STEPS = new Set([0, 3, 6, 8, 11, 14]);
+
+let musicOn = store.get("powderrun-music") !== "0";
+let musicGain = null, musicFilter = null, noiseBuf = null;
+let musicStep = 0, musicNext = 0;
+
+function startMusic(noise) {
+  noiseBuf = noise;
+  musicGain = ac.createGain();
+  musicGain.gain.value = musicOn ? MUSIC_VOL : 0;
+  musicGain.connect(master);
+  musicFilter = ac.createBiquadFilter();
+  musicFilter.type = "lowpass"; musicFilter.frequency.value = 1800; musicFilter.Q.value = 0.8;
+  musicFilter.connect(musicGain);
+  musicNext = ac.currentTime + 0.1;
+  setInterval(scheduleMusic, 25);
+}
+
+function toggleMusic() {
+  musicOn = !musicOn;
+  store.set("powderrun-music", musicOn ? "1" : "0");
+  if (musicGain) musicGain.gain.setTargetAtTime(musicOn ? MUSIC_VOL : 0, ac.currentTime, 0.1);
+  musicBtn.textContent = `Music: ${musicOn ? "on" : "off"}`;
+}
+
+// 0: menus, 1: countdown and after you finish, 2: racing.
+function musicLevel() {
+  if (state === "run" && !me.finished) return 2;
+  return state === "countdown" || state === "run" ? 1 : 0;
+}
+
+// Schedule notes a little ahead of time so timer jitter doesn't make them late.
+function scheduleMusic() {
+  if (ac.state !== "running") return;
+  const now = ac.currentTime;
+  if (!musicOn || muted || musicNext < now - 0.2) {
+    // Silent, or catching up after the tab was in the background: skip ahead rather than play a burst.
+    while (musicNext < now) { musicNext += SIXTEENTH; musicStep = (musicStep + 1) % (SONG.length * 16); }
+    if (!musicOn || muted) return;
+  }
+  while (musicNext < now + 0.12) {
+    playStep(musicStep, musicNext);
+    musicNext += SIXTEENTH;
+    musicStep = (musicStep + 1) % (SONG.length * 16);
+  }
+}
+
+function playStep(i, t) {
+  const bar = Math.floor(i / 16), s = i % 16, ch = SONG[bar];
+  const level = musicLevel();
+  if (s === 0) for (const n of ch.pad) pad(midi(n), t, SIXTEENTH * 16);
+  const tones = [...ch.pad, ch.pad[0] + 12, ch.pad[1] + 12];
+  if (s % 2 === 0 || level === 2) tone("square", midi(tones[ARP[s % 8]] + 12), t, 0.16, s % 2 ? 0.018 : 0.028, 2000);
+  if (level >= 1 && BASS_STEPS.has(s)) tone("sawtooth", midi(ch.bass + (s === 14 ? 12 : 0)), t, SIXTEENTH * 1.7, 0.12, 420);
+  if (level < 2) return;
+  if (s % 4 === 0) kick(t);
+  if (s === 4 || s === 12) snare(t, 0.22);
+  else if (bar === SONG.length - 1 && s > 12) snare(t, 0.08 + 0.04 * (s - 12)); // fill into the loop
+  hat(t, s % 4 === 2 ? 0.07 : 0.025);
+}
+
+function tone(type, freq, t, dur, gain, cutoff) {
+  const o = ac.createOscillator(), f = ac.createBiquadFilter(), g = ac.createGain();
+  o.type = type; o.frequency.value = freq;
+  f.type = "lowpass"; f.frequency.value = cutoff;
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(gain, t + 0.005);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(f).connect(g).connect(musicFilter);
+  o.start(t); o.stop(t + dur + 0.02);
+}
+
+// Two slightly detuned saws with a slow swell, held for the bar.
+function pad(freq, t, dur) {
+  const g = ac.createGain();
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(0.016, t + 0.6);
+  g.gain.setValueAtTime(0.016, t + dur - 0.3);
+  g.gain.linearRampToValueAtTime(0, t + dur + 0.25);
+  const f = ac.createBiquadFilter();
+  f.type = "lowpass"; f.frequency.value = 1100;
+  f.connect(g).connect(musicFilter);
+  for (const cents of [-8, 8]) {
+    const o = ac.createOscillator();
+    o.type = "sawtooth"; o.frequency.value = freq; o.detune.value = cents;
+    o.connect(f);
+    o.start(t); o.stop(t + dur + 0.3);
+  }
+}
+
+// Drums skip the speed filter so the beat stays punchy.
+function kick(t) {
+  const o = ac.createOscillator(), g = ac.createGain();
+  o.frequency.setValueAtTime(140, t);
+  o.frequency.exponentialRampToValueAtTime(42, t + 0.12);
+  g.gain.setValueAtTime(0.4, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+  o.connect(g).connect(musicGain);
+  o.start(t); o.stop(t + 0.32);
+}
+function noiseHit(t, type, freq, gain, dur) {
+  const src = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
+  src.buffer = noiseBuf;
+  f.type = type; f.frequency.value = freq;
+  g.gain.setValueAtTime(gain, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(f).connect(g).connect(musicGain);
+  src.start(t, Math.random() * 1.5, dur + 0.02);
+}
+const snare = (t, gain) => noiseHit(t, "bandpass", 1800, gain, 0.16);
+const hat = (t, gain) => noiseHit(t, "highpass", 7500, gain, 0.045);
 
 // ---------------------------------------------------------------------------
 // Input
@@ -667,6 +807,7 @@ window.addEventListener("keydown", (e) => {
   if (e.repeat) { keys.add(e.code); return; }
   keys.add(e.code);
   if (e.code === "KeyM") toggleMute();
+  else if (e.code === "KeyN") toggleMusic();
   else if (e.code === "KeyR" && state !== "menu") requestRestart();
   else if (e.code === "Enter" && state === "menu" && !net.role) startRace();
   else if (e.code === "Enter" && resultsShown) requestRestart();
@@ -1287,7 +1428,7 @@ const $ = (id) => document.getElementById(id);
 const timeEl = $("time"), speedEl = $("speed"), tricksEl = $("tricks"), posEl = $("pos"), bestEl = $("best");
 const countEl = $("count"), popupEl = $("popup"), chargeEl = $("charge");
 const progressEl = document.querySelector("#progress div");
-const panel = $("panel"), card = $("card"), muteBtn = $("mute"), restartBtn = $("restart"), leaveTopBtn = $("leave-lobby");
+const panel = $("panel"), card = $("card"), muteBtn = $("mute"), musicBtn = $("music"), restartBtn = $("restart"), leaveTopBtn = $("leave-lobby");
 const fmt = (n) => n.toLocaleString("en-US");
 const ordinal = (n) => n + (n > 3 && n < 21 ? "th" : ["th", "st", "nd", "rd"][n % 10] || "th");
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -1323,7 +1464,7 @@ const CONTROLS = `
     <tr><td>Brake / skid · back flip in the air</td><td><kbd>↓</kbd> or <kbd>S</kbd></td></tr>
     <tr><td>Hold &amp; release to jump</td><td><kbd>Space</kbd></td></tr>
     <tr><td>Grab (in the air)</td><td><kbd>J</kbd>, <kbd>X</kbd> or <kbd>Shift</kbd></td></tr>
-    <tr><td>Restart · Sound</td><td><kbd>R</kbd> · <kbd>M</kbd></td></tr>
+    <tr><td>Restart · Sound · Music</td><td><kbd>R</kbd> · <kbd>M</kbd> · <kbd>N</kbd></td></tr>
   </table>`;
 
 const inviteCode = (new URLSearchParams(location.search).get("join") || "").toUpperCase().slice(0, 5);
@@ -1433,6 +1574,8 @@ function toggleMute() {
   muteBtn.textContent = `Sound: ${muted ? "off" : "on"}`;
 }
 muteBtn.textContent = `Sound: ${muted ? "off" : "on"}`;
+musicBtn.textContent = `Music: ${musicOn ? "on" : "off"}`;
+musicBtn.addEventListener("click", () => { initAudio(); toggleMusic(); musicBtn.blur(); });
 muteBtn.addEventListener("click", () => { initAudio(); toggleMute(); muteBtn.blur(); });
 restartBtn.addEventListener("click", (e) => { requestRestart(); e.currentTarget.blur(); });
 leaveTopBtn.addEventListener("click", () => leaveLobby());

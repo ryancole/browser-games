@@ -2,7 +2,7 @@
 
 A 3D snowboarding game for the browser. Race computer rivals or your friends down a winding mountain run, launch off the kickers, and spin, flip and grab in the air for points. Your final score is your trick points plus a time bonus for finishing under par.
 
-It's a single HTML file with no build step or asset files. The 3D graphics use [Three.js](https://threejs.org/) (r170), loaded from the jsDelivr CDN through an import map, so the page needs an internet connection the first time it loads. The course, trees and riders are generated in code, and the sound effects are made with the Web Audio API. Multiplayer uses [PeerJS](https://peerjs.com/) 1.5.4, which is loaded from jsDelivr only when you host or join a lobby.
+It's a single HTML file with no build step or asset files. The 3D graphics use [Three.js](https://threejs.org/) (r170), loaded from the jsDelivr CDN through an import map, so the page needs an internet connection the first time it loads. The course, trees and riders are generated in code, and the sound effects and music are made with the Web Audio API. Multiplayer uses [PeerJS](https://peerjs.com/) 1.5.4, which is loaded from jsDelivr only when you host or join a lobby.
 
 ## Play
 
@@ -17,6 +17,10 @@ Serve the `src/` folder from any static web server and open `powder-run/`. Openi
 - In the air, steer to spin, hold tuck to front flip or brake to back flip, and hold grab to grab the board. Hold tuck or brake as you start a grab for a Tail or Nose grab.
 - Spins and flips combine, so you can throw a backflip with a 360 in it.
 - Let go of the grab and line your board up with the direction you're travelling before you touch down. Landing sideways, upside down, part way through a flip or while still grabbing is a wipeout. Landing backwards counts, and you ride switch until your next trick.
+
+## Music
+
+The soundtrack is an original eight-bar loop at 122 BPM, played live by a small sequencer in the page rather than from an audio file. The menus get a soft pad and arpeggio. The bass comes in for the countdown and the drums for the race, and the music gets brighter the faster you go. It starts on your first click or key press, because browsers block sound until then.
 
 ## Multiplayer
 
@@ -58,7 +62,8 @@ How it works:
 | Start / ride again       | `Enter`                        | Start button |
 | Restart (host only in a lobby) | `R`                      | Restart button |
 | Toggle sound             | `M`                            | Sound button |
+| Toggle music             | `N`                            | Music button |
 
 ## Saved settings
 
-Your best score, the sound setting and your multiplayer name are kept in the browser's `localStorage` under the keys `powderrun-best`, `powderrun-muted` and `powderrun-name`.
+Your best score, the sound and music settings and your multiplayer name are kept in the browser's `localStorage` under the keys `powderrun-best`, `powderrun-muted`, `powderrun-music` and `powderrun-name`.
