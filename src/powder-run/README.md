@@ -8,6 +8,8 @@ It's a single HTML file with no build step or asset files. The 3D graphics use [
 
 Serve the `src/` folder from any static web server and open `powder-run/`. Opening `index.html` straight from disk also works in most browsers.
 
+The game opens on a title screen: your rider, in your outfit for this visit, hangs in a slow-motion grab high against a blue sky, shot from below with snow spraying off the board. Press any key, or tap, to go to the main menu. Invite links skip the title screen and go straight to the menu.
+
 ## Courses
 
 Pick a course on the main menu. Picking one builds it straight away behind the menu, and the game remembers your choice. All three are the same length with the same par time, but each has its own bends, kicker layout, obstacles and scenery.

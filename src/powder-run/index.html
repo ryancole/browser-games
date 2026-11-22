@@ -128,6 +128,39 @@
     padding: 0.05rem 0.35rem; border: 1px solid #2a2f3a; border-radius: 4px; background: #0f1115;
   }
 
+  /* Title screen, over the 3D shot of a rider in the air. */
+  #title {
+    position: fixed; inset: 0; cursor: pointer;
+    display: flex; flex-direction: column; gap: 0.6rem;
+    padding: clamp(1.2rem, 5vh, 3rem) clamp(1.2rem, 5vw, 4rem);
+  }
+  #title.hidden { display: none; }
+  body.on-title #hud, body.on-title #top-right, body.on-title #progress, body.on-title #touch { display: none; }
+  #title .logo { transform: skewX(-10deg) rotate(-6deg); transform-origin: left top; width: fit-content; margin-top: 1vh; }
+  #title .word {
+    font-size: clamp(3.4rem, 11vw, 8.5rem); font-weight: 900; font-style: italic; line-height: 0.86;
+    letter-spacing: 0.01em;
+    background: linear-gradient(180deg, #ffffff 0%, #dff1ff 38%, #6fb6ff 52%, #1d4fb0 78%, #0d2a6b 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    -webkit-text-stroke: 2px #0b1a3d;
+    filter: drop-shadow(0 6px 0 rgba(11, 26, 61, 0.55)) drop-shadow(0 10px 18px rgba(0, 0, 0, 0.35));
+  }
+  #title .word.run { margin-left: 0.55em; }
+  #title .ribbon {
+    display: inline-block; margin: 0.7rem 0 0 1.2em; padding: 0.3rem 1.1rem 0.35rem;
+    background: linear-gradient(90deg, #ff7a2f, #ff4f3a); color: #fff;
+    font-size: clamp(0.9rem, 2.4vw, 1.5rem); font-weight: 800; font-style: italic; letter-spacing: 0.32em;
+    box-shadow: 0 4px 0 rgba(11, 26, 61, 0.5);
+  }
+  #title .press {
+    margin-top: auto; align-self: center; font-size: clamp(1rem, 2.2vw, 1.35rem); font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+    color: #fff; text-shadow: 0 2px 8px rgba(0, 20, 60, 0.7);
+    animation: blink 1.4s ease-in-out infinite;
+  }
+  #title .foot { align-self: center; font-size: 0.8rem; opacity: 0.85; color: #fff; text-shadow: 0 1px 6px rgba(0, 20, 60, 0.8); text-align: center; }
+  @keyframes blink { 50% { opacity: 0.25; } }
+  .tap-only { display: none; }
+
   #touch { display: none; }
   @media (pointer: coarse) {
     #touch {
@@ -141,6 +174,7 @@
       font-size: 0.75rem; font-weight: 600;
     }
     .keys-only { display: none; }
+    .tap-only { display: inline; }
   }
 </style>
 <script type="importmap">
@@ -183,6 +217,16 @@
 </div>
 
 <div id="panel"><div class="card" id="card"></div></div>
+
+<div id="title" class="hidden">
+  <div class="logo">
+    <div class="word">POWDER</div>
+    <div class="word run">RUN</div>
+    <div class="ribbon">SNOWBOARDING</div>
+  </div>
+  <div class="press"><span class="keys-only">Press any key to start</span><span class="tap-only">Tap to start</span></div>
+  <div class="foot">Three courses · Spins, flips and grabs · Race bots or friends</div>
+</div>
 
 <script type="module">
 import * as THREE from "three";
@@ -531,7 +575,7 @@ function addPines(list, greens, cap) {
 
 // A gradient sky sphere around the camera, drawn behind everything else.
 const SKY_R = 1500;
-function skyDome(zenith, horizon, below = horizon) {
+function skyDome(zenith, horizon, below = horizon, group = backdrop) {
   const geo = new THREE.SphereGeometry(SKY_R, 32, 16);
   const pos = geo.attributes.position, cols = [];
   const cz = new THREE.Color(zenith), ch = new THREE.Color(horizon), cb = new THREE.Color(below), c = new THREE.Color();
@@ -544,7 +588,7 @@ function skyDome(zenith, horizon, below = horizon) {
   geo.setAttribute("color", new THREE.Float32BufferAttribute(cols, 3));
   const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false }));
   m.renderOrder = -20;
-  backdrop.add(m);
+  group.add(m);
 }
 
 // Flat backdrop layers (valley floor, lake) don't need depth: they're drawn in
@@ -1657,7 +1701,7 @@ window.addEventListener("keydown", (e) => {
   if (e.code === "KeyM") toggleMute();
   else if (e.code === "KeyN") toggleMusic();
   else if (e.code === "KeyV") toggleVoice();
-  else if (e.code === "KeyR" && state !== "menu") requestRestart();
+  else if (e.code === "KeyR" && state !== "menu" && state !== "title") requestRestart();
   else if (e.code === "Enter" && state === "menu" && !net.role) startRace();
   else if (e.code === "Enter" && resultsShown) requestRestart();
 });
@@ -2773,19 +2817,183 @@ function leaveLobby(message = "") {
 }
 
 // ---------------------------------------------------------------------------
+// Title screen: your rider frozen mid-grab high against a blue sky, shot from
+// below with snow spraying off the board. It has its own small scene, so it
+// looks the same whichever course is picked. Any key or tap goes to the menu.
+// ---------------------------------------------------------------------------
+const titleEl = $("title");
+let title = null;
+
+function boardGraphic(g) {
+  const hex = (c) => `#${new THREE.Color(c).getHexString()}`;
+  return canvasTexture(128, 448, (ctx) => {
+    ctx.fillStyle = hex(g.board); ctx.fillRect(0, 0, 128, 448);
+    ctx.fillStyle = hex(g.stripe);
+    for (let i = -2; i < 8; i++) {
+      ctx.beginPath();
+      ctx.moveTo(0, i * 70); ctx.lineTo(128, i * 70 - 60); ctx.lineTo(128, i * 70 - 36); ctx.lineTo(0, i * 70 + 24);
+      ctx.fill();
+    }
+    ctx.save();
+    ctx.translate(64, 224); ctx.rotate(Math.PI / 2);
+    ctx.font = "italic 900 54px system-ui, sans-serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.lineWidth = 8; ctx.strokeStyle = "#11131a"; ctx.strokeText("POWDER RUN", 0, 2);
+    ctx.fillStyle = "#ffffff"; ctx.fillText("POWDER RUN", 0, 2);
+    ctx.restore();
+  });
+}
+
+function buildTitle() {
+  const s = new THREE.Scene();
+  const cam = new THREE.PerspectiveCamera(42, 1, 0.1, 3000);
+  skyDome(0x1a4fb8, 0xbfe2ff, 0xe8f4ff, s);
+  s.add(new THREE.HemisphereLight(0xeaf4ff, 0xb8cce6, 1.5));
+  const key = new THREE.DirectionalLight(0xfff4e0, 2.6);
+  key.position.set(-4, 8, 6);
+  const bounce = new THREE.DirectionalLight(0xbfe0ff, 1.1); // light thrown back up off the snow
+  bounce.position.set(2, -6, 4);
+  s.add(key, bounce);
+
+  // The sun, low in the top corner, with a soft glare.
+  const sunSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture("rgba(255,255,240,1)", "rgba(255,250,220,0)"), depthWrite: false }));
+  sunSprite.position.set(-55, 70, -140);
+  sunSprite.scale.setScalar(48);
+  s.add(sunSprite);
+
+  // Snowy treetops far below.
+  const trees = [];
+  for (let i = 0; i < 26; i++) trees.push({ x: -70 + i * 5.6 + Math.sin(i * 7.3) * 2, z: -30 - Math.abs(Math.sin(i * 3.1)) * 25, s: 2 + Math.abs(Math.sin(i * 1.7)) * 1.6 });
+  for (const [geo, y, color] of [[new THREE.ConeGeometry(1.9, 3.4, 7), 2.6, 0x2f5d46], [new THREE.ConeGeometry(1.25, 2.8, 7), 4.6, 0xeef4fb]]) {
+    instanced(geo, trees, (t, o, c) => { o.position.set(t.x, -17 + y * t.s, t.z); o.scale.setScalar(t.s); o.rotation.set(0, t.x, 0); c.set(color); }, { group: s, shadow: false });
+  }
+
+  // The rider, wearing your outfit, in a held grab with the back arm thrown out.
+  const model = buildRiderModel(LOOKS[0], rollGear(myGear));
+  const tilt = new THREE.Group();
+  tilt.add(model.root);
+  s.add(tilt);
+  const deck = new THREE.Mesh(new THREE.PlaneGeometry(0.48, 1.66).rotateX(Math.PI / 2), new THREE.MeshStandardMaterial({ map: boardGraphic(rollGear(myGear)), roughness: 0.35 }));
+  deck.position.y = -0.003;
+  model.pose.add(deck);
+  const legScale = 1 - 0.45 * 0.85;
+  model.legs.forEach((l) => (l.scale.y = legScale));
+  model.upper.position.y = LEG_BASE + LEG_H * legScale;
+  model.upper.rotation.z = -0.3;
+  model.arms[0].rotation.set(0.15, 0, 1.25);
+  model.arms[1].rotation.set(2.1, 0, -0.5);
+
+  // A plume of snow trailing off the board, drifting in slow motion.
+  const N = 700;
+  const pos = new Float32Array(N * 3).fill(-999), vel = new Float32Array(N * 3), life = new Float32Array(N);
+  const geo = new THREE.BufferGeometry().setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  const plume = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.11, map: new THREE.CanvasTexture(dot), transparent: true, depthWrite: false }));
+  plume.frustumCulled = false;
+  s.add(plume);
+
+  // Sparkling flakes drifting across the whole view.
+  const F = 400, flakes = new Float32Array(F * 3);
+  for (let i = 0; i < F; i++) { flakes[i * 3] = (Math.random() - 0.5) * 16; flakes[i * 3 + 1] = (Math.random() - 0.5) * 10; flakes[i * 3 + 2] = (Math.random() - 0.5) * 8; }
+  const flakeGeo2 = new THREE.BufferGeometry().setAttribute("position", new THREE.BufferAttribute(flakes, 3));
+  const flakePts = new THREE.Points(flakeGeo2, new THREE.PointsMaterial({ color: 0xffffff, size: 0.05, map: new THREE.CanvasTexture(dot), transparent: true, depthWrite: false }));
+  flakePts.frustumCulled = false;
+  s.add(flakePts);
+
+  return {
+    scene: s, cam, tilt, model, pos, vel, life, geo, flakes, flakeGeo2, t: 0, next: 0, acc: 0,
+    // Fake motion for the flapping gear: rising fast and carving through the air.
+    rider: { model, vx: 3, vy: 7, vz: -14, grounded: false },
+  };
+}
+
+const tailPt = new THREE.Vector3();
+function updateTitle(dt) {
+  const T = title;
+  T.t += dt;
+  const t = T.t;
+  // A slow-motion float: the rider eases round and bobs a little.
+  // Pitched back so the base of the board faces the camera below.
+  T.model.root.rotation.set(-0.25 + Math.sin(t * 0.5) * 0.05, -1.0 + Math.sin(t * 0.33) * 0.16, 0.3);
+  T.tilt.rotation.set(0, 0, 0.62 + Math.sin(t * 0.4) * 0.04);
+  T.tilt.position.set(0, 0.5 + Math.sin(t * 0.7) * 0.06, 0);
+  updateGear(T.rider, dt);
+
+  // Spray leaves the tail of the board and fans out behind and below.
+  T.acc += dt * 260;
+  while (T.acc >= 1) {
+    T.acc -= 1;
+    const i = T.next; T.next = (T.next + 1) % T.life.length;
+    tailPt.set((Math.random() - 0.5) * 0.4, 0.02, -0.7 - Math.random() * 0.25);
+    T.model.pose.localToWorld(tailPt);
+    T.pos[i * 3] = tailPt.x; T.pos[i * 3 + 1] = tailPt.y; T.pos[i * 3 + 2] = tailPt.z;
+    T.vel[i * 3] = -1.2 - Math.random() * 1.6; T.vel[i * 3 + 1] = -0.9 - Math.random() * 1.2; T.vel[i * 3 + 2] = (Math.random() - 0.5) * 1.4;
+    T.life[i] = 1.6 + Math.random() * 1.4;
+  }
+  for (let i = 0; i < T.life.length; i++) {
+    if (T.life[i] <= 0) continue;
+    T.life[i] -= dt;
+    if (T.life[i] <= 0) { T.pos[i * 3 + 1] = -999; continue; }
+    T.vel[i * 3 + 1] -= 0.6 * dt;
+    T.pos[i * 3] += T.vel[i * 3] * dt; T.pos[i * 3 + 1] += T.vel[i * 3 + 1] * dt; T.pos[i * 3 + 2] += T.vel[i * 3 + 2] * dt;
+  }
+  T.geo.attributes.position.needsUpdate = true;
+  for (let i = 0; i < T.flakes.length; i += 3) {
+    T.flakes[i] = wrapIn(T.flakes[i] - 0.6 * dt, 8);
+    T.flakes[i + 1] = wrapIn(T.flakes[i + 1] - 0.35 * dt, 5);
+  }
+  T.flakeGeo2.attributes.position.needsUpdate = true;
+
+  // Shot from below, framed so the rider sits right of centre on wide screens
+  // and in the middle on tall ones.
+  const aspect = window.innerWidth / window.innerHeight;
+  const cam = T.cam;
+  cam.aspect = aspect;
+  cam.fov = aspect < 1 ? 62 : 42;
+  cam.updateProjectionMatrix();
+  const side = aspect < 1 ? 0 : -1.3;
+  cam.position.set(side + Math.sin(t * 0.25) * 0.15, -1.1, 4.4);
+  cam.lookAt(side * 0.55, 0.75, 0);
+}
+
+function showTitle() {
+  state = "title";
+  title ??= buildTitle();
+  panel.classList.add("hidden");
+  document.body.classList.add("on-title");
+  titleEl.classList.remove("hidden");
+}
+function leaveTitle() {
+  if (state !== "title") return;
+  state = "menu";
+  document.body.classList.remove("on-title");
+  titleEl.classList.add("hidden");
+  showMenu();
+}
+titleEl.addEventListener("click", leaveTitle);
+window.addEventListener("keydown", (e) => {
+  if (state === "title" && !e.repeat && !["KeyM", "KeyN", "KeyV"].includes(e.code)) { e.preventDefault(); leaveTitle(); }
+});
+
+// ---------------------------------------------------------------------------
 // Main loop
 // ---------------------------------------------------------------------------
 setLevel(store.get("powderrun-level") || "peak");
 setRoster(soloRoster());
 for (const r of riders) updateRider(r, 1);
 snapCamera();
-showMenu();
+// Invite links go straight to the menu with the lobby code filled in.
+if (inviteCode) showMenu(); else showTitle();
 let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
-  update(dt);
-  renderer.render(scene, camera);
+  if (state === "title") {
+    updateTitle(dt);
+    renderer.render(title.scene, title.cam);
+  } else {
+    update(dt);
+    renderer.render(scene, camera);
+  }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
