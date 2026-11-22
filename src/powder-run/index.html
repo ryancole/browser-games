@@ -2984,6 +2984,7 @@ const sfx = {
   count: () => blip([[440, 0.15]], { gain: 0.08 }),
   go: () => blip([[880, 0.35]], { gain: 0.08 }),
   jump: () => blip([[300, 0.1]], { type: "triangle", gain: 0.14, rise: true }),
+  lunge: () => blip([[180, 0.07]], { type: "triangle", gain: 0.1, rise: true }),
   land: () => blip([[130, 0.09]], { type: "triangle", gain: 0.2, slide: true }),
   trick: () => blip([[660, 0.06], [880, 0.06], [1320, 0.14]], { gain: 0.06 }),
   crash: () => blip([[240, 0.45]], { type: "sawtooth", gain: 0.14, slide: true }),
@@ -3257,7 +3258,7 @@ function resetRider(r) {
     x: center(0) + r.lane, z: 0, y: 0, vx: 0, vy: 0, vz: 0,
     heading: 0, spin: 0, flip: 0, flipYaw: 0, sw: false, takeoffSw: false,
     grounded: true, groundVy: 0, airTime: 0, slip: 0,
-    charge: 0, popped: false, jumpPrev: false, grabbing: false, grabTime: 0, grabName: "",
+    charge: 0, popped: false, jumpPrev: false, jumpT: 0, lungeCool: 0, lungeT: 0, grabbing: false, grabTime: 0, grabName: "",
     crashT: 0, crashSpin: 0, lean: 0, crouch: 0,
     trickScore: 0, finished: false, finishTime: 0, inp: NO_INPUT, net: null, netRaw: null,
   });
@@ -3647,17 +3648,42 @@ function checkObstacles(r) {
   }
 }
 
+// Jump: a quick tap is a lunge, a push forward that gets you moving again when
+// you've stalled on a rise. Hold it past TAP_T and it charges an ollie instead,
+// which pops when you let go, so a tap never throws you into the air.
+const TAP_T = 0.18;       // s: let go sooner than this and it's a tap
+const LUNGE = 3.5;        // m/s a lunge adds when you're slow
+const LUNGE_COOL = 0.7;   // s before you can lunge again
+
+function lunge(r) {
+  const fx = Math.sin(r.heading), fz = Math.cos(r.heading);
+  const vf = r.vx * fx + r.vz * fz;
+  // Full strength when you're crawling, fading to a nudge at speed.
+  const push = LUNGE * Math.max(0.1, 1 - Math.max(0, vf - 3) / 8);
+  r.vx += fx * push; r.vz += fz * push;
+  r.lungeCool = LUNGE_COOL;
+  r.lungeT = 0.25;
+  if (r.isPlayer) sfx.lunge();
+}
+
 function handleJump(r, inp, h) {
-  const held = inp.jump && canControl(r);
+  const ctl = canControl(r);
+  const held = inp.jump && ctl;
+  r.lungeCool = Math.max(0, r.lungeCool - h);
+  r.lungeT = Math.max(0, r.lungeT - h);
   if (held) {
-    if (r.grounded) r.charge = Math.min(1, r.charge + h / 0.5);
-  } else if (r.jumpPrev && canControl(r)) {
-    // Release: pop off the ground, or a late pop just after leaving a lip.
-    if (r.grounded) ollie(r, false);
+    r.jumpT += h;
+    if (r.grounded && r.jumpT > TAP_T) r.charge = Math.min(1, r.charge + h / 0.5);
+  } else if (r.jumpPrev && ctl) {
+    if (r.jumpT <= TAP_T) {
+      if (r.grounded && r.lungeCool <= 0) lunge(r);
+    } else if (r.grounded) ollie(r, false);
+    // A late pop just after leaving a lip.
     else if (r.airTime < 0.18 && !r.popped) ollie(r, true);
     r.charge = 0;
   }
-  if (!canControl(r)) r.charge = 0;
+  if (!held) r.jumpT = 0;
+  if (!ctl) r.charge = 0;
   r.jumpPrev = held;
 }
 
@@ -4081,8 +4107,13 @@ function botControls(r, h) {
   if (speed > vmax || (Math.abs(err) > 0.6 && speed > 12)) inp.brake = true;
   else if (Math.abs(err) < 0.25) inp.tuck = true;
 
-  // Charge an ollie on the ramp and pop just before the lip.
-  inp.jump = !!(k && b.goKick && toKick < 9 && toKick > b.popAt && Math.abs(r.x - k.x) < KICK_HALF);
+  // Charge an ollie on the ramp and pop just before the lip. Start far enough
+  // out that it's a hold, not a tap, even at full speed.
+  inp.jump = !!(k && b.goKick && toKick < 12 && toKick > b.popAt && Math.abs(r.x - k.x) < KICK_HALF);
+  // Stalled on a rise: tap jump to lunge forward.
+  b.stuckT = speed < 3 && !inp.jump ? (b.stuckT || 0) + h : 0;
+  if (b.stuckT > 0.6) { b.tapT = 0.08; b.stuckT = 0; }
+  if (b.tapT > 0) { b.tapT -= h; inp.jump = true; }
   return inp;
 }
 
@@ -4236,6 +4267,7 @@ function updateRider(r, dt) {
   r.lean += (leanT - r.lean) * (1 - Math.exp(-8 * dt));
   let crouchT = 0.1;
   if (r.charge > 0) crouchT = 0.3 + 0.5 * r.charge;
+  else if (r.lungeT > 0) crouchT = 0.55; // a quick dip as you push off
   else if (r.grabbing) crouchT = 0.75;
   else if (!r.grounded && ctl && (inp.tuck || inp.brake)) crouchT = 0.65;
   else if (ctl && inp.tuck && r.grounded) crouchT = 0.6;
@@ -4455,6 +4487,7 @@ const CONTROLS = `
     <tr><td>Steer / spin in the air</td><td><kbd>←</kbd> <kbd>→</kbd> or <kbd>A</kbd> <kbd>D</kbd></td></tr>
     <tr><td>Tuck for speed · front flip in the air</td><td><kbd>↑</kbd> or <kbd>W</kbd></td></tr>
     <tr><td>Brake / skid · back flip in the air</td><td><kbd>↓</kbd> or <kbd>S</kbd></td></tr>
+    <tr><td>Tap to lunge forward</td><td><kbd>Space</kbd></td></tr>
     <tr><td>Hold &amp; release to jump</td><td><kbd>Space</kbd></td></tr>
     <tr><td>Grab (in the air)</td><td><kbd>J</kbd>, <kbd>X</kbd> or <kbd>Shift</kbd></td></tr>
     <tr><td>Restart · Sound · Music · Voice</td><td><kbd>R</kbd> · <kbd>M</kbd> · <kbd>N</kbd> · <kbd>V</kbd></td></tr>

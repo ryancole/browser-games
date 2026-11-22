@@ -73,6 +73,7 @@ Any of them can give you air. Pop an ollie at the top of a bump for more height.
 - Carve left and right to follow the run. The banks on either side are steep and lined with trees (and lamp posts in the city), and hitting one wipes you out, as does hitting a tree on an island, a boulder or the wall of a building. Safety nets part way up each bank stop you leaving the course: you can't jump over them, and riding into one turns you along it and scrubs off a little speed.
 - Tuck to go faster. Brake to skid and turn more sharply.
 - Each kicker has a bright lip (orange on most courses, neon pink in the city). Hold jump on the approach to charge an ollie and release it at the lip to get more air. You can also release just after leaving the lip.
+- A quick tap of jump is a lunge instead: a push forward that gets you moving again if you stall on a rise. It gives you most when you are slow and only a nudge at speed. Only holding jump makes you leave the ground, so a stray tap never throws you into the air.
 - In the air, steer to spin, hold tuck to front flip or brake to back flip, and hold grab to grab the board. Hold tuck or brake as you start a grab for a Tail or Nose grab.
 - Spins and flips combine, so you can throw a backflip with a 360 in it.
 - Each part of a trick is added to a list below your rider the moment you complete it in the air: every half turn of spin (180, 360, 540...), every full flip, and a grab once you've held it long enough. Above the list is what the trick is worth if you land it now, so you can see what you stand to lose. Land it and the list turns green with your points; wipe out and it turns red and is struck out.
@@ -156,7 +157,7 @@ How it works:
 | Flip               | 600 for one, 1500 for a double, 2800 for a triple, 4500 for a quad |
 | Combo              | ×1.5 for two of flip, spin and grab; ×2 for all three |
 | Taking off switch  | ×1.25                                     |
-| Time bonus         | 50 per second under the 70 second par     |
+| Time bonus         | 50 per second under par: 70 seconds, or 210 on Frozen Gorge and Glacier Bowl |
 
 ## Controls
 
@@ -165,6 +166,7 @@ How it works:
 | Steer / spin in the air  | `←` `→` or `A` `D`             | ◀ ▶         |
 | Tuck / front flip in air | `↑` or `W`                     | TUCK        |
 | Brake / back flip in air | `↓` or `S`                     | BRAKE       |
+| Tap to lunge forward     | `Space` or `K`                 | JUMP        |
 | Hold & release to jump   | `Space` or `K`                 | JUMP        |
 | Grab                     | `J`, `X` or `Shift`            | GRAB        |
 | Start / ride again       | `Enter`                        | Start button |
