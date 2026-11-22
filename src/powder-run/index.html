@@ -2021,6 +2021,10 @@ const GEAR = {
   skin: [0xf1c9a5, 0xe0ac85, 0xc68863, 0x9c6644, 0x6e4630],
   boards: [0xd6336c, 0x1d1f26, 0xf2f2f2, 0x4f8cff, 0x3fbf7f, 0xffd84f, 0x9b6dff, 0xff7a2f],
   heads: ["beanie-pom", "beanie-cuff", "beanie-slouch", "helmet"],
+  // Old-school headphones and the cassette player they're plugged into.
+  phoneBands: [0xc8ccd4, 0x1d1f26],
+  phonePads: [0xff7a2f, 0x1d1f26, 0xffd84f, 0xe0443a],
+  tapeDecks: [0xc8ccd4, 0xffd84f, 0x2f5f8f, 0x1d1f26],
 };
 function rollGear(seed) {
   const rnd = mulberry32(seed >>> 0);
@@ -2034,6 +2038,8 @@ function rollGear(seed) {
     pants: pick(GEAR.pants), baggy: rnd() < 0.6, knee: rnd() < 0.3 ? pick(GEAR.accent) : null,
     boots: pick(GEAR.boots), gloves: pick(GEAR.gloves),
     board: pick(GEAR.boards), stripe: pick(GEAR.accent), binding: pick(GEAR.accent),
+    // Rolled last, so adding it didn't change anyone's existing outfit.
+    phones: rnd() < 0.3 ? { band: pick(GEAR.phoneBands), pad: pick(GEAR.phonePads), deck: pick(GEAR.tapeDecks) } : null,
   };
 }
 const randomSeed = () => Math.floor(Math.random() * 2 ** 32);
@@ -2193,6 +2199,7 @@ function buildRiderModel(look, g) {
   part(new THREE.CylinderGeometry(0.214, 0.214, 0.045, 12, 1, true).translate(0, 0.8, 0), mat(g.strap), upper);
   part(box(0.07, 0.12, 0.34, 0.18, 0.8), mat(g.frame), upper);
   part(box(0.02, 0.09, 0.3, 0.218, 0.8), mat(g.lens, "lens"), upper);
+  if (g.phones) buildHeadphones(g.phones, upper, g.head === "helmet");
 
   // Sleeves and gloves.
   const arms = [0.34, -0.34].map((z) => {
@@ -2206,6 +2213,36 @@ function buildRiderModel(look, g) {
   });
 
   return { root, pose, upper, torso, legs, arms, flaps, board, boots };
+}
+
+// Headphones over the hat, ear to ear, with a cord down to a cassette player
+// clipped to the front of the jacket at the hip.
+const vCordA = new THREE.Vector3(), vCordB = new THREE.Vector3();
+function buildHeadphones({ band, pad, deck }, upper, helmet) {
+  const R = helmet ? 0.245 : 0.235;
+  // The band: a half ring over the top of the head, from ear to ear.
+  part(new THREE.TorusGeometry(R, 0.018, 6, 16, Math.PI).rotateY(Math.PI / 2).translate(0, 0.83, 0), mat(band, "shiny"), upper);
+  for (const z of [R, -R]) {
+    const s = Math.sign(z);
+    part(new THREE.CylinderGeometry(0.085, 0.085, 0.035, 12).rotateX(Math.PI / 2), mat(band, "shiny"), upper, 0, 0.8, z + s * 0.012);
+    part(new THREE.CylinderGeometry(0.08, 0.08, 0.04, 12).rotateX(Math.PI / 2), mat(pad), upper, 0, 0.8, z - s * 0.02);
+  }
+  // The player, with its tape window and a play button on top.
+  const px = 0.24, py = 0.14, pz = 0.13;
+  part(box(0.05, 0.16, 0.12), mat(deck, "shiny"), upper, px, py, pz);
+  part(box(0.012, 0.07, 0.08), mat(0x23262f, "shiny"), upper, px + 0.028, py + 0.015, pz);
+  part(box(0.03, 0.02, 0.03), mat(0xff5a3a), upper, px, py + 0.09, pz + 0.03);
+  part(box(0.065, 0.02, 0.02), mat(0x2a2f3a), upper, px - 0.01, py + 0.03, pz - 0.065); // belt clip
+  // The cord: down from the right ear cup, over the shoulder and down the front.
+  const pts = [[0, 0.72, R], [0.14, 0.62, R * 0.85], [0.235, 0.42, 0.18], [px, py + 0.1, pz + 0.02]];
+  for (let i = 0; i < pts.length - 1; i++) {
+    vCordA.fromArray(pts[i]); vCordB.fromArray(pts[i + 1]);
+    const len = vCordA.distanceTo(vCordB);
+    const cord = part(new THREE.CylinderGeometry(0.007, 0.007, len, 4), mat(0x1d1f26), upper);
+    cord.position.copy(vCordA).add(vCordB).multiplyScalar(0.5);
+    cord.quaternion.setFromUnitVectors(V_UP, vCordB.sub(vCordA).normalize());
+    cord.castShadow = false;
+  }
 }
 
 // Point each flap along the air rushing past (the weather's wind minus the
