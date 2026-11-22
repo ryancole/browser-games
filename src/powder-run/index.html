@@ -543,6 +543,24 @@ const lanes = [];
 // high your feet can go above the floor underneath.
 const ceilings = [];
 
+// Forks: stretches where a ridge rises out of the middle of the run and splits
+// it into two routes that join up again further down. The banks are pushed out
+// `widen` metres each side, so each route is close to a full run wide.
+// { z0, z1, widen }; see fFork.
+const forks = [];
+const FORK_EASE = 0.25; // share of a fork's length spent opening up, and again closing
+// How far open a fork is at z: 0 before and after it, 1 along its middle.
+function forkOpen(f, z) {
+  const t = (z - f.z0) / (f.z1 - f.z0);
+  if (t <= 0 || t >= 1) return 0;
+  return smooth(Math.min(1, t / FORK_EASE)) * smooth(Math.min(1, (1 - t) / FORK_EASE));
+}
+// How far a fork pushes the banks out at z.
+function widen(z) {
+  for (const f of forks) if (z > f.z0 && z < f.z1) return f.widen * forkOpen(f, z);
+  return 0;
+}
+
 function featureH(x, z) {
   let h = 0, u = null;
   for (const f of features) {
@@ -557,10 +575,10 @@ function terrainH(x, z) {
   let h = -Math.min(z, COURSE_LEN) * SLOPE;
   if (z > COURSE_LEN) h -= (z - COURSE_LEN) * 0.04;
   h += 0.7 * Math.sin(z * 0.045 + course.bump) * Math.cos(x * 0.09) + 0.35 * Math.sin(z * 0.13 + x * 0.05);
-  const d = Math.abs(x - center(z));
-  if (d > HALF_W) {
-    const e = Math.min(d - HALF_W, 28);
-    h += e * e * 0.09 + e * 0.15 + Math.max(0, d - HALF_W - 28) * 0.5;
+  const d = Math.abs(x - center(z)), hw = HALF_W + widen(z);
+  if (d > hw) {
+    const e = Math.min(d - hw, 28);
+    h += e * e * 0.09 + e * 0.15 + Math.max(0, d - hw - 28) * 0.5;
   }
   return h + kickerH(x, z) + featureH(x, z);
 }
@@ -671,7 +689,7 @@ function scatter(rnd, { step, chance, dMin, dSpread, power = 1 }, place) {
   for (let z = -50; z < COURSE_LEN + RUNOUT; z += step) {
     for (const side of [-1, 1]) {
       if (rnd() > chance) continue;
-      const d = dMin + rnd() ** power * dSpread;
+      const d = dMin + widen(z) + rnd() ** power * dSpread;
       const x = center(z) + side * d + (rnd() - 0.5) * 1.5;
       place({ x, z, y: terrainH(x, z), side, d, s: 0.8 + rnd() * 0.7 });
     }
@@ -683,7 +701,8 @@ const ROCK_FACE = [0.42, 0.44, 0.48];
 function buildTerrain(rnd, ground, kickerColor) {
   // Columns follow the run's middle line: a metre apart across the run, where
   // the moguls, logs and cliffs are, and wider apart up the banks.
-  const U = [], fine = HALF_W + 8, far = HALF_W + 82;
+  const wide = Math.max(0, ...forks.map((f) => f.widen));
+  const U = [], fine = HALF_W + wide + 8, far = HALF_W + wide + 82;
   for (let u = -far; u < -fine; u += 3) U.push(u);
   for (let u = -fine; u < fine; u += 1) U.push(u);
   for (let u = fine; u <= far; u += 3) U.push(u);
@@ -695,14 +714,14 @@ function buildTerrain(rnd, ground, kickerColor) {
   let p = 0;
   for (let j = 0; j <= NZ; j++) {
     const z = Z0 + j * DZ;
-    const c = center(z);
+    const c = center(z), wz = widen(z);
     for (let i = 0; i <= NX; i++) {
       const x = c + U[i];
       pos[p] = x; pos[p + 1] = terrainH(x, z); pos[p + 2] = z;
       const n = (rnd() - 0.5) * 0.04;
       const k = kickerH(x, z) > 0.05 ? kickerAt(x, z) : null;
       const rgb = featureColor(U[i], z)
-        ?? (k && !k.kind ? kickerColor : k && z > k.z - 0.3 ? ROCK_FACE : ground(x, z, Math.abs(U[i]), n));
+        ?? (k && !k.kind ? kickerColor : k && z > k.z - 0.3 ? ROCK_FACE : ground(x, z, Math.max(0, Math.abs(U[i]) - wz), n));
       // Shade the steep sides of moguls, rollers and drifts a little, so they
       // still read in flat, overcast light.
       const fs = Math.abs(featureH(x, z + 0.5) - featureH(x, z - 0.5)) + Math.abs(featureH(x + 0.5, z) - featureH(x - 0.5, z));
@@ -755,7 +774,7 @@ function buildCourseFurniture({ poles: poleColors, lipMat, net: netColor, post =
   const poles = [];
   for (let z = 20; z < COURSE_LEN; z += 25) {
     for (const side of [-1, 1]) {
-      const x = center(z) + side * (HALF_W + 0.6);
+      const x = center(z) + side * (HALF_W + widen(z) + 0.6);
       poles.push({ x, z, y: terrainH(x, z), side });
     }
   }
@@ -780,7 +799,7 @@ function buildCourseFurniture({ poles: poleColors, lipMat, net: netColor, post =
     const net = [], band = [], uv = [], idx = [];
     let dist = 0, px = 0, pz = 0;
     for (let z = FENCE_Z0, i = 0; z <= COURSE_LEN + RUNOUT; z += 2, i++) {
-      const x = center(z) + side * FENCE_D, y = terrainH(x, z);
+      const x = center(z) + side * (FENCE_D + widen(z)), y = terrainH(x, z);
       if (i) dist += Math.hypot(x - px, z - pz);
       px = x; pz = z;
       net.push(x, y, z, x, y + FENCE_H, z);
@@ -1221,6 +1240,54 @@ function fSplit(z0, z1, rnd, cfg) {
   };
 }
 
+// A fork: a ridge rises out of the middle of the run over len metres, splits it
+// into two routes, then sinks away again so they join up. The ridge is up to w
+// metres either side of the middle line and H high, steep enough that crossing
+// it means riding up and over, with trees and/or boulders along its top. The
+// banks are pushed out `widen` metres to make room. Returns the middle of each
+// route (as a distance from the middle line) and the visuals.
+function fFork(z0, len, { w, widen = 0, H = 6, pines = false, rocks = false }, rnd, cfg) {
+  const f = { z0, z1: z0 + len, widen };
+  forks.push(f);
+  const E = 3; // the ridge's sides slope over E metres
+  const side = (u, z) => {
+    const p = forkOpen(f, z);
+    return p ? { p, s: w * p + E - Math.abs(u) } : null;
+  };
+  features.push({
+    z0: f.z0, z1: f.z1,
+    h: (u, z) => {
+      const r = side(u, z);
+      if (!r || r.s <= 0) return 0;
+      return H * Math.min(1, r.p * 2) * smooth(Math.min(1, r.s / E));
+    },
+    color: (u, z) => {
+      const r = side(u, z);
+      return r && r.p > 0.3 && r.s > 0.3 && r.s < E * 0.8 ? ROCK_FACE : null;
+    },
+  });
+  const mid = w + (HALF_W + widen - w) / 2;
+  lanes.push({ z0: f.z0, z1: f.z1, opts: [-mid, mid] });
+  const visual = () => {
+    const trees = [], boulders = [];
+    for (let z = f.z0; z < f.z1; z += 3) {
+      const top = w * forkOpen(f, z) - 0.8;
+      if (top < 0.8) continue;
+      for (let u = -top + rnd() * 1.5; u < top; u += 2.6 + rnd() * 1.4) {
+        const zz = z + rnd() * 2, x = center(zz) + u, y = terrainH(x, zz);
+        if (pines && (!rocks || rnd() < 0.6)) trees.push({ x, z: zz, y, s: 0.8 + rnd() * 0.6 });
+        else if (rocks) boulders.push({ x, z: zz, y: y - 0.3, s: 0.9 + rnd() * 1.4 });
+      }
+    }
+    if (trees.length) addPines(trees, cfg.pines[0], cfg.pines[1]);
+    if (boulders.length) {
+      addRocks(boulders);
+      for (const b of boulders) addObstacle({ x: b.x, z: b.z, y: b.y, r: b.s * 0.9, h: b.s * 1.1, name: "Rock!" });
+    }
+  };
+  return { mid, visual };
+}
+
 const FEATURES = {
   moguls: (a, b) => fMoguls(a, Math.min(b, a + 55)),
   rollers: (a, b) => fRollers(a, Math.min(b, a + 50)),
@@ -1239,6 +1306,19 @@ function placeFeatures(cfg, rnd) {
   for (let i = 0; i + 1 < built.length; i++) gaps.push([built[i].z + 28, built[i + 1].z - built[i + 1].len - 10]);
   gaps.push([built[built.length - 1].z + 28, COURSE_LEN - 20]);
   const visuals = [];
+  // Forks: the kickers inside one move onto the route on its `side`, making it
+  // the jump line, and the other route gets moguls and then logs.
+  for (const fc of cfg.forks || []) {
+    const fk = fFork(fc.z, fc.len, fc, rnd, cfg), z1 = fc.z + fc.len;
+    for (const k of kickers) if (k.z > fc.z && k.z < z1) k.x = center(k.z) + fc.side * fk.mid;
+    const s = -fc.side, lo = fc.w + 2, hi = HALF_W + fc.widen - 1.5;
+    const [ua, ub] = s > 0 ? [lo, hi] : [-hi, -lo];
+    fMoguls(fc.z + fc.len * 0.22, fc.z + fc.len * 0.56, ua, ub, 0.8);
+    visuals.push(fk.visual, fLogs(fc.z + fc.len * 0.6, fc.z + fc.len * 0.78, rnd, cfg, ua, ub));
+    for (const g of gaps) {
+      if (g[0] < z1 + 10 && g[1] > fc.z - 10) { if (g[0] < fc.z) g[1] = Math.min(g[1], fc.z - 10); else g[0] = Math.max(g[0], z1 + 10); }
+    }
+  }
   gaps.forEach(([a, b], i) => {
     if (b - a < 24) return;
     const v = FEATURES[cfg.list[i % cfg.list.length]](a, b, rnd, cfg);
@@ -1495,8 +1575,11 @@ function gorgeLayout(rnd, cfg, dz = 0, m = 1) {
   // The narrows: rock walls close in from both sides.
   fMass(Z(905), 70, -HALF_W - 5, -6, 8);
   fMass(Z(905), 70, 6, HALF_W + 5, 8);
-  V.push(fGully(Z(1065), 10, 6, { bridge: { u: m * -5, w: 6 } }));
-  V.push(fSplit(Z(1140), Z(1200), rnd, cfg));
+  // The fork: a rock spine splits the gorge in two. One side is a jump line
+  // (its two kickers are in the level's list), the other a long ice tunnel.
+  const fork = fFork(Z(985), 255, { w: 6, widen: 8, H: 8, pines: true, rocks: true }, rnd, cfg);
+  V.push(fork.visual);
+  V.push(fMass(Z(1040), 110, ...S(8, HALF_W + 13), 7, { channel: { u: m * fork.mid, w: 7 }, roof: true }));
   V.push(fCabinThrough(Z(1262), 0));
   return V;
 }
@@ -1559,9 +1642,12 @@ function bowlLayout(rnd, cfg, dz = 0, m = 1) {
   fMoguls(Z(570), Z(680), ...S(-HALF_W, -4), 0.8);
   cliff(800, -HALF_W - 3, -4, 13);
   addGlade(775, 860, 6, HALF_W - 2, 20);
+  // The fork: a long rock rib splits the bowl in two. One side drops off the
+  // biggest cliff in the bowl; the other has a kicker (in the level's list) and moguls.
+  V.push(fFork(Z(880), 250, { w: 9, H: 10, rocks: true }, rnd, cfg).visual);
   fRollers(Z(915), Z(965), 2.4);
-  cliff(1060, 4, HALF_W + 3, 18);
-  fMoguls(Z(1035), Z(1090), ...S(-HALF_W, -4), 0.85);
+  cliff(1060, 12, HALF_W + 3, 18);
+  fMoguls(Z(1035), Z(1090), ...S(-HALF_W, -12), 0.85);
   cliff(1220, -16, 16, 12);
   addGlade(1240, 1330, -HALF_W + 2, -12, 16);
   addGlade(1240, 1330, 12, HALF_W - 2, 16);
@@ -1570,8 +1656,10 @@ function bowlLayout(rnd, cfg, dz = 0, m = 1) {
   const pillars = [];
   for (let tries = 0; pillars.length < 24 && tries < 400; tries++) {
     const z = Z(110 + rnd() * 1250), u = -HALF_W + 4 + rnd() * (HALF_W * 2 - 8), x = center(z) + u;
-    if (kickers.some((k) => Math.abs(z - k.z) < 22 && Math.abs(x - k.x) < 12)) continue;
+    // Keep the run-up and the landing clear.
+    if (kickers.some((k) => z - k.z > -22 && z - k.z < 50 && Math.abs(x - k.x) < 12)) continue;
     if (m * u > 8 && z > Z(550) && z < Z(700)) continue;
+    if (Math.abs(u) < 15 && forks.some((f) => z > f.z0 - 10 && z < f.z1 + 10)) continue;
     if (pillars.some((p) => Math.hypot(p.x - x, p.z - z) < 18) || trees.some((t) => Math.hypot(t.x - x, t.z - z) < 4)) continue;
     pillars.push({ x, z, y: terrainH(x, z) - 0.5, r: 1.6 + rnd() * 1.8, h: 8 + rnd() * 16 });
   }
@@ -1978,6 +2066,7 @@ const LEVELS = {
     terrain: {
       list: ["rollers", "roof", "moguls", "logs", "cliff", "split", "roof", "rock", "rollers", "roof", "moguls", "cliff"],
       drop: 4.5, face: "rock", logs: "log", roof: "cabin", pines: [[0x2f6b3a, 0x3a7a40, 0x2a5e35]],
+      forks: [{ z: 670, len: 280, w: 6, widen: 8, H: 5, pines: true, side: -1 }],
     },
     sky: 0xdcebf7, fog: [0xd4e6f4, 70, 560], hemi: [0xeaf4ff, 0x7a8a60, 1.45], sun: [0xfff0d6, 2.1], riderLight: 0,
     snow: 0, puffs: 0.25, kickerColor: [0.55, 0.78, 1.0],
@@ -1988,7 +2077,7 @@ const LEVELS = {
     seed: 31337, build: buildGorge, ground: gorgeGround, layout: gorgeLayout, sections: 3,
     track: { artist: "Pendulum", title: "Watercolour", video: "tEPB7uzKuh4" },
     course: { a1: 12, p1: 150, o1: 0.4, a2: 6, p2: 60, o2: 2.5, bump: 0.8, tight: { a: 9, p: 24, z1: 330 } },
-    kickers: { at: [[150, 0], [300, -4, true], [440, 2], [610, -2], [760, 0], [1020, 3, true], [1330, -3]] },
+    kickers: { at: [[150, 0], [300, -4, true], [440, 2], [610, -2], [760, 0], [1060, -16, true], [1150, -16], [1330, -3]] },
     terrain: { logs: "log", pines: [[0x24473a, 0x2a523f], 0xdfe6f5] },
     sky: 0x8f86b8, fog: [0x9a8fbc, 40, 320], hemi: [0xb8c2ee, 0x3d3550, 1.05], sun: [0xffb27a, 1.8], riderLight: 0,
     snow: 0.45, puffs: 0.5, kickerColor: [0.55, 0.7, 1.0],
@@ -1999,7 +2088,7 @@ const LEVELS = {
     seed: 4242, build: buildBowl, ground: bowlGround, layout: bowlLayout, sections: 3, halfW: 40,
     track: { artist: "Foo Fighters", title: "Everlong", video: "eBG7P-K-r1Y" },
     course: { a1: 10, p1: 220, o1: 1, a2: 5, p2: 90, o2: 0.3, bump: 2.2 },
-    kickers: { at: [[175, -14], [360, 0], [740, 12], [890, 14], [1140, -8, true], [1330, 0]] },
+    kickers: { at: [[175, -14], [360, 0], [740, 12], [890, 14], [1000, -24], [1140, -8, true], [1330, 0]] },
     terrain: { pines: [[0x2f5d46, 0x356b4c], 0xeef4fb] },
     sky: 0xcfe6ff, fog: [0xd8ecff, 80, 700], hemi: [0xeef6ff, 0x9fb2cc, 1.45], sun: [0xfff4e0, 2.3], riderLight: 0,
     snow: 0, puffs: 0.8, kickerColor: [0.55, 0.75, 1.0],
@@ -2030,6 +2119,7 @@ function setLevel(id) {
   features.length = 0;
   lanes.length = 0;
   ceilings.length = 0;
+  forks.length = 0;
   HALF_W = level.halfW ?? 18;
   FENCE_D = HALF_W + 7;
   Object.assign(course, { tight: null }, level.course);
@@ -3522,7 +3612,7 @@ function scoreTrick(r, airTime, spin, flip, grabTime, grabName) {
 // Riding into a net stops you going further out and you slide along it,
 // scrubbing off a little speed for as long as you push into it.
 function checkFence(r) {
-  const c = center(r.z), d = r.x - c, lim = FENCE_D - 0.4;
+  const c = center(r.z), d = r.x - c, lim = FENCE_D + widen(r.z) - 0.4;
   if (Math.abs(d) <= lim) return;
   const side = Math.sign(d);
   r.x = c + side * lim;
@@ -3700,7 +3790,7 @@ function ragCollide(p, q, i, rad, mu, h, rag) {
   let x = p[o], y = p[o + 1], z = p[o + 2];
   let vx = (x - q[o]) / h, vy = (y - q[o + 1]) / h, vz = (z - q[o + 2]) / h;
   let touch = false;
-  const c = center(z), lim = FENCE_D - 0.3, u = x - c;
+  const c = center(z), lim = FENCE_D + widen(z) - 0.3, u = x - c;
   if (Math.abs(u) > lim) {
     x = c + Math.sign(u) * lim;
     if (vx * Math.sign(u) > 0) { vx *= -0.3; vz *= 0.9; }

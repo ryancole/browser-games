@@ -34,6 +34,7 @@ A hand-built course that keeps asking you to pick a line. It is three times as l
 - **An ice cave** cut through a block of rock on one side, with ice slabs overhead and icicles hanging down. The open side has moguls instead.
 - **A gap jump**: a kicker that launches you across a ravine, or a narrow bridge round the side.
 - **The narrows**, where rock walls close in from both sides.
+- **A fork** after the narrows: a rock spine with pines on top splits the gorge in two. One side is a jump line with two kickers; the other is a long ice tunnel. They join up again just before the cabin.
 - **A log cabin built across the run** at the end of each stretch. Ride straight through the doorway, or go round either side.
 
 ### Glacier Bowl
@@ -45,6 +46,7 @@ A freeride course with no single right line. It is three times as long as the ot
 - **Stone pillars** standing all over the bowl to weave between.
 - **Tree glades**, **moguls** and **rollers**.
 - An **ice half-pipe** down one side for part of the way. Carve up its walls to launch.
+- **A fork** near the end of each stretch: a long rib of boulders splits the bowl in two. One side drops off the 18 m cliff; the other has a kicker and moguls.
 
 Walls and roofs are solid on both courses. Riding into a rock face or the side of a ledge pushes you along it, and you wipe out if you hit it hard. You can't fly up through the cave's ceiling or the cabin's roof.
 
@@ -61,6 +63,7 @@ Between the built kickers, every course has natural and built terrain to ride an
 | **Rooftop jumps** | A building half-buried in snow: ride the snow ramp up onto the roof and jump off the far end. The walls are solid, so don't ride into the side. | A ski patrol hut on Snowy Peak, a parked bus in the city, a log cabin in the valley |
 | **Rock kickers** | A snowdrift banked against rocks: a natural kicker with no built lip. The boulders either side are solid. | Snowy Peak, Lakeside Valley |
 | **Tree islands** | A raised island of trees down the middle that splits the run into two lines, with moguls on one side and logs or barriers on the other. | All courses (trees in planters in the city) |
+| **Forks** | A long ridge rises out of the middle of the run and splits it in two, with the banks pushed out so each route is close to full width. The routes ride differently, then join up again before the finish. The ridge is steep, and the trees or boulders along its top are solid. | Lakeside Valley (a forested ridge: a jump line on one side, moguls and logs on the other), Frozen Gorge and Glacier Bowl (see above) |
 
 Any of them can give you air. Pop an ollie at the top of a bump for more height. If you leave the ground off a bump or drop without an ollie, a turn or tuck you were already holding doesn't spin or flip you until you let go and press it again, so you can ride through moguls or off a cliff holding a tuck. After an ollie, everything you hold counts straight away, as before.
 
