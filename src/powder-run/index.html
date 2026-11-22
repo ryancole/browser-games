@@ -1846,6 +1846,7 @@ function setLevel(id) {
   snowfall.material.opacity = level.snow;
 
   best = bestFor(id);
+  clearTrails();
   for (const r of riders) { resetRider(r); updateRider(r, 1); }
   snapCamera();
 }
@@ -2112,6 +2113,104 @@ function updateSpray(dt) {
   sprayGeo.attributes.position.needsUpdate = true;
 }
 function clearSpray() { sprayLife.fill(0); sprayPos.fill(-9999); }
+
+// ---------------------------------------------------------------------------
+// Board tracks: every rider on the ground leaves a groove in the snow behind
+// them, narrow when carving and wide when skidding sideways. All riders write
+// quads into one shared ring buffer, so the oldest tracks are reused last.
+// ---------------------------------------------------------------------------
+const TRAIL_SEGS = 12000;
+const TRAIL_MIN = 0.6;   // m travelled before laying the next piece of track
+const trailPos = new Float32Array(TRAIL_SEGS * 4 * 3).fill(-9999);
+const trailUv = new Float32Array(TRAIL_SEGS * 4 * 2);
+const trailGeo = new THREE.BufferGeometry();
+{
+  const idx = new Uint32Array(TRAIL_SEGS * 6), nrm = new Float32Array(TRAIL_SEGS * 4 * 3);
+  for (let i = 0; i < TRAIL_SEGS; i++) {
+    const a = i * 4;
+    idx.set([a, a + 2, a + 1, a + 1, a + 2, a + 3], i * 6);
+  }
+  for (let i = 1; i < nrm.length; i += 3) nrm[i] = 1;
+  trailGeo.setAttribute("position", new THREE.BufferAttribute(trailPos, 3).setUsage(THREE.DynamicDrawUsage));
+  trailGeo.setAttribute("uv", new THREE.BufferAttribute(trailUv, 2).setUsage(THREE.DynamicDrawUsage));
+  trailGeo.setAttribute("normal", new THREE.BufferAttribute(nrm, 3));
+  trailGeo.setIndex(new THREE.BufferAttribute(idx, 1));
+}
+const trailTex = (() => {
+  // Across the track: soft edges, a shaded groove, and a darker line where each board edge cut in.
+  const c = document.createElement("canvas");
+  c.width = 64; c.height = 8;
+  const g = c.getContext("2d");
+  const grd = g.createLinearGradient(0, 0, 64, 0);
+  grd.addColorStop(0, "rgba(110,130,165,0)");
+  grd.addColorStop(0.12, "rgba(95,115,155,0.55)");
+  grd.addColorStop(0.2, "rgba(130,150,185,0.32)");
+  grd.addColorStop(0.5, "rgba(140,160,195,0.26)");
+  grd.addColorStop(0.8, "rgba(130,150,185,0.32)");
+  grd.addColorStop(0.88, "rgba(95,115,155,0.55)");
+  grd.addColorStop(1, "rgba(110,130,165,0)");
+  g.fillStyle = grd; g.fillRect(0, 0, 64, 8);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+})();
+const trails = new THREE.Mesh(trailGeo, new THREE.MeshLambertMaterial({
+  map: trailTex, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+  polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4,
+}));
+trails.frustumCulled = false;
+trails.renderOrder = 1;
+scene.add(trails);
+let trailNext = 0, trailLo = Infinity, trailHi = -1;
+
+function clearTrails() {
+  trailPos.fill(-9999);
+  trailNext = 0;
+  trailLo = 0; trailHi = TRAIL_SEGS - 1;
+  for (const r of riders) r.trail = null;
+}
+
+// A point across the track at (x, z), sitting just above the snow.
+const trailEdge = (x, z) => [x, terrainH(x, z) + 0.03, z];
+
+function updateTrail(r) {
+  const speed = Math.hypot(r.vx, r.vz);
+  if (!r.grounded) { r.trail = null; return; }
+  if (speed < 1) return;
+  // The track is as wide as the board looks from the direction you're moving:
+  // edge-on when carving, broadside when skidding or crashing.
+  const dir = Math.atan2(r.vx, r.vz);
+  const yaw = r.heading + (r.sw ? Math.PI : 0) + r.spin;
+  const half = (0.28 + Math.abs(Math.sin(yaw - dir)) * 1.5 + (r.crashT > 0 ? 0.5 : 0)) / 2;
+  const px = Math.cos(dir), pz = -Math.sin(dir);
+  const L = trailEdge(r.x - px * half, r.z - pz * half), R = trailEdge(r.x + px * half, r.z + pz * half);
+  const t = r.trail;
+  if (!t) { r.trail = { x: r.x, z: r.z, L, R, v: 0 }; return; }
+  const d = Math.hypot(r.x - t.x, r.z - t.z);
+  if (d < TRAIL_MIN) return;
+  const v = t.v + d / 3;
+  if (d < 6) {
+    // Skip pieces that would span a jump or a teleport.
+    const i = trailNext;
+    trailNext = (trailNext + 1) % TRAIL_SEGS;
+    trailPos.set([...t.L, ...t.R, ...L, ...R], i * 12);
+    trailUv.set([0, t.v, 1, t.v, 0, v, 1, v], i * 8);
+    trailLo = Math.min(trailLo, i); trailHi = Math.max(trailHi, i);
+  }
+  Object.assign(t, { x: r.x, z: r.z, L, R, v });
+}
+
+// Upload only the pieces written since last frame.
+function flushTrails() {
+  if (trailHi < trailLo) return;
+  const pos = trailGeo.attributes.position, uv = trailGeo.attributes.uv;
+  pos.clearUpdateRanges(); uv.clearUpdateRanges();
+  pos.addUpdateRange(trailLo * 12, (trailHi - trailLo + 1) * 12);
+  uv.addUpdateRange(trailLo * 8, (trailHi - trailLo + 1) * 8);
+  pos.needsUpdate = uv.needsUpdate = true;
+  trailLo = Infinity; trailHi = -1;
+}
 
 // ---------------------------------------------------------------------------
 // Weather: falling snow, and patches of powder blowing across the slope. Both
@@ -3353,6 +3452,7 @@ function startRace(roster = soloRoster()) {
   speech?.cancel();
   setRoster(roster);
   clearSpray();
+  clearTrails();
   raceTime = 0; simAcc = 0; netAcc = 0;
   resultsShown = false; result = null;
   countT = 3; lastCount = 4;
@@ -3395,6 +3495,7 @@ function update(dt) {
     }
   }
   for (const r of riders) updateRider(r, dt);
+  flushTrails();
   updateSpray(dt);
   updateCamera(dt);
   updateWeather(dt);
@@ -3458,6 +3559,7 @@ function updateRider(r, dt) {
   m.arms[0].rotation.set(0.35 - reach * 0.2, 0, reach);
   m.arms[1].rotation.set(-0.35 + reach * 0.2, 0, reach * 0.3);
   updateGear(r, dt);
+  updateTrail(r);
 }
 
 let camYaw = 0;

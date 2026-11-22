@@ -88,6 +88,10 @@ Every rider wears snowboarding gear: boots strapped into bindings, warm pants, a
 
 Scarves, beanie pom-poms and tails, and jacket hems flap in the wind. They aren't physics objects: each one points along the air rushing past the rider (your speed plus the weather's wind) and gravity, and ripples faster the faster you go.
 
+## Board tracks
+
+Every rider leaves tracks in the snow wherever their board is on the ground. A clean carve leaves a narrow line, and skidding, braking or wiping out leaves a wide smear, because the track is as wide as the board looks from the direction you're moving. Tracks break off when you leave the ground and start again where you land. They last the whole race and clear when a new race starts or you change course. Up to 12,000 pieces of track are kept across all riders, and the oldest are reused first.
+
 ## Music
 
 Every song is an original eight-bar loop, played live by a small sequencer in the page rather than from audio files. The guitars are synthesized too: sawtooth power chords driven through a distortion curve and a speaker-like filter.
