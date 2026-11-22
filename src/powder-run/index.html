@@ -254,7 +254,7 @@
     <div class="word run">RUN</div>
     <div class="ribbon">SNOWBOARDING</div>
   </div>
-  <div class="press"><span class="keys-only">Press any key to start</span><span class="tap-only">Tap to start</span></div>
+  <div class="press"><span class="keys-only">Press any key</span><span class="tap-only">Tap the screen</span></div>
   <div class="foot">Three courses · Spins, flips and grabs · Race bots or friends</div>
 </div>
 
@@ -4092,7 +4092,8 @@ function leaveLobby(message = "") {
 // ---------------------------------------------------------------------------
 // Title screen: your rider frozen mid-grab high against a blue sky, shot from
 // below with snow spraying off the board. It has its own small scene, so it
-// looks the same whichever course is picked. Any key or tap goes to the menu.
+// looks the same whichever course is picked. The first key or tap starts the
+// music and the next goes to the menu.
 // ---------------------------------------------------------------------------
 const titleEl = $("title");
 let title = null;
@@ -4235,8 +4236,18 @@ function showTitle() {
   document.body.classList.add("on-title");
   titleEl.classList.remove("hidden");
 }
+// Browsers keep the page silent until the first key or tap, so the first press
+// on the title just starts the menu theme; the next one goes on to the menu.
+let titleMusicStarted = false;
 function leaveTitle() {
   if (state !== "title") return;
+  if (!titleMusicStarted && musicOn && !muted) {
+    titleMusicStarted = true;
+    initAudio();
+    titleEl.querySelector(".press").innerHTML =
+      '<span class="keys-only">Press any key to start</span><span class="tap-only">Tap to start</span>';
+    return;
+  }
   state = "menu";
   document.body.classList.remove("on-title");
   titleEl.classList.add("hidden");
