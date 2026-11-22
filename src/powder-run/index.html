@@ -458,7 +458,8 @@ const SPIN_RATE = 6.8;     // rad/s spin rate in the air
 const SPIN_POINTS = [0, 100, 250, 450, 700, 1000, 1400, 1800];
 const FLIP_RATE = 6.0;     // rad/s flip rate in the air
 const FLIP_POINTS = [0, 600, 1500, 2800, 4500];
-const FLIP_LAND_TOL = 0.75; // rad of leftover flip rotation you can still ride away from
+const FLIP_LAND_TOL = 0.95; // rad of leftover flip rotation you can still ride away from
+const SPIN_LAND_TOL = 0.95; // rad the board can point off your direction of travel and still land
 const FLIP_PIVOT = 0.9;     // flips rotate about the rider's middle, not their feet
 const WALL_STEP = 0.6;      // m the ground can rise in one physics step before it counts as a wall
 
@@ -3426,8 +3427,8 @@ function land(r, ground) {
     return crash(r, Math.abs(flip) < Math.PI * 2 - FLIP_LAND_TOL ? "Under-rotated!" : "Over-rotated!");
   }
   if (wasGrabbing && airTime > 0.3) return crash(r, "Still grabbing!");
-  if (Math.abs(rel) < 0.75) r.sw = false;
-  else if (Math.abs(rel) > Math.PI - 0.75) r.sw = true;
+  if (Math.abs(rel) < SPIN_LAND_TOL) r.sw = false;
+  else if (Math.abs(rel) > Math.PI - SPIN_LAND_TOL) r.sw = true;
   else return crash(r, "Landed sideways!");
   r.heading = phi;
   if (airTime > 0.25) landingPuff(r, airTime);
