@@ -281,17 +281,42 @@ function layoutKickers({ start, offsets, gaps }) {
   }
 }
 
-function kickerH(x, z) {
+// The kicker whose footprint covers (x, z), if any. Built kickers have an
+// orange lip; "rock" kickers are natural launches with a rocky drop-off.
+function kickerAt(x, z) {
   for (const k of kickers) {
     const u = z - k.z;
     if (u < -k.len || u > LIP_DROP) continue;
-    const d = Math.abs(x - k.x);
-    if (d > KICK_HALF + KICK_FADE) continue;
-    const lat = d < KICK_HALF ? 1 : smooth(1 - (d - KICK_HALF) / KICK_FADE);
-    const p = u <= 0 ? k.h * ((u + k.len) / k.len) ** 2 : k.h * (1 - u / LIP_DROP);
-    return p * lat;
+    if (Math.abs(x - k.x) > KICK_HALF + KICK_FADE) continue;
+    return k;
   }
-  return 0;
+  return null;
+}
+
+function kickerH(x, z) {
+  const k = kickerAt(x, z);
+  if (!k) return 0;
+  const u = z - k.z, d = Math.abs(x - k.x);
+  const lat = d < KICK_HALF ? 1 : smooth(1 - (d - KICK_HALF) / KICK_FADE);
+  const p = u <= 0 ? k.h * ((u + k.len) / k.len) ** 2 : k.h * (1 - u / LIP_DROP);
+  return p * lat;
+}
+
+// Terrain features on the run (moguls, rollers, cliffs, logs, rooftops, tree
+// islands): each is { z0, z1, h(u, z), color?(u, z) }, where u is the distance
+// across the run from its middle line. See placeFeatures.
+const features = [];
+// Stretches where the run splits around an island; bots pick a side.
+const lanes = [];
+
+function featureH(x, z) {
+  let h = 0, u = null;
+  for (const f of features) {
+    if (z < f.z0 || z > f.z1) continue;
+    if (u === null) u = x - center(z);
+    h += f.h(u, z);
+  }
+  return h;
 }
 
 function terrainH(x, z) {
@@ -303,7 +328,7 @@ function terrainH(x, z) {
     const e = Math.min(d - HALF_W, 28);
     h += e * e * 0.09 + e * 0.15 + Math.max(0, d - HALF_W - 28) * 0.5;
   }
-  return h + kickerH(x, z);
+  return h + kickerH(x, z) + featureH(x, z);
 }
 
 function grad(x, z) {
@@ -420,9 +445,16 @@ function scatter(rnd, { step, chance, dMin, dSpread, power = 1 }, place) {
 }
 
 // --- Terrain -----------------------------------------------------------------
+const ROCK_FACE = [0.42, 0.44, 0.48];
 function buildTerrain(rnd, ground, kickerColor) {
-  const X0 = -95, X1 = 95, NX = 76;
-  const Z0 = -60, Z1 = COURSE_LEN + RUNOUT, DZ = 1.25;
+  // Columns follow the run's middle line: a metre apart across the run, where
+  // the moguls, logs and cliffs are, and wider apart up the banks.
+  const U = [];
+  for (let u = -100; u < -26; u += 3) U.push(u);
+  for (let u = -26; u < 26; u += 1) U.push(u);
+  for (let u = 26; u <= 100; u += 3) U.push(u);
+  const NX = U.length - 1;
+  const Z0 = -60, Z1 = COURSE_LEN + RUNOUT, DZ = 1;
   const NZ = Math.round((Z1 - Z0) / DZ);
   const pos = new Float32Array((NX + 1) * (NZ + 1) * 3);
   const col = new Float32Array((NX + 1) * (NZ + 1) * 3);
@@ -431,11 +463,17 @@ function buildTerrain(rnd, ground, kickerColor) {
     const z = Z0 + j * DZ;
     const c = center(z);
     for (let i = 0; i <= NX; i++) {
-      const x = X0 + (i * (X1 - X0)) / NX;
+      const x = c + U[i];
       pos[p] = x; pos[p + 1] = terrainH(x, z); pos[p + 2] = z;
       const n = (rnd() - 0.5) * 0.04;
-      const rgb = kickerH(x, z) > 0.05 ? kickerColor : ground(x, z, Math.abs(x - c), n);
-      col[p] = rgb[0]; col[p + 1] = rgb[1]; col[p + 2] = rgb[2];
+      const k = kickerH(x, z) > 0.05 ? kickerAt(x, z) : null;
+      const rgb = featureColor(U[i], z)
+        ?? (k && !k.kind ? kickerColor : k && z > k.z - 0.3 ? ROCK_FACE : ground(x, z, Math.abs(U[i]), n));
+      // Shade the steep sides of moguls, rollers and drifts a little, so they
+      // still read in flat, overcast light.
+      const fs = Math.abs(featureH(x, z + 0.5) - featureH(x, z - 0.5)) + Math.abs(featureH(x + 0.5, z) - featureH(x - 0.5, z));
+      const shade = 1 - Math.min(0.16, fs * 0.09);
+      col[p] = rgb[0] * shade; col[p + 1] = rgb[1] * shade; col[p + 2] = rgb[2] * (0.5 + shade * 0.5);
       p += 3;
     }
   }
@@ -485,7 +523,7 @@ function buildCourseFurniture({ poles: poleColors, lipMat, net: netColor, post =
     o.position.set(p.x, p.y + 0.9, p.z);
     c.set(p.side < 0 ? poleColors[0] : poleColors[1]);
   });
-  instanced(new THREE.BoxGeometry(KICK_HALF * 2, 0.25, 0.5), kickers, (k, o) => {
+  instanced(new THREE.BoxGeometry(KICK_HALF * 2, 0.25, 0.5), kickers.filter((k) => !k.kind), (k, o) => {
     o.position.set(k.x, terrainH(k.x, k.z - 0.01), k.z - 0.25);
   }, { mat: lipMat });
 
@@ -654,6 +692,316 @@ function groundSpan(x, z, w, d) {
     lo = Math.min(lo, h); hi = Math.max(hi, h);
   }
   return [lo, hi];
+}
+
+// --- Terrain features ------------------------------------------------------------
+// Natural and built features on the run itself: mogul fields, rollers, cliff
+// drops, fallen logs or barriers, buildings you can ride up onto and jump off,
+// rocky natural kickers, and tree islands that split the run into two lines.
+// Each one adds height to terrainH, so the physics, the bots and the mesh all
+// see the same shape, and the air comes from riding it: pop off a bump at the
+// right moment and you fly. They sit in the gaps between the built kickers.
+
+// 1 inside [a, b], easing to 0 over `f` either side.
+function band(v, a, b, f) {
+  if (v < a) return v <= a - f ? 0 : smooth((v - (a - f)) / f);
+  if (v > b) return v >= b + f ? 0 : smooth(1 - (v - b) / f);
+  return 1;
+}
+
+function featureColor(u, z) {
+  for (const f of features) {
+    if (!f.color || z < f.z0 || z > f.z1) continue;
+    const c = f.color(u, z);
+    if (c) return c;
+  }
+  return null;
+}
+
+const ROCKS = [0x6f747d, 0x5f646d, 0x7d828a, 0x565a62];
+function addRocks(list) {
+  instanced(new THREE.DodecahedronGeometry(1, 0), list, (r, o, c) => {
+    o.position.set(r.x, r.y, r.z); o.scale.set(r.s, r.s * 0.75, r.s * 1.1); o.rotation.set(r.x * 3, r.z * 2, r.s);
+    c.set(ROCKS[Math.floor(Math.abs(r.x * 13 + r.z * 7)) % ROCKS.length]);
+  });
+}
+
+// Staggered bumps a few metres apart. At speed you skip across the tops.
+function fMoguls(z0, z1, u0 = -HALF_W, u1 = HALF_W, A = 0.75) {
+  features.push({
+    z0, z1,
+    h: (u, z) => A * band(z, z0 + 4, z1 - 4, 4) * band(u, u0, u1, 2.5) * (0.5 + 0.5 * Math.sin(z * 0.97) * Math.sin(u * 0.9 + z * 0.3)),
+  });
+}
+
+// Big rolling humps across the whole run. Fast riders take off from the crests.
+function fRollers(z0, z1, A = 2.1) {
+  const n = Math.max(1, Math.round((z1 - z0) / 16)), L = (z1 - z0) / n;
+  features.push({ z0, z1, h: (u, z) => A * 0.5 * (1 - Math.cos((2 * Math.PI * (z - z0)) / L)) * band(u, -HALF_W, HALF_W, 3) });
+}
+
+// A shelf across one side of the run that ends in a sheer drop. The other side
+// stays a normal slope, so you choose the drop or the way round.
+function fCliff(a, b, rnd, cfg) {
+  const run = Math.min(32, b - a - 24);
+  if (run < 14) return fRollers(a, b);
+  const z0 = a, zE = a + run, D = cfg.drop, EDGE = 1.6;
+  const left = rnd() < 0.5;
+  const u0 = left ? -HALF_W - 2 : -1, u1 = left ? 1 : HALF_W + 2;
+  const face = cfg.face === "rock" ? ROCK_FACE : [0.55, 0.56, 0.6];
+  features.push({
+    z0, z1: zE + EDGE,
+    h: (u, z) => {
+      const lat = band(u, u0, u1, 4);
+      if (!lat) return 0;
+      return D * lat * (z <= zE ? smooth((z - z0) / run) : 1 - smooth((z - zE) / EDGE));
+    },
+    color: (u, z) => (z >= zE - 0.4 && band(u, u0, u1, 4) > 0.5 ? face : null),
+  });
+  return () => {
+    const lo = Math.max(u0, -HALF_W - 1), hi = Math.min(u1, HALF_W + 1);
+    if (cfg.face === "rock") {
+      // Boulders piled along the foot of the drop, below the line you fly.
+      const rocks = [];
+      for (let u = lo + 1; u < hi - 0.5; u += 2.2 + rnd()) {
+        const z = zE + EDGE + 0.8 + rnd() * 0.8, x = center(z) + u, s = 0.6 + rnd() * 0.7;
+        rocks.push({ x, z, y: terrainH(x, z) - s * 0.3, s });
+      }
+      addRocks(rocks);
+    } else {
+      // A concrete wall with a hazard stripe along the lip.
+      const z = zE + 0.8, x = center(z) + (lo + hi) / 2, top = terrainH(x, zE - 0.2);
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(hi - lo, D + 0.8, 1.2), new THREE.MeshStandardMaterial({ color: 0x8d919b, roughness: 0.95, flatShading: true }));
+      wall.position.set(x, top - (D + 0.8) / 2 - 0.04, z);
+      wall.castShadow = wall.receiveShadow = true;
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(hi - lo, 0.14, 0.16), new THREE.MeshBasicMaterial({ color: 0xffd23f }));
+      stripe.position.set(x, top - 0.02, zE + 0.25);
+      levelGroup.add(wall, stripe);
+    }
+  };
+}
+
+// Fallen logs (or concrete barriers in the city) lying across part of the run.
+// Hit one at speed for a little pop.
+function fLogs(z0, z1, rnd, cfg, ua = -HALF_W + 1.5, ub = HALF_W - 1.5) {
+  const kind = cfg.logs, r = kind === "log" ? 0.45 : 0.7;
+  const n = Math.max(2, Math.round((z1 - z0) / 13));
+  const items = [];
+  for (let i = 0; i < n; i++) {
+    const z = z0 + ((i + 0.5) * (z1 - z0)) / n;
+    const len = Math.min(6 + rnd() * 5, ub - ua - 0.5);
+    const a = ua + rnd() * (ub - ua - len), b = a + len;
+    features.push({
+      z0: z - r, z1: z + r,
+      h: (u, zz) => {
+        const lat = band(u, a, b, 0.3);
+        if (!lat) return 0;
+        const t = Math.abs(zz - z) / r;
+        return lat * (kind === "log" ? r * Math.sqrt(Math.max(0, 1 - t * t)) : r * Math.min(1, (1 - t) / 0.55));
+      },
+    });
+    items.push({ z, a, b });
+  }
+  return () => {
+    const placed = items.map(({ z, a, b }) => {
+      const x = center(z) + (a + b) / 2;
+      return { x, z, len: b - a, y: terrainH(x, z) - r };
+    });
+    if (kind === "log") {
+      instanced(new THREE.CylinderGeometry(1, 1, 1, 10), placed, (l, o, c) => {
+        o.position.set(l.x, l.y, l.z); o.rotation.set(0, 0, Math.PI / 2); o.scale.set(r, l.len, r); c.set(0x5a3e2b);
+      });
+      instanced(new THREE.BoxGeometry(1, 1, 1), placed, (l, o, c) => {
+        o.position.set(l.x, l.y + r - 0.02, l.z); o.scale.set(l.len * 0.9, 0.08, r * 1.1); c.set(0xf2f6fb);
+      });
+    } else {
+      instanced(new THREE.BoxGeometry(1, 1, 1), placed, (l, o, c) => {
+        o.position.set(l.x, l.y + r / 2, l.z); o.scale.set(l.len, r + 0.02, 0.55); c.set(0xb9bcc4);
+      });
+      instanced(new THREE.BoxGeometry(1, 1, 1), placed, (l, o, c) => {
+        o.position.set(l.x, l.y + 0.12, l.z); o.scale.set(l.len, 0.24, 1.3); c.set(0x9a9ea8);
+      }, { shadow: false });
+      instanced(new THREE.BoxGeometry(1, 1, 1), placed, (l, o) => {
+        o.position.set(l.x, l.y + r - 0.12, l.z); o.scale.set(l.len, 0.12, 0.57);
+      }, { mat: new THREE.MeshBasicMaterial({ color: 0xff3fb4 }), shadow: false });
+    }
+  };
+}
+
+// Pictures for the walls of the buildings you can ride onto.
+function roofLookTextures(look) {
+  const side = canvasTexture(256, 128, (g) => {
+    if (look === "bus") {
+      g.fillStyle = "#f2b705"; g.fillRect(0, 0, 256, 128);
+      g.fillStyle = "#1b2233"; g.fillRect(0, 22, 256, 40);
+      for (let x = 8; x < 250; x += 40) { g.fillStyle = x % 80 ? "#ffe2a0" : "#bfe3ff"; g.fillRect(x, 26, 32, 32); }
+      g.fillStyle = "#222"; g.fillRect(0, 100, 256, 10);
+      g.fillStyle = "#111"; for (const x of [44, 200]) { g.beginPath(); g.arc(x, 128, 22, Math.PI, 0); g.fill(); }
+    } else if (look === "hut") {
+      g.fillStyle = "#c8372d"; g.fillRect(0, 0, 256, 128);
+      g.fillStyle = "#f4f4f4"; g.fillRect(0, 14, 256, 10);
+      g.fillStyle = "#1b2233"; g.fillRect(40, 44, 50, 36); g.fillRect(166, 44, 50, 36);
+      g.fillStyle = "#f4f4f4"; g.fillRect(118, 40, 20, 52); g.fillRect(102, 56, 52, 20);
+    } else {
+      g.fillStyle = "#6b4a2f"; g.fillRect(0, 0, 256, 128);
+      g.strokeStyle = "#4e3420"; g.lineWidth = 3;
+      for (let y = 10; y < 128; y += 14) { g.beginPath(); g.moveTo(0, y); g.lineTo(256, y); g.stroke(); }
+      for (const x of [40, 160]) {
+        g.fillStyle = "#3a2817"; g.fillRect(x - 4, 36, 60, 46);
+        g.fillStyle = "#ffd98a"; g.fillRect(x, 40, 24, 18); g.fillRect(x + 28, 40, 24, 18); g.fillRect(x, 60, 24, 18); g.fillRect(x + 28, 60, 24, 18);
+      }
+    }
+  });
+  const end = canvasTexture(128, 128, (g) => {
+    if (look === "bus") {
+      g.fillStyle = "#f2b705"; g.fillRect(0, 0, 128, 128);
+      g.fillStyle = "#1b2233"; g.fillRect(10, 18, 108, 44);
+      g.fillStyle = "#ff3030"; g.fillRect(8, 82, 22, 14); g.fillRect(98, 82, 22, 14);
+      g.fillStyle = "#222"; g.fillRect(0, 104, 128, 12);
+    } else if (look === "hut") {
+      g.fillStyle = "#c8372d"; g.fillRect(0, 0, 128, 128);
+      g.fillStyle = "#f4f4f4"; g.fillRect(54, 24, 20, 64); g.fillRect(32, 46, 64, 20);
+      g.fillStyle = "#1b2233"; g.fillRect(44, 96, 40, 32);
+    } else {
+      g.fillStyle = "#6b4a2f"; g.fillRect(0, 0, 128, 128);
+      g.strokeStyle = "#4e3420"; g.lineWidth = 3;
+      for (let y = 10; y < 128; y += 14) { g.beginPath(); g.moveTo(0, y); g.lineTo(128, y); g.stroke(); }
+      g.fillStyle = "#a8342a"; g.fillRect(50, 66, 30, 62);
+      g.fillStyle = "#ffd98a"; g.fillRect(14, 40, 24, 22); g.fillRect(92, 40, 24, 22);
+    }
+  });
+  return { side, end };
+}
+
+// A building half-buried in snow: ride the snow ramp up onto the roof and jump
+// off the far end. Its walls are solid.
+function fRoof(a, b, rnd, cfg) {
+  const H = 3.2, w = 7, ramp = 10, roof = cfg.roof === "bus" ? 11 : 9;
+  if (b - a < ramp + roof + 6) return fMoguls(a, b);
+  const zs = a + 2 + rnd() * (b - a - ramp - roof - 6), zr = zs + ramp, ze = zr + roof;
+  const uc = (rnd() - 0.5) * 16;
+  features.push({
+    z0: zs, z1: ze + 0.8,
+    h: (u, z) => {
+      const lat = band(u, uc - w / 2, uc + w / 2, z < zr ? 2 : 0.5);
+      if (!lat) return 0;
+      return lat * (z < zr ? (H * (z - zs)) / ramp : z < ze ? H : H * (1 - (z - ze) / 0.8));
+    },
+  });
+  return () => {
+    const zc = zr + roof / 2, xc = center(zc) + uc;
+    const yS = terrainH(center(zr + 0.3) + uc, zr + 0.3), yE = terrainH(center(ze - 0.3) + uc, ze - 0.3);
+    const Hb = H + 1.4;
+    const { side, end } = roofLookTextures(cfg.roof);
+    const glow = cfg.roof === "bus" ? { emissive: 0xffffff, emissiveIntensity: 0.35 } : {};
+    const m = (map) => new THREE.MeshStandardMaterial({ map, roughness: 0.8, ...(map && glow.emissive ? { ...glow, emissiveMap: map } : {}) });
+    const plain = new THREE.MeshStandardMaterial({ color: cfg.roof === "bus" ? 0xf2b705 : cfg.roof === "hut" ? 0xc8372d : 0x6b4a2f, roughness: 0.85 });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(w - 0.2, Hb, roof), [m(side), m(side), plain, plain, m(end), plain]);
+    body.position.set(xc, (yS + yE) / 2 - 0.12 - Hb / 2, zc);
+    body.rotation.x = Math.atan2(yS - yE, roof - 0.6);
+    body.castShadow = body.receiveShadow = true;
+    levelGroup.add(body);
+    if (cfg.roof !== "bus") {
+      // Trim along the roof edges and a chimney poking out of the snow, so it reads as a building from uphill.
+      const trim = new THREE.MeshStandardMaterial({ color: 0x3a2817, roughness: 0.9 });
+      for (const s of [-1, 1]) {
+        const edge = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.32, roof + 0.3), trim);
+        edge.position.set(s * (w / 2 - 0.05), Hb / 2 + 0.1, 0);
+        body.add(edge);
+      }
+      const end = new THREE.Mesh(new THREE.BoxGeometry(w + 0.1, 0.32, 0.22), trim);
+      end.position.set(0, Hb / 2 + 0.1, roof / 2);
+      body.add(end);
+      const cz = ze - 2.5, cx = center(cz) + uc + (w / 2 - 0.9), cy = terrainH(cx, cz);
+      const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.6, 0.8), new THREE.MeshStandardMaterial({ color: 0x6f6a66, roughness: 0.95, flatShading: true }));
+      chimney.position.set(cx, cy + 0.6, cz);
+      chimney.castShadow = true;
+      levelGroup.add(chimney);
+      addObstacle({ x: cx, z: cz, y: cy, r: 0.6, h: 1.4, name: "Chimney!" });
+    }
+    // Solid walls down both sides: ride into one and you crash, unless you're up on the roof.
+    for (let z = zr; z <= ze; z += 1.1) {
+      for (const s of [-1, 1]) {
+        const x = center(z) + uc + s * (w / 2 - 0.35);
+        addObstacle({ x, z, y: terrainH(x, z) - H, r: 0.55, h: H - 0.35, name: "Hit the wall!" });
+      }
+    }
+  };
+}
+
+// A natural kicker: a snowdrift banked against rocks, with no built lip.
+function fRockKicker(a, b, rnd) {
+  const z = Math.min(b - 4, a + 26), u = (rnd() - 0.5) * 14;
+  const k = { z, x: center(z) + u, h: 2.5, len: 11, kind: "rock" };
+  kickers.push(k);
+  return () => {
+    const front = [];
+    for (let dx = -KICK_HALF + 0.5; dx <= KICK_HALF - 0.5; dx += 1.6) {
+      const zz = z + LIP_DROP + 0.7 + rnd() * 0.5, x = k.x + dx, s = 0.6 + rnd() * 0.4;
+      front.push({ x, z: zz, y: terrainH(x, zz) - s * 0.35, s });
+    }
+    // Big boulders either side of the drift; these you can hit.
+    const sides = [-1, 1].map((s) => {
+      const zz = z - 3, x = k.x + s * (KICK_HALF + KICK_FADE + 1.4), sc = 1.3 + rnd() * 0.4;
+      const y = terrainH(x, zz);
+      addObstacle({ x, z: zz, y, r: sc * 0.95, h: sc * 1.2, name: "Rock!" });
+      return { x, z: zz, y: y + sc * 0.2, s: sc };
+    });
+    addRocks([...front, ...sides]);
+  };
+}
+
+// A raised island of trees down the middle of the run. One side has moguls,
+// the other has logs or barriers.
+function fSplit(z0, z1, rnd, cfg) {
+  features.push({ z0, z1, h: (u, z) => 1.4 * band(u, -3, 3, 3) * band(z, z0 + 5, z1 - 5, 5) });
+  lanes.push({ z0, z1, off: 10.5 });
+  const left = rnd() < 0.5;
+  fMoguls(z0 + 6, z1 - 6, left ? -HALF_W : 6.5, left ? -6.5 : HALF_W, 0.7);
+  const logs = fLogs(z0 + 8, z1 - 8, rnd, cfg, left ? 7 : -HALF_W + 1, left ? HALF_W - 1 : -7);
+  return () => {
+    const trees = [];
+    // The trees start a little way onto the island, so there's room to pick a side.
+    for (let z = z0 + 12; z < z1 - 6; z += 3.4) {
+      for (const s of [-1, 1]) {
+        const x = center(z) + s * (1.3 + rnd() * 0.5);
+        trees.push({ x, z: z + rnd() * 1.2, y: terrainH(x, z), s: 0.75 + rnd() * 0.4 });
+      }
+    }
+    addPines(trees, cfg.pines[0], cfg.pines[1]);
+    if (cfg.planters) {
+      instanced(new THREE.BoxGeometry(1, 1, 1), trees, (t, o, c) => { o.position.set(t.x, t.y + 0.2, t.z); o.scale.set(1.6, 0.6, 1.6); c.set(0x7d818c); });
+    }
+    logs();
+  };
+}
+
+const FEATURES = {
+  moguls: (a, b) => fMoguls(a, Math.min(b, a + 55)),
+  rollers: (a, b) => fRollers(a, Math.min(b, a + 50)),
+  cliff: fCliff,
+  logs: (a, b, rnd, cfg) => fLogs(a, Math.min(b, a + 45), rnd, cfg),
+  roof: fRoof,
+  rock: fRockKicker,
+  split: (a, b, rnd, cfg) => fSplit(a, Math.min(b, a + 62), rnd, cfg),
+};
+
+// Put one feature in each gap between the built kickers (and before the first
+// and after the last), in the order the level lists them.
+function placeFeatures(cfg, rnd) {
+  const built = kickers.slice();
+  const gaps = [[45, built[0].z - built[0].len - 10]];
+  for (let i = 0; i + 1 < built.length; i++) gaps.push([built[i].z + 28, built[i + 1].z - built[i + 1].len - 10]);
+  gaps.push([built[built.length - 1].z + 28, COURSE_LEN - 20]);
+  const visuals = [];
+  gaps.forEach(([a, b], i) => {
+    if (b - a < 24) return;
+    const v = FEATURES[cfg.list[i % cfg.list.length]](a, b, rnd, cfg);
+    if (v) visuals.push(v);
+  });
+  kickers.sort((p, q) => p.z - q.z);
+  // Meshes go in once every feature has shaped the ground they sit on.
+  for (const v of visuals) v();
 }
 
 // --- Snowy Peak: the original overcast mountain --------------------------------
@@ -992,6 +1340,10 @@ const LEVELS = {
     seed: 7331, build: buildPeak, ground: snowGround,
     course: { a1: 16, p1: 130, o1: 0, a2: 7, p2: 53, o2: 1.3, bump: 0 },
     kickers: { start: 150, offsets: [0, -7, 6, -3, 8, -6], gaps: [100, 120, 140] },
+    terrain: {
+      list: ["rollers", "moguls", "cliff", "logs", "split", "rock", "roof", "cliff", "moguls", "rollers", "split", "rock"],
+      drop: 5, face: "rock", logs: "log", roof: "hut", pines: [[0x2f5d46, 0x356b4c, 0x28503f], 0xe8f0fa],
+    },
     sky: 0xcfd8e2, fog: [0xcfd8e2, 25, 230], hemi: [0xeef3fa, 0x8a98b0, 1.7], sun: [0xfff8ee, 1.0], riderLight: 0,
     snow: 0.9, puffs: 1, kickerColor: [0.5, 0.72, 1.0],
     furniture: { poles: [0xff6a2a, 0x3a6dff], lip: 0xff8a2a, net: "#ff7a1a", banners: ["#3a6dff", "#e0443a"] },
@@ -1001,6 +1353,10 @@ const LEVELS = {
     seed: 90210, build: buildCity, ground: snowGround,
     course: { a1: 12, p1: 170, o1: 0.6, a2: 9, p2: 61, o2: 2.2, bump: 1.7 },
     kickers: { start: 130, offsets: [4, -6, 0, 7, -4, 2], gaps: [95, 120, 145] },
+    terrain: {
+      list: ["rollers", "logs", "roof", "cliff", "moguls", "split", "roof", "logs", "cliff", "rollers", "split", "roof"],
+      drop: 3.5, face: "concrete", logs: "barrier", roof: "bus", pines: [[0x1f4a3a, 0x24553f], 0xdfe8f5], planters: true,
+    },
     sky: 0x05070f, fog: [0x151330, 40, 300], hemi: [0x6c7cc0, 0x241c34, 0.55], sun: [0xa9bcff, 0.4], riderLight: 9,
     snow: 0.7, puffs: 0.3, kickerColor: [0.62, 0.55, 1.0],
     furniture: { poles: [0xff3fb4, 0x3ff0ff], lip: 0xff3fb4, lipGlow: true, net: "#3ff0ff", post: 0x1a1d26, banners: ["#7a2bd6", "#ff3f8a"] },
@@ -1010,6 +1366,10 @@ const LEVELS = {
     seed: 2468, build: buildValley, ground: valleyGround,
     course: { a1: 20, p1: 150, o1: 2, a2: 5, p2: 47, o2: 0, bump: 3.1 },
     kickers: { start: 160, offsets: [-5, 3, 8, -8, 0, 5], gaps: [105, 130] },
+    terrain: {
+      list: ["rollers", "roof", "moguls", "logs", "cliff", "split", "roof", "rock", "rollers", "roof", "moguls", "cliff"],
+      drop: 4.5, face: "rock", logs: "log", roof: "cabin", pines: [[0x2f6b3a, 0x3a7a40, 0x2a5e35]],
+    },
     sky: 0xdcebf7, fog: [0xd4e6f4, 70, 560], hemi: [0xeaf4ff, 0x7a8a60, 1.45], sun: [0xfff0d6, 2.1], riderLight: 0,
     snow: 0, puffs: 0.25, kickerColor: [0.55, 0.78, 1.0],
     furniture: { poles: [0xd8432e, 0x2f7ad8], lip: 0xff8a2a, net: "#d0482f", post: 0x5a3e2b, banners: ["#2f8a4a", "#d0482f"] },
@@ -1036,8 +1396,12 @@ function setLevel(id) {
   disposeGroup(levelGroup);
   disposeGroup(backdrop);
   obstacles.clear();
+  features.length = 0;
+  lanes.length = 0;
   Object.assign(course, level.course);
   layoutKickers(level.kickers);
+  // Features get their own random stream, so they don't shift the scenery's.
+  placeFeatures(level.terrain, mulberry32(level.seed ^ 0x5bd1e995));
 
   const rnd = mulberry32(level.seed);
   buildTerrain(rnd, level.ground, level.kickerColor);
@@ -1907,6 +2271,9 @@ function leaveGround(r, y, vy) {
   r.y = y; r.vy = vy;
   r.airTime = 0; r.spin = 0; r.flip = 0; r.grabTime = 0; r.grabbing = false; r.popped = false;
   r.takeoffSw = r.sw;
+  // Players' held inputs are latched (see airStep). Bots plan their tricks, so they aren't.
+  const i = r.inp || NO_INPUT;
+  r.latch = r.isPlayer ? { left: i.left, right: i.right, tuck: i.tuck, brake: i.brake } : null;
   // Flips turn about the axis across the direction of travel at takeoff, so
   // "forward" always means toward where you're headed, whichever way you've spun.
   r.flipYaw = Math.hypot(r.vx, r.vz) > 1 ? Math.atan2(r.vx, r.vz) : r.heading;
@@ -1917,6 +2284,7 @@ function ollie(r, late) {
   if (r.grounded) leaveGround(r, r.y + 0.02, base);
   r.vy = base + 4 + 4.5 * r.charge;
   r.popped = true;
+  r.latch = null; // after an ollie, everything you hold counts straight away
   if (r.isPlayer) sfx.jump();
 }
 
@@ -1999,9 +2367,15 @@ function airStep(r, h, inp) {
   r.x += r.vx * h; r.y += r.vy * h; r.z += r.vz * h;
   r.airTime += h;
   if (canControl(r)) {
-    const steer = (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
+    // Leaving the ground off a bump or drop without an ollie, a turn or tuck you
+    // were already holding doesn't count until you let go and press it again,
+    // so riding through moguls or off a cliff doesn't throw you into a spin or flip.
+    const L = r.latch;
+    if (L) for (const k in L) if (!inp[k]) L[k] = false;
+    const held = (k) => inp[k] && !(L && L[k]);
+    const steer = (held("right") ? 1 : 0) - (held("left") ? 1 : 0);
+    const pitch = (held("tuck") ? 1 : 0) - (held("brake") ? 1 : 0);
     r.spin -= steer * SPIN_RATE * h;
-    const pitch = (inp.tuck ? 1 : 0) - (inp.brake ? 1 : 0);
     r.flip += pitch * FLIP_RATE * h;
     if (inp.grab) {
       if (!r.grabbing) {
@@ -2225,6 +2599,9 @@ function botControls(r, h) {
   const look = Math.max(7, speed * 0.7);
   let tx = center(r.z + look) + 5 * Math.sin(b.t * 0.25 + b.phase);
   if (k && b.goKick && toKick < 40) tx = k.x + b.kickOff;
+  // Go round tree islands on whichever side we're already on.
+  const lane = lanes.find((l) => r.z + look > l.z0 - 30 && r.z < l.z1);
+  if (lane) tx = center(r.z + look) + (r.x >= center(r.z) ? 1 : -1) * lane.off;
   const err = wrapAngle(Math.atan2(tx - r.x, look) - r.heading);
   if (err > 0.04) inp.left = true;
   else if (err < -0.04) inp.right = true;
