@@ -64,13 +64,23 @@ Any of them can give you air. Pop an ollie at the top of a bump for more height.
 
 ## How to play
 
-- Solo, you race three bots: Juniper, Blaze and Nova, from easiest to hardest. Your place is shown in the HUD, and the results screen lists the finishing order, filling in live as other riders cross the line. Riders pass through each other.
+- Solo, you race three bots: Juniper, Blaze and Nova, from easiest to hardest. Your place is shown on the race screen, and the results screen lists the finishing order, filling in live as other riders cross the line. Riders pass through each other.
 - Carve left and right to follow the run. The banks on either side are steep and lined with trees (and lamp posts in the city), and hitting one wipes you out, as does hitting a tree on an island, a boulder or the wall of a building. Safety nets part way up each bank stop you leaving the course: you can't jump over them, and riding into one turns you along it and scrubs off a little speed.
 - Tuck to go faster. Brake to skid and turn more sharply.
 - Each kicker has a bright lip (orange on most courses, neon pink in the city). Hold jump on the approach to charge an ollie and release it at the lip to get more air. You can also release just after leaving the lip.
 - In the air, steer to spin, hold tuck to front flip or brake to back flip, and hold grab to grab the board. Hold tuck or brake as you start a grab for a Tail or Nose grab.
 - Spins and flips combine, so you can throw a backflip with a 360 in it.
 - Let go of the grab and line your board up with the direction you're travelling before you touch down. Landing sideways, upside down, part way through a flip or while still grabbing is a wipeout. Landing backwards counts, and you ride switch until your next trick.
+
+## Race screen
+
+While you race, the screen shows:
+
+- **Top left:** your race time, in minutes, seconds and hundredths (0'17"29), with your trick points underneath.
+- **Top right:** your speed in km/h.
+- **Bottom right:** your place (1st, 2nd and so on) above a map of the course. The map is a line from S (start) at the bottom to G (goal) at the top, following the course's bends. You're the orange marker with your place in it, and the other riders are dots in their name-tag colours.
+
+The sound, music, voice and restart buttons sit in the bottom left, or down the right-hand side on touch screens.
 
 ## Riders' gear
 
@@ -143,7 +153,7 @@ How it works:
 
 ## High scores
 
-Each time you finish a race, solo or in a lobby, the run is saved to your high scores. **High scores** on the main menu lists your 10 best across all courses, each with its score, time, finishing place, whether it was in a lobby, the course, and the date and time you set it. The results screen tells you when a run makes the list. Each course also keeps its own best score, which the HUD and the course picker show. **Clear history** empties the list and every course's best after a second click to confirm.
+Each time you finish a race, solo or in a lobby, the run is saved to your high scores. **High scores** on the main menu lists your 10 best across all courses, each with its score, time, finishing place, whether it was in a lobby, the course, and the date and time you set it. The results screen tells you when a run makes the list. Each course also keeps its own best score, which the course picker shows. **Clear history** empties the list and every course's best after a second click to confirm.
 
 High scores are stored only in this browser, so they don't follow you to other browsers or devices, and clearing the site's data removes them.
 

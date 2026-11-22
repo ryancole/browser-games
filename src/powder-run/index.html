@@ -32,28 +32,49 @@
   button.secondary { background: rgba(42, 47, 58, 0.85); }
   button.secondary:hover { background: #363c4a; }
 
-  #hud {
-    position: fixed; top: 12px; left: 12px;
-    display: grid; grid-template-columns: auto auto; gap: 2px 14px;
-    padding: 0.6rem 0.85rem;
-    background: rgba(15, 17, 21, 0.6);
-    border-radius: 10px;
+  /* Race HUD: arcade-style bands across the top corners, shown only while racing. */
+  .race-hud { position: fixed; pointer-events: none; display: none; font-style: italic; }
+  body.racing .race-hud { display: block; }
+  #hud { top: 14px; left: 0; }
+  #speedo { top: 14px; right: 0; }
+  .band {
+    display: flex; align-items: baseline; gap: 0.7rem; width: fit-content;
+    padding: 0.1rem 2.6rem 0.15rem 1.1rem;
+    background: linear-gradient(90deg, rgba(18, 22, 32, 0.72) 0%, rgba(18, 22, 32, 0.55) 70%, rgba(18, 22, 32, 0) 100%);
+    clip-path: polygon(0 0, 100% 0, calc(100% - 18px) 100%, 0 100%);
+  }
+  #speedo .band {
+    padding: 0.1rem 1.1rem 0.15rem 2.6rem;
+    background: linear-gradient(270deg, rgba(18, 22, 32, 0.72) 0%, rgba(18, 22, 32, 0.55) 70%, rgba(18, 22, 32, 0) 100%);
+    clip-path: polygon(18px 0, 100% 0, 100% 100%, 0 100%);
+  }
+  .band.sub { margin-top: 6px; padding-top: 0; padding-bottom: 0.05rem; }
+  .band .lbl {
+    font-weight: 800; font-size: clamp(0.85rem, 2.2vw, 1.25rem); letter-spacing: 0.04em; color: #f4f6fa;
+    text-shadow: 2px 2px 0 #1a1d26, -1px -1px 0 #1a1d26, 1px -1px 0 #1a1d26, -1px 1px 0 #1a1d26;
+  }
+  .band .val {
+    font-weight: 900; font-size: clamp(1.4rem, 4.6vw, 2.5rem); letter-spacing: 0.06em; color: #ffd84f;
     font-variant-numeric: tabular-nums;
-    font-size: 0.95rem;
+    text-shadow: 3px 3px 0 #3d2c00, -1px -1px 0 #3d2c00, 1px -1px 0 #3d2c00, -1px 1px 0 #3d2c00;
   }
-  #hud .label { opacity: 0.6; font-size: 0.72rem; letter-spacing: 0.08em; align-self: center; }
-  #top-right { position: fixed; top: 12px; right: 12px; display: flex; gap: 0.5rem; }
-  /* On narrow screens, wrap the top-right buttons rather than run them under the HUD. */
+  .band.sub .val { font-size: clamp(1rem, 3vw, 1.5rem); }
+  #course-map { right: 18px; bottom: 18px; text-align: center; }
+  #map { display: block; width: 74px; height: 240px; margin: 0 auto; }
+  #pos {
+    font-weight: 900; font-size: clamp(2rem, 5vw, 2.8rem); line-height: 1; margin-bottom: 0.3rem;
+    color: #ffc23a; font-variant-numeric: tabular-nums;
+    text-shadow: 3px 3px 0 #4a2a00, -1px -1px 0 #4a2a00, 1px -1px 0 #4a2a00, -1px 1px 0 #4a2a00;
+  }
+  #pos small { font-size: 0.55em; }
+  /* Sound, music, voice and restart sit out of the way in the bottom left. */
+  #top-right { position: fixed; left: 12px; bottom: 12px; display: flex; gap: 0.5rem; }
+  #top-right button { padding: 0.35rem 0.7rem; font-size: 0.8rem; }
   @media (max-width: 640px) {
-    #top-right { flex-wrap: wrap; justify-content: flex-end; max-width: calc(100vw - 150px); gap: 0.35rem; }
-    #top-right button { padding: 0.35rem 0.6rem; font-size: 0.78rem; }
+    #map { width: 56px; height: 170px; }
+    .band { padding-right: 1.8rem; }
+    #speedo .band { padding-left: 1.8rem; }
   }
-  #progress {
-    position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
-    width: min(34vw, 300px); height: 6px;
-    background: rgba(15, 17, 21, 0.55); border-radius: 3px; overflow: hidden;
-  }
-  #progress div { height: 100%; width: 0; background: #4f8cff; }
   #popup {
     position: fixed; top: 20%; left: 0; right: 0;
     text-align: center; font-weight: 700;
@@ -135,7 +156,7 @@
     padding: clamp(1.2rem, 5vh, 3rem) clamp(1.2rem, 5vw, 4rem);
   }
   #title.hidden { display: none; }
-  body.on-title #hud, body.on-title #top-right, body.on-title #progress, body.on-title #touch { display: none; }
+  body.on-title #top-right, body.on-title #touch { display: none; }
   #title .logo { transform: skewX(-10deg) rotate(-6deg); transform-origin: left top; width: fit-content; margin-top: 1vh; }
   #title .word {
     font-size: clamp(3.4rem, 11vw, 8.5rem); font-weight: 900; font-style: italic; line-height: 0.86;
@@ -175,6 +196,16 @@
     }
     .keys-only { display: none; }
     .tap-only { display: inline; }
+    /* Keep the map and buttons clear of the touch controls along the bottom. */
+    #course-map { bottom: 96px; right: 10px; }
+    #top-right { left: auto; right: 8px; bottom: auto; top: 68px; flex-direction: column; align-items: flex-end; gap: 0.3rem; }
+    #top-right button { padding: 0.3rem 0.55rem; font-size: 0.72rem; }
+  }
+  /* Narrow phones: six full-size touch buttons don't fit across. */
+  @media (pointer: coarse) and (max-width: 440px) {
+    #touch { left: 6px; right: 6px; }
+    #touch .grp { gap: 6px; }
+    #touch button { width: 52px; height: 52px; font-size: 0.66rem; }
   }
 </style>
 <script type="importmap">
@@ -184,14 +215,13 @@
 <body>
 <canvas id="game"></canvas>
 
-<div id="hud">
-  <span class="label">TIME</span><strong id="time">0.00</strong>
-  <span class="label">SPEED</span><span><strong id="speed">0</strong> km/h</span>
-  <span class="label">TRICKS</span><strong id="tricks">0</strong>
-  <span class="label">POS</span><strong id="pos">–</strong>
-  <span class="label">BEST</span><span id="best">–</span>
+<!-- Race HUD: time and trick points top left, speed top right, course map and place bottom right. -->
+<div id="hud" class="race-hud">
+  <div class="band"><span class="lbl">TIME</span><span class="val" id="time">0'00"00</span></div>
+  <div class="band sub"><span class="lbl">TRICKS</span><span class="val" id="tricks">0</span></div>
 </div>
-<div id="progress"><div></div></div>
+<div id="speedo" class="race-hud"><div class="band"><span class="val" id="speed">0</span><span class="lbl">km/h</span></div></div>
+<div id="course-map" class="race-hud"><div id="pos">1<small>st</small></div><canvas id="map"></canvas></div>
 <div id="top-right">
   <button id="voice" class="secondary">Voice: on</button>
   <button id="music" class="secondary">Music: on</button>
@@ -3457,23 +3487,84 @@ const snapCamera = () => updateCamera(0, true);
 // HUD and panels
 // ---------------------------------------------------------------------------
 const $ = (id) => document.getElementById(id);
-const timeEl = $("time"), speedEl = $("speed"), tricksEl = $("tricks"), posEl = $("pos"), bestEl = $("best");
+const timeEl = $("time"), speedEl = $("speed"), tricksEl = $("tricks"), posEl = $("pos");
 const countEl = $("count"), popupEl = $("popup"), chargeEl = $("charge");
-const progressEl = document.querySelector("#progress div");
 const panel = $("panel"), card = $("card"), muteBtn = $("mute"), musicBtn = $("music"), voiceBtn = $("voice"), restartBtn = $("restart"), leaveTopBtn = $("leave-lobby");
 const fmt = (n) => n.toLocaleString("en-US");
 const ordinal = (n) => n + (n > 3 && n < 21 ? "th" : ["th", "st", "nd", "rd"][n % 10] || "th");
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
+// Race time as 1'05"42: minutes, seconds, hundredths.
+function fmtRaceTime(t) {
+  const cs = Math.floor(t * 100);
+  return `${Math.floor(cs / 6000)}'${String(Math.floor(cs / 100) % 60).padStart(2, "0")}"${String(cs % 100).padStart(2, "0")}`;
+}
+
+let hudPlace = 0;
 function updateHUD() {
-  timeEl.textContent = (me.finished ? me.finishTime : raceTime).toFixed(2);
-  speedEl.textContent = Math.round(Math.hypot(me.vx, me.vz) * 3.6);
-  tricksEl.textContent = fmt(me.trickScore);
-  posEl.textContent = `${standings().indexOf(me) + 1} / ${riders.length}`;
-  bestEl.textContent = best ? fmt(best) : "–";
-  progressEl.style.width = `${Math.min(100, Math.max(0, (me.z / COURSE_LEN) * 100))}%`;
+  const racing = state === "countdown" || state === "run";
+  document.body.classList.toggle("racing", racing);
   chargeEl.style.opacity = me.charge > 0 ? 1 : 0;
   chargeEl.firstElementChild.style.width = `${me.charge * 100}%`;
+  if (!racing) return;
+  timeEl.textContent = fmtRaceTime(me.finished ? me.finishTime : raceTime);
+  speedEl.textContent = Math.round(Math.hypot(me.vx, me.vz) * 3.6);
+  tricksEl.textContent = fmt(me.trickScore);
+  const place = standings().indexOf(me) + 1;
+  if (place !== hudPlace) {
+    hudPlace = place;
+    const suffix = ordinal(place).slice(String(place).length);
+    posEl.innerHTML = `${place}<small>${suffix}</small>`;
+  }
+  drawMap(place);
+}
+
+// The course map: the run's line from S (start) at the bottom to G (goal) at
+// the top, a dot for each rider, and a bigger marker with your place for you.
+const mapCanvas = $("map"), mapCtx = mapCanvas.getContext("2d");
+let mapPath = null; // [{ x, y }] in 0..1 across, 0 (start) .. 1 (goal) up; rebuilt per course
+function mapPoint(z) {
+  const t = Math.min(1, Math.max(0, z / COURSE_LEN));
+  const i = t * (mapPath.length - 1), a = Math.floor(i), b = Math.min(mapPath.length - 1, a + 1), f = i - a;
+  return { x: mapPath[a].x + (mapPath[b].x - mapPath[a].x) * f, y: t };
+}
+function drawMap(place) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const cw = mapCanvas.clientWidth, ch = mapCanvas.clientHeight;
+  if (mapCanvas.width !== Math.round(cw * dpr) || mapCanvas.height !== Math.round(ch * dpr)) {
+    mapCanvas.width = Math.round(cw * dpr); mapCanvas.height = Math.round(ch * dpr);
+  }
+  if (!mapPath || mapPath.level !== levelId) {
+    // The line's wiggle, scaled so the widest bend just fits.
+    const pts = [];
+    let maxAbs = 1;
+    for (let i = 0; i <= 70; i++) { const c = center((i / 70) * COURSE_LEN); pts.push(c); maxAbs = Math.max(maxAbs, Math.abs(c)); }
+    mapPath = pts.map((c) => ({ x: 0.5 + (c / maxAbs) * 0.28 }));
+    mapPath.level = levelId;
+  }
+  const g = mapCtx, pad = 13 * dpr, W = mapCanvas.width, H = mapCanvas.height;
+  const px = (p) => p.x * W, py = (p) => H - pad - p.y * (H - pad * 2);
+  g.clearRect(0, 0, W, H);
+  g.lineCap = g.lineJoin = "round";
+  for (const [width, color] of [[9 * dpr, "#0b3a35"], [5.5 * dpr, "#21b39d"]]) {
+    g.beginPath();
+    mapPath.forEach((p, i) => { const q = { x: p.x, y: i / (mapPath.length - 1) }; i ? g.lineTo(px(q), py(q)) : g.moveTo(px(q), py(q)); });
+    g.lineWidth = width; g.strokeStyle = color; g.stroke();
+  }
+  const disc = (p, r, fill, text, textColor = "#fff") => {
+    g.beginPath(); g.arc(px(p), py(p), r, 0, Math.PI * 2);
+    g.fillStyle = fill; g.fill();
+    g.lineWidth = 2 * dpr; g.strokeStyle = "#0b2520"; g.stroke();
+    if (text) {
+      g.fillStyle = textColor; g.font = `italic 900 ${Math.round(r * 1.25)}px system-ui, sans-serif`;
+      g.textAlign = "center"; g.textBaseline = "middle";
+      g.fillText(text, px(p), py(p) + r * 0.06);
+    }
+  };
+  disc({ x: mapPath[0].x, y: 0 }, 10 * dpr, "#1a9c88", "S");
+  disc({ x: mapPath[mapPath.length - 1].x, y: 1 }, 10 * dpr, "#1a9c88", "G");
+  for (const r of riders) if (r !== me) disc(mapPoint(r.z), 4.5 * dpr, (LOOKS[r.look] || LOOKS[0]).tagColor);
+  disc(mapPoint(me.z), 9 * dpr, "#ffb02e", String(place), "#3d2400");
 }
 
 let popupTimer = 0;
