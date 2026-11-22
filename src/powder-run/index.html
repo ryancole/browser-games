@@ -445,11 +445,12 @@ import * as THREE from "three";
 // Course definition. Downhill is +Z. The terrain is a pure function of (x, z),
 // which both the mesh and the physics sample, so they always agree.
 // ---------------------------------------------------------------------------
-const COURSE_LEN = 1400;   // metres from start to the finish line
+const SECTION_LEN = 1400;  // metres in one section of a course; most levels are one section
+let COURSE_LEN = SECTION_LEN; // metres from start to the finish line (set per level)
 const RUNOUT = 180;        // flat-ish area past the finish
 let HALF_W = 18;           // half-width of the groomed run (set per level)
 const SLOPE = 0.3;         // average fall-line gradient
-const PAR_TIME = 70;       // seconds; finishing faster earns a time bonus
+const PAR_TIME = 70;       // seconds per section; finishing faster earns a time bonus
 
 const G_GROUND = 22;       // gravity used for sliding along the slope
 const G_AIR = 28;          // gravity in the air (a little floaty-but-snappy)
@@ -488,11 +489,18 @@ const center = (z) => {
 // Kickers: a ramp that curves up over `len` metres, then drops off at the lip.
 const KICK_HALF = 5, KICK_FADE = 2.5, LIP_DROP = 2;
 const kickers = [];
-function layoutKickers({ start, offsets, gaps, at }) {
+function layoutKickers({ start, offsets, gaps, at }, sections = 1) {
   kickers.length = 0;
-  // Courses with a hand-made layout list their kickers: [z, offset across the run, big?].
+  // Courses with a hand-made layout list their kickers for one section: [z, offset
+  // across the run, big?]. Each section repeats them, with every other one mirrored.
   if (at) {
-    for (const [z, off, big] of at) kickers.push({ z, x: center(z) + off, h: big ? 3.2 : 2.1, len: big ? 15 : 12 });
+    for (let s = 0; s < sections; s++) {
+      const dz = s * SECTION_LEN, m = s % 2 ? -1 : 1;
+      for (const [z0, off, big] of at) {
+        const z = z0 + dz;
+        kickers.push({ z, x: center(z) + m * off, h: big ? 3.2 : 2.1, len: big ? 15 : 12 });
+      }
+    }
     return;
   }
   let z = start, i = 0;
@@ -703,23 +711,29 @@ function buildTerrain(rnd, ground, kickerColor) {
       p += 3;
     }
   }
-  const idx = new Uint32Array(NX * NZ * 6);
-  let q = 0;
-  for (let j = 0; j < NZ; j++) {
-    for (let i = 0; i < NX; i++) {
-      const a = j * (NX + 1) + i, b = a + 1, c = a + NX + 1, d = c + 1;
-      idx[q++] = a; idx[q++] = c; idx[q++] = b;
-      idx[q++] = b; idx[q++] = c; idx[q++] = d;
+  // Cut the ground into chunks down the hill, so the ones out of view aren't drawn.
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true });
+  const row = (NX + 1) * 3, CHUNK = 150;
+  for (let j0 = 0; j0 < NZ; j0 += CHUNK) {
+    const rows = Math.min(CHUNK, NZ - j0);
+    const idx = new Uint32Array(NX * rows * 6);
+    let q = 0;
+    for (let j = 0; j < rows; j++) {
+      for (let i = 0; i < NX; i++) {
+        const a = j * (NX + 1) + i, b = a + 1, c = a + NX + 1, d = c + 1;
+        idx[q++] = a; idx[q++] = c; idx[q++] = b;
+        idx[q++] = b; idx[q++] = c; idx[q++] = d;
+      }
     }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(pos.slice(j0 * row, (j0 + rows + 1) * row), 3));
+    geo.setAttribute("color", new THREE.BufferAttribute(col.slice(j0 * row, (j0 + rows + 1) * row), 3));
+    geo.setIndex(new THREE.BufferAttribute(idx, 1));
+    geo.computeVertexNormals();
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.receiveShadow = true;
+    levelGroup.add(mesh);
   }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-  geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
-  geo.setIndex(new THREE.BufferAttribute(idx, 1));
-  geo.computeVertexNormals();
-  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true }));
-  mesh.receiveShadow = true;
-  levelGroup.add(mesh);
 }
 
 // Groomed snow on the run, slightly bluer snow up the banks.
@@ -734,7 +748,7 @@ function snowGround(x, z, d, n) {
 // in checkFence; the nets block at any height, so you can't jump over them.
 let FENCE_D = HALF_W + 7;    // distance from the middle of the run (set with HALF_W)
 const FENCE_H = 1.6;
-const FENCE_Z0 = -30, FENCE_Z1 = COURSE_LEN + RUNOUT;
+const FENCE_Z0 = -30;
 const centerSlope = (z) => center(z + 0.5) - center(z - 0.5);
 
 function buildCourseFurniture({ poles: poleColors, lipMat, net: netColor, post = 0x2a2f3a, banners }) {
@@ -765,7 +779,7 @@ function buildCourseFurniture({ poles: poleColors, lipMat, net: netColor, post =
   for (const side of [-1, 1]) {
     const net = [], band = [], uv = [], idx = [];
     let dist = 0, px = 0, pz = 0;
-    for (let z = FENCE_Z0, i = 0; z <= FENCE_Z1; z += 2, i++) {
+    for (let z = FENCE_Z0, i = 0; z <= COURSE_LEN + RUNOUT; z += 2, i++) {
       const x = center(z) + side * FENCE_D, y = terrainH(x, z);
       if (i) dist += Math.hypot(x - px, z - pz);
       px = x; pz = z;
@@ -1448,35 +1462,42 @@ function glade(rnd, z0, z1, u0, u1, n) {
   return list;
 }
 
-// Hand-built courses list their own features. Meshes go in once every feature
-// has shaped the ground they sit on.
-function runLayout(layout, rnd, cfg) {
-  const visuals = layout(rnd, cfg).filter(Boolean);
+// Hand-built courses list their own features for one section, starting dz metres
+// down the hill; m = -1 mirrors the section left to right. Longer courses repeat
+// it, mirroring every other section. Meshes go in once every feature has shaped
+// the ground they sit on.
+function runLayout(layout, rnd, cfg, sections = 1) {
+  const visuals = [];
+  for (let s = 0; s < sections; s++) visuals.push(...layout(rnd, cfg, s * SECTION_LEN, s % 2 ? -1 : 1));
   kickers.sort((p, q) => p.z - q.z);
-  for (const v of visuals) v();
+  for (const v of visuals) if (v) v();
 }
 
 // --- Frozen Gorge: a technical run through an icy gorge at dusk -------------------
-function gorgeLayout(rnd, cfg) {
-  const V = [];
-  fRollers(60, 105, 1.4);
-  V.push(fLedge(185, 40, -1, 6));
-  V.push(fGully(345, 12, 7, { bridge: { u: 4, w: 6 } }));
+// Mirror helpers for a section of a hand-built layout: u flips sides, and a
+// span [a, b] across the run flips to [-b, -a].
+const mirrorSpan = (m, a, b) => (m > 0 ? [a, b] : [-b, -a]);
+
+function gorgeLayout(rnd, cfg, dz = 0, m = 1) {
+  const V = [], Z = (z) => z + dz, S = (a, b) => mirrorSpan(m, a, b);
+  fRollers(Z(60), Z(105), 1.4);
+  V.push(fLedge(Z(185), 40, -m, 6));
+  V.push(fGully(Z(345), 12, 7, { bridge: { u: m * 4, w: 6 } }));
   // The ice cave on the right; moguls on the open left side.
-  V.push(fMass(480, 80, 2, HALF_W + 5, 9, { channel: { u: 11, w: 8 }, roof: true }));
-  fMoguls(485, 555, -HALF_W, -3, 0.75);
-  lanes.push({ z0: 478, z1: 560, opts: [11, -10] });
+  V.push(fMass(Z(480), 80, ...S(2, HALF_W + 5), 9, { channel: { u: m * 11, w: 8 }, roof: true }));
+  fMoguls(Z(485), Z(555), ...S(-HALF_W, -3), 0.75);
+  lanes.push({ z0: Z(478), z1: Z(560), opts: [m * 11, m * -10] });
   // A gap jump off a kicker, or the narrow bridge round the right.
-  kickers.push({ z: 650, x: center(650) - 6, h: 2.4, len: 12 });
-  V.push(fGully(651.5, 14, 8, { bridge: { u: 12, w: 5 }, opts: [-6, 12] }));
-  V.push(fLedge(785, 30, 1, 8));
-  V.push(fLogs(795, 850, rnd, cfg, -HALF_W + 1.5, -4));
+  kickers.push({ z: Z(650), x: center(Z(650)) - m * 6, h: 2.4, len: 12 });
+  V.push(fGully(Z(651.5), 14, 8, { bridge: { u: m * 12, w: 5 }, opts: [m * -6, m * 12] }));
+  V.push(fLedge(Z(785), 30, m, 8));
+  V.push(fLogs(Z(795), Z(850), rnd, cfg, ...S(-HALF_W + 1.5, -4)));
   // The narrows: rock walls close in from both sides.
-  fMass(905, 70, -HALF_W - 5, -6, 8);
-  fMass(905, 70, 6, HALF_W + 5, 8);
-  V.push(fGully(1065, 10, 6, { bridge: { u: -5, w: 6 } }));
-  V.push(fSplit(1140, 1200, rnd, cfg));
-  V.push(fCabinThrough(1262, 0));
+  fMass(Z(905), 70, -HALF_W - 5, -6, 8);
+  fMass(Z(905), 70, 6, HALF_W + 5, 8);
+  V.push(fGully(Z(1065), 10, 6, { bridge: { u: m * -5, w: 6 } }));
+  V.push(fSplit(Z(1140), Z(1200), rnd, cfg));
+  V.push(fCabinThrough(Z(1262), 0));
   return V;
 }
 
@@ -1519,36 +1540,38 @@ function buildGorge(rnd) {
 }
 
 // --- Glacier Bowl: a huge open bowl above the treeline -----------------------------
-function bowlLayout(rnd, cfg) {
-  const V = [];
+function bowlLayout(rnd, cfg, dz = 0, m = 1) {
+  const V = [], Z = (z) => z + dz, S = (a, b) => mirrorSpan(m, a, b);
   // Big drops need long shelves that climb slower than the hill falls, so you
   // reach the edge at speed.
-  const cliff = (zE, u0, u1, D) => V.push(fCliffAt(zE, u0, u1, D, D / 0.16, "rock", rnd));
+  const cliff = (zE, u0, u1, D) => V.push(fCliffAt(Z(zE), ...S(u0, u1), D, D / 0.16, "rock", rnd));
+  const trees = [], addGlade = (z0, z1, u0, u1, n) => trees.push(...glade(rnd, Z(z0), Z(z1), ...S(u0, u1), n));
   cliff(22, -HALF_W - 3, HALF_W + 3, 3); // a small drop off the start
-  fGully(58, 5, 4); // a crevasse to jump
-  fMoguls(95, 150, -HALF_W, -8, 0.8);
-  const trees = glade(rnd, 95, 200, 10, HALF_W - 2, 22);
+  fGully(Z(58), 5, 4); // a crevasse to jump
+  fMoguls(Z(95), Z(150), ...S(-HALF_W, -8), 0.8);
+  addGlade(95, 200, 10, HALF_W - 2, 22);
   cliff(240, -HALF_W - 3, -6, 12);
   cliff(300, 6, HALF_W + 3, 14);
   cliff(470, -14, 14, 11);
-  fMoguls(445, 500, -HALF_W, -18, 0.85);
-  fMoguls(445, 500, 18, HALF_W, 0.85);
-  fPipe(560, 130, 22);
-  fMoguls(570, 680, -HALF_W, -4, 0.8);
+  fMoguls(Z(445), Z(500), -HALF_W, -18, 0.85);
+  fMoguls(Z(445), Z(500), 18, HALF_W, 0.85);
+  fPipe(Z(560), 130, m * 22);
+  fMoguls(Z(570), Z(680), ...S(-HALF_W, -4), 0.8);
   cliff(800, -HALF_W - 3, -4, 13);
-  trees.push(...glade(rnd, 775, 860, 6, HALF_W - 2, 20));
-  fRollers(915, 965, 2.4);
+  addGlade(775, 860, 6, HALF_W - 2, 20);
+  fRollers(Z(915), Z(965), 2.4);
   cliff(1060, 4, HALF_W + 3, 18);
-  fMoguls(1035, 1090, -HALF_W, -4, 0.85);
+  fMoguls(Z(1035), Z(1090), ...S(-HALF_W, -4), 0.85);
   cliff(1220, -16, 16, 12);
-  trees.push(...glade(rnd, 1240, 1330, -HALF_W + 2, -12, 16), ...glade(rnd, 1240, 1330, 12, HALF_W - 2, 16));
+  addGlade(1240, 1330, -HALF_W + 2, -12, 16);
+  addGlade(1240, 1330, 12, HALF_W - 2, 16);
 
   // Stone pillars scattered across the bowl, clear of kickers and the half-pipe.
   const pillars = [];
   for (let tries = 0; pillars.length < 24 && tries < 400; tries++) {
-    const z = 110 + rnd() * 1250, u = -HALF_W + 4 + rnd() * (HALF_W * 2 - 8), x = center(z) + u;
+    const z = Z(110 + rnd() * 1250), u = -HALF_W + 4 + rnd() * (HALF_W * 2 - 8), x = center(z) + u;
     if (kickers.some((k) => Math.abs(z - k.z) < 22 && Math.abs(x - k.x) < 12)) continue;
-    if (u > 8 && z > 550 && z < 700) continue;
+    if (m * u > 8 && z > Z(550) && z < Z(700)) continue;
     if (pillars.some((p) => Math.hypot(p.x - x, p.z - z) < 18) || trees.some((t) => Math.hypot(t.x - x, t.z - z) < 4)) continue;
     pillars.push({ x, z, y: terrainH(x, z) - 0.5, r: 1.6 + rnd() * 1.8, h: 8 + rnd() * 16 });
   }
@@ -1962,7 +1985,7 @@ const LEVELS = {
   },
   gorge: {
     name: "Frozen Gorge", blurb: "A technical run through an icy gorge at dusk: tight turns, bridges over ravines, high ledges, an ice cave and a cabin to ride through.",
-    seed: 31337, build: buildGorge, ground: gorgeGround, layout: gorgeLayout,
+    seed: 31337, build: buildGorge, ground: gorgeGround, layout: gorgeLayout, sections: 3,
     track: { artist: "Pendulum", title: "Watercolour", video: "tEPB7uzKuh4" },
     course: { a1: 12, p1: 150, o1: 0.4, a2: 6, p2: 60, o2: 2.5, bump: 0.8, tight: { a: 9, p: 24, z1: 330 } },
     kickers: { at: [[150, 0], [300, -4, true], [440, 2], [610, -2], [760, 0], [1020, 3, true], [1330, -3]] },
@@ -1973,7 +1996,7 @@ const LEVELS = {
   },
   bowl: {
     name: "Glacier Bowl", blurb: "A huge open bowl above the trees. Pick your own line past stone pillars, off giant cliffs and down an ice half-pipe.",
-    seed: 4242, build: buildBowl, ground: bowlGround, layout: bowlLayout, halfW: 40,
+    seed: 4242, build: buildBowl, ground: bowlGround, layout: bowlLayout, sections: 3, halfW: 40,
     track: { artist: "Foo Fighters", title: "Everlong", video: "eBG7P-K-r1Y" },
     course: { a1: 10, p1: 220, o1: 1, a2: 5, p2: 90, o2: 0.3, bump: 2.2 },
     kickers: { at: [[175, -14], [360, 0], [740, 12], [890, 14], [1140, -8, true], [1330, 0]] },
@@ -2010,10 +2033,11 @@ function setLevel(id) {
   HALF_W = level.halfW ?? 18;
   FENCE_D = HALF_W + 7;
   Object.assign(course, { tight: null }, level.course);
-  layoutKickers(level.kickers);
+  COURSE_LEN = SECTION_LEN * (level.sections ?? 1);
+  layoutKickers(level.kickers, level.sections);
   // Features get their own random stream, so they don't shift the scenery's.
   const frnd = mulberry32(level.seed ^ 0x5bd1e995);
-  if (level.layout) runLayout(level.layout, frnd, level.terrain);
+  if (level.layout) runLayout(level.layout, frnd, level.terrain, level.sections);
   else placeFeatures(level.terrain, frnd);
 
   const rnd = mulberry32(level.seed);
@@ -4039,7 +4063,7 @@ function update(dt) {
       for (const r of riders) stepRider(r, STEP, botControls(r, STEP));
     }
     emitRiderSpray(dt);
-    if (me.z > COURSE_LEN + 30 || attractT > 150) restartAttract();
+    if (me.z > COURSE_LEN + 30 || attractT > 150 * COURSE_LEN / SECTION_LEN) restartAttract();
   }
   // The menu camera drifts on every menu screen, the lobby included.
   const menuCam = attract || menuOpen();
@@ -4250,7 +4274,8 @@ function drawMap(place) {
     // The line's wiggle, scaled so the widest bend just fits.
     const pts = [];
     let maxAbs = 1;
-    for (let i = 0; i <= 70; i++) { const c = center((i / 70) * COURSE_LEN); pts.push(c); maxAbs = Math.max(maxAbs, Math.abs(c)); }
+    const n = Math.round(COURSE_LEN / 20);
+    for (let i = 0; i <= n; i++) { const c = center((i / n) * COURSE_LEN); pts.push(c); maxAbs = Math.max(maxAbs, Math.abs(c)); }
     mapPath = pts.map((c) => ({ x: 0.5 + (c / maxAbs) * 0.28 }));
     mapPath.level = levelId;
   }
@@ -4415,16 +4440,17 @@ function listScreen({ head, items, back, top = "", message = "" }) {
 
 // --- Course picker: a lift pass for each course, laid out on a table ---------
 // Each pass shows the course's own line from start to finish, in its colours.
-function courseLineSVG(c) {
+function courseLineSVG(c, len) {
+  const N = Math.round(len / 35);
   const xs = [];
-  for (let i = 0; i <= 40; i++) {
-    const z = (i / 40) * COURSE_LEN;
+  for (let i = 0; i <= N; i++) {
+    const z = (i / N) * len;
     let x = c.a1 * Math.sin(z / c.p1 + c.o1) + c.a2 * Math.sin(z / c.p2 + c.o2);
     if (c.tight && z < c.tight.z1) x += c.tight.a * Math.sin(z / c.tight.p) * (1 - smooth(z / c.tight.z1));
     xs.push(x);
   }
   const max = Math.max(1, ...xs.map(Math.abs));
-  const pts = xs.map((x, i) => `${(50 + (x / max) * 20).toFixed(1)},${(88 - i * 1.9).toFixed(1)}`).join(" ");
+  const pts = xs.map((x, i) => `${(50 + (x / max) * 20).toFixed(1)},${(88 - (i / N) * 76).toFixed(1)}`).join(" ");
   return `<svg viewBox="0 0 100 100" aria-hidden="true">
     <polyline points="${pts}" fill="none" stroke="rgba(0,0,0,0.25)" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
     <polyline points="${pts}" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
@@ -4439,7 +4465,7 @@ function liftPass(id) {
       <div class="p-scene">
         <svg viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true"><polygon points="0,40 0,30 16,12 27,22 46,3 63,20 76,10 100,30 100,40" fill="rgba(255,255,255,0.92)"/></svg>
       </div>
-      <div class="p-badge">${courseLineSVG(L.course)}</div>
+      <div class="p-badge">${courseLineSVG(L.course, SECTION_LEN * (L.sections ?? 1))}</div>
       <div class="p-name">${esc(L.name)}</div>
       <div class="p-pass">LIFT PASS</div>
       <div class="p-stub">No. ${String(L.seed).padStart(5, "0")}</div>
@@ -4664,7 +4690,7 @@ const refreshLobby = () => { if (net.role && state === "menu") showLobby(); };
 
 function showResults() {
   resultsShown = true;
-  const bonus = Math.max(0, Math.round((PAR_TIME - me.finishTime) * 50));
+  const bonus = Math.max(0, Math.round((PAR_TIME * COURSE_LEN / SECTION_LEN - me.finishTime) * 50));
   const total = me.trickScore + bonus;
   const isBest = total > best;
   if (isBest) { best = total; store.set(bestKey(levelId), String(best)); }

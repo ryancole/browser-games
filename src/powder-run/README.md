@@ -26,25 +26,25 @@ Pick a course when you start a single-player race or host a lobby. Picking one b
 
 ### Frozen Gorge
 
-A hand-built course that keeps asking you to pick a line:
+A hand-built course that keeps asking you to pick a line. It is three times as long as the other courses: the gorge below plays through three times, with the middle stretch mirrored left to right.
 
-- **Tight turns** at the top that straighten out as the gorge opens up.
+- **Tight turns** at the very top that straighten out as the gorge opens up.
 - **Raised ledges** along one side of the run. Ride the ramp up to stay high, then drop off the end back onto the run, or stay low beside the rock wall.
 - **Bridges over ravines.** Stay on the bridge to keep your speed. Miss it and you drop into the ravine and have to ride out up the far side, slowly.
 - **An ice cave** cut through a block of rock on one side, with ice slabs overhead and icicles hanging down. The open side has moguls instead.
 - **A gap jump**: a kicker that launches you across a ravine, or a narrow bridge round the side.
 - **The narrows**, where rock walls close in from both sides.
-- **A log cabin built across the run** near the finish. Ride straight through the doorway, or go round either side.
+- **A log cabin built across the run** at the end of each stretch. Ride straight through the doorway, or go round either side.
 
 ### Glacier Bowl
 
-A freeride course with no single right line:
+A freeride course with no single right line. It is three times as long as the other courses: the bowl below plays through three times, with the middle stretch mirrored left to right.
 
-- A **small drop** off the start, then a **crevasse** to jump.
+- A **small drop** at the start of each stretch, then a **crevasse** to jump.
 - **Huge cliff drops** staggered across the bowl, on the left, right and middle, up to 18 m high. Each has a long shelf leading up to it, so you reach the edge at speed.
 - **Stone pillars** standing all over the bowl to weave between.
 - **Tree glades**, **moguls** and **rollers**.
-- An **ice half-pipe** down the right side for part of the way. Carve up its walls to launch.
+- An **ice half-pipe** down one side for part of the way. Carve up its walls to launch.
 
 Walls and roofs are solid on both courses. Riding into a rock face or the side of a ledge pushes you along it, and you wipe out if you hit it hard. You can't fly up through the cave's ceiling or the cabin's roof.
 
