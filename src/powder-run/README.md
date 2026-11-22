@@ -80,7 +80,18 @@ Scarves, beanie pom-poms and tails, and jacket hems flap in the wind. They aren'
 
 ## Music
 
-The soundtrack is an original eight-bar loop at 122 BPM, played live by a small sequencer in the page rather than from an audio file. The menus get a soft pad and arpeggio. The bass comes in for the countdown and the drums for the race, and the music gets brighter the faster you go. It starts on your first click or key press, because browsers block sound until then.
+Every song is an original eight-bar loop, played live by a small sequencer in the page rather than from audio files. The guitars are synthesized too: sawtooth power chords driven through a distortion curve and a speaker-like filter.
+
+| Where | Style |
+| ----- | ----- |
+| **Title screen and menus** | Fast skate punk in E minor at 182 BPM: a palm-muted verse riff, then a chorus with a polka beat and a lead guitar line. |
+| **Snowy Peak** | The original synth loop at 122 BPM: pads, an arpeggio, a sawtooth bass and a steady beat. |
+| **Neon Nights** | Night-drive synthwave in A minor at 104 BPM: a pulsing octave bass, a sparkling arpeggio, big snares and a lead hook. |
+| **Lakeside Valley** | Sunny indie folk in G major at 132 BPM: strummed plucks, a bouncy bass, a glockenspiel tune and a shaker. |
+| **Frozen Gorge** | Dark and driving in D minor at 140 BPM: a pulsing sixteenth-note bass, a cold pad, sparse bells and tom-heavy drums. |
+| **Glacier Bowl** | Big, open anthem rock in D major at 150 BPM: ringing power chords, a soaring lead and crashing drums. |
+
+On a course, the countdown and the results screen get a lighter mix, and the drums come in once the race starts. The music sounds muffled when you're slow and gets brighter the faster you go. The menu theme always plays at full brightness. Sound starts on your first click or key press, because browsers block it until then.
 
 ## Announcer
 
