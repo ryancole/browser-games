@@ -10,7 +10,7 @@ Serve the `src/` folder from any static web server and open `powder-run/`. Openi
 
 The game opens on a title screen: your rider, in your outfit for this visit, hangs in a slow-motion grab high against a blue sky, shot from below with snow spraying off the board. Press any key, or tap, to go to the main menu. Invite links skip the title screen and go straight to the join screen with the code filled in.
 
-The main menu offers **Single player**, **Multiplayer** and **High scores**. **Single player** asks which course to race, then starts a race against the bots. **Multiplayer** asks for your name and whether you're hosting or joining: hosting asks which course to use and then creates the lobby, and joining asks for the lobby code. **Enter** picks the highlighted choice on each menu and **Esc** goes back.
+The menus are full-screen, with big chrome lettering over the course. Behind them you and the bots ride the picked course on autopilot, and the camera watches you from in front. Courses are picked from a row of lift passes, each showing the course's line and colours, and the highlighted course is built behind the menu as you browse. The main menu offers **Single player**, **Multiplayer** and **High scores**. **Single player** asks which course to race, then starts a race against the bots. **Multiplayer** asks for your name and whether you're hosting or joining: hosting asks which course to use and then creates the lobby, and joining asks for the lobby code. Use the arrow keys (or WASD) to move, **Enter** to pick and **Esc** to go back, or click and tap. In the lobby the host can also use **← →** to change the course and **↑ ↓** to change the number of bots.
 
 ## Courses
 

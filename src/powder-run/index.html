@@ -142,38 +142,143 @@
   .card th { padding: 0 0.6rem 0.2rem; font-size: 0.72rem; font-weight: 600; opacity: 0.55; text-align: left; }
   .card th.num { text-align: right; }
   .card .standings .me td { color: #ffd84f; opacity: 1; font-weight: 600; }
-  .card .scroll { overflow-x: auto; margin: 0.4rem 0 1rem; }
-  .card table.scores { margin: 0 auto; font-size: 0.82rem; }
-  .card table.scores td { white-space: nowrap; vertical-align: top; }
-  .card table.scores .sub { display: block; font-size: 0.72rem; opacity: 0.6; }
   .card .buttons { display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap; }
-  .card .levels { display: grid; grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr)); gap: 0.4rem; margin: 0.6rem 0 0.2rem; }
-  .card .levels button { padding: 0.45rem 0.3rem; font-size: 0.85rem; }
-  .card .levels button small { display: block; font-size: 0.7rem; opacity: 0.7; margin-top: 0.1rem; }
-  .card p.blurb { font-size: 0.82rem; min-height: 2.3em; margin-top: 0.4rem; }
-  /* Big stacked choices on the main and multiplayer menus. */
-  .card .menu-list { display: flex; flex-direction: column; gap: 0.5rem; margin: 0.9rem 0 1rem; }
-  .card .menu-list button { padding: 0.75rem 1rem; font-size: 1.05rem; font-weight: 700; text-align: left; }
-  .card .menu-list button span { display: block; font-size: 0.78rem; font-weight: 400; opacity: 0.75; margin-top: 0.15rem; }
-  .card .step { font-size: 0.72rem; letter-spacing: 0.1em; opacity: 0.5; margin: 0 0 0.2rem; text-transform: uppercase; }
-  .card .row { display: flex; gap: 0.5rem; margin: 0.45rem 0; }
-  .card .row input { flex: 1; min-width: 0; }
-  .card .wide { flex: 1; }
-  .card input {
-    font: inherit; font-size: 0.95rem; padding: 0.45rem 0.6rem; border-radius: 8px;
-    border: 1px solid #2a2f3a; background: #0f1115; color: inherit; user-select: text;
-  }
-  .card #code { text-transform: uppercase; letter-spacing: 0.15em; }
-  .card p.err { color: #ff8a80; opacity: 1; }
-  .card .code { font-size: 2.2rem; font-weight: 800; letter-spacing: 0.25em; margin: 0.1rem 0 0.6rem; user-select: text; }
-  .card ul.players { list-style: none; padding: 0; margin: 0.8rem auto; max-width: 280px; text-align: left; }
-  .card ul.players li { display: flex; justify-content: space-between; padding: 0.3rem 0; border-bottom: 1px solid #2a2f3a; }
-  .card .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 0.5rem; }
-  .card .tag { font-size: 0.75rem; opacity: 0.6; }
-  .card button.small { padding: 0.15rem 0.6rem; }
   kbd {
     font-family: inherit; font-size: 0.8em;
     padding: 0.05rem 0.35rem; border: 1px solid #2a2f3a; border-radius: 4px; background: #0f1115;
+  }
+
+  /* Menu screens: full-screen, over the course playing behind them. */
+  #menu {
+    position: fixed; inset: 0; isolation: isolate; overflow: hidden; user-select: none;
+    display: flex; flex-direction: column; align-items: center;
+    padding: clamp(1rem, 5vh, 2.6rem) 16px clamp(2.6rem, 7vh, 3.6rem);
+    background: radial-gradient(ellipse 75% 70% at 50% 50%, rgba(8, 12, 28, 0.05) 0%, rgba(8, 12, 28, 0.5) 100%),
+      linear-gradient(180deg, rgba(8, 12, 28, 0.35) 0%, rgba(8, 12, 28, 0) 22%, rgba(8, 12, 28, 0) 75%, rgba(8, 12, 28, 0.45) 100%);
+  }
+  #menu.hidden { display: none; }
+  body.on-menu #touch, body.on-menu #restart { display: none; }
+  /* Chunky chrome lettering; .lav is the lavender of a highlighted choice. */
+  #menu .chrome {
+    font-family: "Arial Black", "Arial Rounded MT Bold", system-ui, sans-serif; font-weight: 900; letter-spacing: 0.02em;
+    background: linear-gradient(180deg, #ffffff 0%, #eef1f6 38%, #8d96aa 50%, #c9ced9 64%, #ffffff 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    -webkit-text-stroke: 1px rgba(24, 28, 42, 0.85);
+    filter: drop-shadow(2px 3px 0 rgba(8, 12, 28, 0.6)) drop-shadow(0 0 10px rgba(8, 12, 28, 0.35));
+  }
+  #menu .chrome.lav, #menu .m-item.sel, #menu .m-card.sel .chrome {
+    background: linear-gradient(180deg, #f1efff 0%, #c2bcff 36%, #6a60e8 52%, #8c84ff 72%, #e2dfff 100%);
+    -webkit-background-clip: text; background-clip: text;
+  }
+  #menu button.chrome { border: 0; padding: 0; border-radius: 0; cursor: pointer; }
+  #menu .m-head { font-size: clamp(1.5rem, 5.2vw, 3rem); letter-spacing: 0.06em; text-align: center; }
+  #menu .m-body { flex: 1; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 0; }
+  #menu .m-list { display: flex; flex-direction: column; align-items: center; gap: 0.1em; }
+  #menu .m-item {
+    font-size: clamp(2rem, 8.5vw, 4.8rem); line-height: 1.12; padding: 0 0.15em;
+    transition: transform 0.15s;
+  }
+  #menu .m-item.sel { transform: scale(1.06); animation: m-glow 1.2s ease-in-out infinite; }
+  @keyframes m-glow { 50% { filter: drop-shadow(2px 3px 0 rgba(8, 12, 28, 0.6)) drop-shadow(0 0 16px rgba(140, 130, 255, 0.75)); } }
+  #menu .m-desc, #menu .m-err, #menu .m-hint {
+    font-size: clamp(0.85rem, 2.2vw, 1.05rem); font-weight: 600; color: #fff; text-align: center;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 12px rgba(8, 12, 28, 0.8);
+    max-width: 36rem; margin: 1rem auto 0; min-height: 2.6em; line-height: 1.3;
+  }
+  #menu .m-err { color: #ffb4ad; min-height: 0; margin: 0 auto 0.6rem; }
+  #menu .m-field { display: flex; align-items: baseline; gap: 0.8rem; margin-bottom: 1rem; }
+  #menu .m-field .chrome { font-size: clamp(1.1rem, 3.4vw, 1.8rem); }
+  #menu .m-field input {
+    width: 9.5em; font: 900 clamp(1.1rem, 3.4vw, 1.8rem) "Arial Black", system-ui, sans-serif; color: #fff;
+    background: rgba(8, 12, 28, 0.35); border: 0; border-bottom: 3px solid rgba(255, 255, 255, 0.7); border-radius: 6px 6px 0 0;
+    padding: 0.1em 0.35em; text-shadow: 2px 2px 0 rgba(8, 12, 28, 0.7); outline: none; user-select: text;
+  }
+  #menu .m-field input:focus { border-color: #a69eff; background: rgba(8, 12, 28, 0.5); }
+  #menu .m-field.code input { width: 6.2em; font-size: clamp(1.8rem, 7vw, 3.2rem); letter-spacing: 0.25em; text-transform: uppercase; text-align: center; }
+  #menu .m-field.code { flex-direction: column; align-items: center; gap: 0.3rem; }
+  #menu .m-foot { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+  #menu .m-btn { font-size: clamp(1rem, 2.8vw, 1.5rem); white-space: nowrap; }
+  #menu .m-btn[hidden] { display: block; visibility: hidden; }
+  #menu .m-hint { margin: 0; min-height: 0; opacity: 0.8; }
+  #menu .m-status { font-size: clamp(1.4rem, 4.5vw, 2.6rem); text-align: center; }
+
+  /* High scores. */
+  #menu .m-scores { max-width: 100%; max-height: 100%; overflow: auto; }
+  #menu .m-scores table { border-collapse: separate; border-spacing: 0 4px; font-size: clamp(0.85rem, 2.4vw, 1.2rem); color: #fff; }
+  #menu .m-scores th { font-size: 0.72em; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.75; padding: 0 0.8em; text-align: left; text-shadow: 0 1px 3px #000; }
+  #menu .m-scores td { padding: 0.35em 0.8em; background: rgba(8, 12, 28, 0.55); white-space: nowrap; vertical-align: top; text-shadow: 0 1px 2px #000; }
+  #menu .m-scores td:first-child { border-radius: 8px 0 0 8px; } #menu .m-scores td:last-child { border-radius: 0 8px 8px 0; }
+  #menu .m-scores .rank { font: 900 1.3em "Arial Black", system-ui, sans-serif; color: #c2bcff; }
+  #menu .m-scores .num { text-align: right; font-variant-numeric: tabular-nums; }
+  #menu .m-scores strong { font-size: 1.15em; color: #ffd84f; }
+  #menu .m-scores .sub { display: block; font-size: 0.78em; opacity: 0.7; }
+
+  /* Lobby. */
+  #menu .m-code { font-size: clamp(2.6rem, 10vw, 5rem); letter-spacing: 0.22em; padding-left: 0.22em; user-select: text; }
+  #menu .m-small { font-size: clamp(0.85rem, 2.2vw, 1.1rem); margin: 0.2rem 0 0.8rem; }
+  #menu .m-players { list-style: none; padding: 0; margin: 0 0 0.9rem; width: min(100%, 22rem); }
+  #menu .m-players li {
+    display: flex; align-items: center; gap: 0.6rem; padding: 0.35rem 0.8rem; margin: 4px 0; border-radius: 8px;
+    background: rgba(8, 12, 28, 0.55); color: #fff; font-weight: 700; text-shadow: 0 1px 2px #000;
+  }
+  #menu .m-players .dot { width: 12px; height: 12px; border-radius: 50%; flex: none; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.6); }
+  #menu .m-players .nm { flex: 1; }
+  #menu .m-players .tag { font-size: 0.75rem; opacity: 0.7; font-weight: 600; }
+  #menu .m-setting { display: flex; align-items: center; gap: 0.6rem; font-size: clamp(1rem, 3vw, 1.6rem); margin: 0.15rem 0; }
+  #menu .m-setting > .chrome:first-child { font-size: 0.7em; letter-spacing: 0.08em; min-width: 5.5em; text-align: right; }
+  #menu .m-val { min-width: 7.5em; text-align: center; }
+  #menu .m-arrow { font-size: 1em; padding: 0 0.2em; }
+
+  /* Course picker: lift passes on a table, the chosen one lifted up off it. */
+  #menu .m-cards {
+    --w: clamp(112px, 20vw, 190px);
+    position: relative; width: 100%; height: calc(var(--w) * 1.4 + 6.5rem);
+    perspective: 1000px; perspective-origin: 50% 20%;
+  }
+  #menu .m-card {
+    position: absolute; left: 50%; top: 0; width: var(--w); margin-left: calc(var(--w) / -2);
+    display: flex; flex-direction: column; align-items: center; cursor: pointer;
+    transform: translateX(calc(var(--off) * var(--w) * 1.2)) translateZ(calc(var(--abs) * -70px));
+    transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.35s, filter 0.35s;
+    filter: brightness(0.55) saturate(0.7);
+    z-index: calc(10 - var(--abs));
+  }
+  #menu .m-card.sel { filter: none; }
+  #menu .m-label { font-size: clamp(0.85rem, 2.2vw, 1.4rem); text-align: center; line-height: 1.05; min-height: 2.1em; display: flex; align-items: flex-end; justify-content: center; }
+  #menu .m-sub { font-size: clamp(0.62rem, 1.4vw, 0.85rem); margin: 0.25rem 0 0.7rem; letter-spacing: 0.06em; }
+  #menu .pass {
+    position: relative; width: 100%; aspect-ratio: 5 / 7; box-sizing: border-box;
+    background: #fbfaf4; border: calc(var(--w) * 0.04) solid var(--c1); border-radius: calc(var(--w) * 0.08);
+    display: flex; flex-direction: column; align-items: center; overflow: hidden;
+    transform: rotateX(38deg); transform-origin: 50% 100%;
+    box-shadow: 0 22px 26px -8px rgba(0, 0, 0, 0.6);
+    transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.35s;
+  }
+  #menu .m-card.sel .pass {
+    transform: rotateX(10deg) translateY(-10px) scale(1.06);
+    box-shadow: 0 30px 34px -10px rgba(0, 0, 0, 0.7), 0 0 0 3px rgba(190, 182, 255, 0.85), 0 0 26px rgba(140, 130, 255, 0.6);
+  }
+  #menu .p-scene { width: 100%; height: 30%; background: linear-gradient(180deg, var(--sky), var(--fog)); display: flex; align-items: flex-end; }
+  #menu .p-scene svg { width: 100%; height: 70%; display: block; }
+  #menu .p-hole { position: absolute; top: 5%; left: 50%; width: 9%; aspect-ratio: 1; margin-left: -4.5%; border-radius: 50%; background: rgba(20, 22, 30, 0.75); z-index: 1; }
+  #menu .p-badge {
+    width: 44%; aspect-ratio: 1; margin-top: -16%; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--c1) 70%, #fff), var(--c1));
+    border: calc(var(--w) * 0.025) solid #fbfaf4; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  }
+  #menu .p-badge svg { width: 100%; height: 100%; display: block; }
+  #menu .p-name {
+    margin-top: 5%; padding: 0 6%; text-align: center; color: #1d2130; line-height: 1.05;
+    font: italic 800 calc(var(--w) * 0.1) Georgia, "Times New Roman", serif;
+  }
+  #menu .p-pass { margin-top: auto; font: 900 calc(var(--w) * 0.12) "Arial Black", system-ui, sans-serif; letter-spacing: 0.08em; color: var(--c2); }
+  #menu .p-stub {
+    width: 100%; margin-top: 4%; padding: 3% 0 5%; text-align: center; border-top: 2px dashed rgba(29, 33, 48, 0.3);
+    font: 700 calc(var(--w) * 0.065) ui-monospace, Consolas, monospace; color: rgba(29, 33, 48, 0.6); letter-spacing: 0.1em;
+  }
+  @media (max-height: 520px) {
+    #menu .m-cards { --w: clamp(90px, 15vw, 150px); }
+    #menu .m-desc { margin-top: 0.4rem; }
   }
 
   /* Title screen, over the 3D shot of a rider in the air. */
@@ -228,6 +333,11 @@
     #top-right { left: auto; right: 8px; bottom: auto; top: 68px; flex-direction: column; align-items: flex-end; gap: 0.3rem; }
     #top-right button { padding: 0.3rem 0.55rem; font-size: 0.72rem; }
   }
+  /* On the menus the sound buttons sit in a row along the top, above the heading. */
+  @media (pointer: coarse) {
+    body.on-menu #top-right { top: 8px; flex-direction: row; }
+    #menu { padding-top: 3.2rem; }
+  }
   /* Narrow phones: six full-size touch buttons don't fit across. */
   @media (pointer: coarse) and (max-width: 440px) {
     #touch { left: 6px; right: 6px; }
@@ -277,7 +387,17 @@
   </div>
 </div>
 
-<div id="panel"><div class="card" id="card"></div></div>
+<div id="panel" class="hidden"><div class="card" id="card"></div></div>
+<!-- Menu screens: big chrome words over the course, which plays behind them. -->
+<div id="menu" class="hidden">
+  <div class="m-head chrome lav" id="m-head"></div>
+  <div class="m-body" id="m-body"></div>
+  <div class="m-foot">
+    <button id="m-back" class="m-btn chrome" hidden></button>
+    <span class="m-hint keys-only" id="m-hint"></span>
+    <button id="m-go" class="m-btn chrome lav" hidden></button>
+  </div>
+</div>
 
 <div id="title" class="hidden">
   <div class="logo">
@@ -2460,6 +2580,7 @@ const sfx = {
   crash: () => blip([[240, 0.45]], { type: "sawtooth", gain: 0.14, slide: true }),
   thud: () => blip([[110, 0.14]], { type: "triangle", gain: 0.22, slide: true }),
   finish: () => blip([[523, 0.12], [659, 0.12], [784, 0.12], [1047, 0.4]], { type: "triangle", gain: 0.2 }),
+  menu: () => blip([[1180, 0.035]], { type: "square", gain: 0.035 }),
 };
 function updateAudio(speed, slip) {
   if (!ac) return;
@@ -2980,12 +3101,7 @@ function readInput() {
 }
 const GAME_KEYS = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space"]);
 window.addEventListener("keydown", (e) => {
-  // On the menus, Enter picks the screen's main choice and Escape goes back.
-  if (state === "menu" && !panel.classList.contains("hidden") && !e.repeat && (e.key === "Enter" || e.key === "Escape")) {
-    const focusedBtn = document.activeElement instanceof HTMLButtonElement && card.contains(document.activeElement);
-    const target = card.querySelector(e.key === "Enter" ? "[data-enter]" : "[data-back]");
-    if (target && !(e.key === "Enter" && focusedBtn)) { e.preventDefault(); target.click(); return; }
-  }
+  if (menuKey(e)) return;
   if (e.target instanceof HTMLInputElement) return; // typing a name or lobby code
   if (GAME_KEYS.has(e.code)) e.preventDefault();
   if (e.repeat) { keys.add(e.code); return; }
@@ -3195,7 +3311,7 @@ const bestKey = (id) => (id === "peak" ? "powderrun-best" : `powderrun-best-${id
 const bestFor = (id) => Math.max(Number(store.get(bestKey(id))) || 0, ...loadScores().filter((s) => s.level === id).map((s) => s.score));
 let best = 0;
 
-const canControl = (r) => state === "run" && r.crashT <= 0 && !r.finished;
+const canControl = (r) => (state === "run" || attract) && r.crashT <= 0 && !r.finished;
 
 function leaveGround(r, y, vy) {
   r.grounded = false;
@@ -3928,6 +4044,8 @@ function botControls(r, h) {
 }
 
 function startRace(roster = soloRoster()) {
+  closeMenu();
+  stopAttract();
   initAudio();
   speech?.cancel();
   setRoster(roster);
@@ -3950,8 +4068,58 @@ function requestRestart() {
   else if (net.role === "host") hostStart();
 }
 
+// Attract mode: behind the menus everyone, you included, rides the picked
+// course on autopilot, and the camera follows you from in front. Your rider is
+// flagged as a bot meanwhile, so none of the race's sounds or callouts play.
+let attract = false, attractT = 0;
+function startAttract() {
+  if (attract || state !== "menu" || net.role) return;
+  attract = true;
+  me.isPlayer = false;
+  me.bot = { skill: 0.9 };
+  restartAttract();
+}
+function restartAttract() {
+  for (const r of riders) { resetRider(r); updateRider(r, 1); }
+  clearSpray(); clearTrails();
+  raceTime = 0; simAcc = 0;
+  snapCamera();
+}
+function stopAttract() {
+  if (!attract) return;
+  attract = false;
+  me.isPlayer = true;
+  me.bot = null;
+  for (const r of riders) { resetRider(r); updateRider(r, 1); }
+  clearSpray(); clearTrails();
+  raceTime = 0; simAcc = 0;
+  snapCamera();
+}
+
+function emitRiderSpray(dt) {
+  for (const r of riders) {
+    const speed = Math.hypot(r.vx, r.vz);
+    if (!r.grounded || speed <= 3) continue;
+    const rate = r.crashT > 0 ? 200 : speed * 2.5 + r.slip * 25 + (r.inp.brake && canControl(r) ? speed * 6 : 0);
+    emitSpray(r, rate, dt);
+  }
+}
+
 function update(dt) {
   const keysIn = readInput();
+  if (attract) {
+    simAcc += dt;
+    while (simAcc >= STEP) {
+      simAcc -= STEP;
+      raceTime += STEP;
+      for (const r of riders) stepRider(r, STEP, botControls(r, STEP));
+    }
+    emitRiderSpray(dt);
+    if (me.z > COURSE_LEN + 30 || attractT > 150) restartAttract();
+  }
+  // The menu camera drifts on every menu screen, the lobby included.
+  const menuCam = attract || menuOpen();
+  if (menuCam) attractT += dt;
   if (state === "countdown") {
     countT -= dt;
     const c = Math.ceil(countT);
@@ -3968,17 +4136,12 @@ function update(dt) {
     for (const r of riders) if (r.remote) { followNet(r, dt); if (r.rag) driveRemoteRag(r, dt); }
     netTick(dt);
     if (me.finished && !resultsShown && raceTime - me.finishTime > 1.6) showResults();
-    for (const r of riders) {
-      const speed = Math.hypot(r.vx, r.vz);
-      if (!r.grounded || speed <= 3) continue;
-      const rate = r.crashT > 0 ? 200 : speed * 2.5 + r.slip * 25 + (r.inp.brake && canControl(r) ? speed * 6 : 0);
-      emitSpray(r, rate, dt);
-    }
+    emitRiderSpray(dt);
   }
   for (const r of riders) updateRider(r, dt);
   flushTrails();
   updateSpray(dt);
-  updateCamera(dt);
+  if (menuCam) updateAttractCamera(dt); else updateCamera(dt);
   updateWeather(dt);
   levelTime += dt;
   levelTick?.(levelTime);
@@ -4074,7 +4237,38 @@ function updateCamera(dt, snap = false) {
   backdrop.position.copy(camera.position);
   riderLight.position.set(me.x, me.y + 3, me.z - 1.5);
 }
-const snapCamera = () => updateCamera(0, true);
+// In attract mode this also restarts the attract camera's drift.
+let attractSnap = false;
+function snapCamera() {
+  if (attract) { attractSnap = true; attractT = 0; }
+  updateCamera(0, true);
+}
+
+// Behind the menus (and the lobby, where nobody's moving): low and in front of you, looking back up at you as you
+// ride, drifting from one side to the other.
+let attractYaw = 0;
+const attractCam = new THREE.Vector3();
+function updateAttractCamera(dt) {
+  const snap = attractSnap;
+  attractSnap = false;
+  const speed = Math.hypot(me.vx, me.vz);
+  const want = speed > 2 ? Math.atan2(me.vx, me.vz) : me.heading;
+  attractYaw = snap ? want : attractYaw + wrapAngle(want - attractYaw) * (1 - Math.exp(-1.5 * dt));
+  const a = attractYaw + Math.PI * 0.82 + Math.sin(attractT * 0.12) * 0.45;
+  // Standing still in the lobby, pull back down the hill to take in the whole start gate.
+  const dist = (attract ? 8.5 : 17) + Math.sin(attractT * 0.21) * 1.5;
+  // Rigidly tied to you (the turning is what's smoothed), so you never overtake it.
+  attractCam.set(me.x + Math.sin(a) * dist, me.y + (attract ? 2.2 : 1.5), me.z + Math.cos(a) * dist);
+  camera.position.copy(attractCam);
+  camera.position.y = Math.max(camera.position.y, terrainH(camera.position.x, camera.position.z) + 1.2);
+  camera.lookAt(me.x, me.y + 1.1, me.z);
+  camera.fov = 55;
+  camera.updateProjectionMatrix();
+  sun.position.set(me.x - 25, me.y + 45, me.z - 15);
+  sun.target.position.set(me.x, me.y, me.z);
+  backdrop.position.copy(camera.position);
+  riderLight.position.set(me.x, me.y + 3, me.z - 1.5);
+}
 
 // ---------------------------------------------------------------------------
 // HUD and panels
@@ -4227,173 +4421,319 @@ const CONTROLS = `
     <tr><td>Restart · Sound · Music · Voice</td><td><kbd>R</kbd> · <kbd>M</kbd> · <kbd>N</kbd> · <kbd>V</kbd></td></tr>
   </table>`;
 
-// Course picker for the menu and the host's lobby. Picking a course builds it
-// straight away, so you see it behind the menu.
-function levelPicker() {
-  return `
-    <div class="levels">${LEVEL_IDS.map((id) => {
-      const b = bestFor(id);
-      return `<button data-level="${id}" class="${id === levelId ? "" : "secondary"}">${esc(LEVELS[id].name)}${b ? `<small>Best ${fmt(b)}</small>` : ""}</button>`;
-    }).join("")}</div>
-    <p class="blurb">${esc(level.blurb)}</p>`;
-}
-function bindLevelPicker(redraw) {
-  for (const b of card.querySelectorAll("[data-level]")) {
-    b.addEventListener("click", () => {
-      if (b.dataset.level === levelId) return;
-      setLevel(b.dataset.level);
-      redraw();
-    });
-  }
-}
-
 const inviteCode =(new URLSearchParams(location.search).get("join") || "").toUpperCase().slice(0, 5);
 
 // Menu screens: main menu → single player (pick a course) or multiplayer
-// (host → pick a course, or join → enter a code). On every screen Enter picks
-// the button marked data-enter and Escape clicks the one marked data-back.
-const errLine = (message) => (message ? `<p class="err">${esc(message)}</p>` : "");
-function showCard(html) {
-  card.innerHTML = html;
-  panel.classList.remove("hidden");
+// (host → pick a course, or join → enter a code). They fill the whole screen
+// over the live course, which everyone rides on autopilot behind them (see
+// attract mode). Only the results after a race still use the card.
+const menuEl = $("menu"), mHead = $("m-head"), mBody = $("m-body"), mBack = $("m-back"), mGo = $("m-go"), mHint = $("m-hint");
+let menu = null; // the screen on show: { kind, sel, count, select(i), go(), back() }
+const menuOpen = () => menu !== null && state === "menu";
+const errLine = (message) => (message ? `<p class="m-err">${esc(message)}</p>` : "");
+const touchOnly = matchMedia("(pointer: coarse)");
+
+function openMenu(screen, { head, body, back, backLabel = "Back", go, hint, attract: ride = true }) {
+  panel.classList.add("hidden");
+  menuEl.classList.remove("hidden");
+  document.body.classList.add("on-menu");
+  menuEl.dataset.kind = screen.kind;
+  mHead.textContent = head;
+  mBody.innerHTML = body;
+  mBack.hidden = !back;
+  mBack.textContent = back ? `◀ ${backLabel}` : "";
+  mGo.hidden = !go;
+  mGo.textContent = go ? `${go} ▶` : "";
+  mHint.textContent = hint;
+  menu = screen;
+  if (ride) startAttract();
+}
+function closeMenu() {
+  if (!menu) return;
+  clearTimeout(coursePreview);
+  menu = null;
+  menuEl.classList.add("hidden");
+  document.body.classList.remove("on-menu");
+}
+mBack.addEventListener("click", () => menu?.back?.());
+mGo.addEventListener("click", () => (menu?.button ?? menu?.go)?.());
+
+
+// A screen that's a stack of big chrome words: Up/Down to choose, Enter to pick.
+// `items` are { label, desc, go }. `top` is extra HTML above the list (a name box).
+function listScreen({ head, items, back, top = "", message = "" }) {
+  const screen = {
+    kind: "list", sel: 0, count: items.length,
+    select(i) {
+      screen.sel = (i + items.length) % items.length;
+      mBody.querySelectorAll(".m-item").forEach((b, j) => b.classList.toggle("sel", j === screen.sel));
+      $("m-desc").textContent = items[screen.sel].desc || "";
+    },
+    nav(dx, dy) { if (dy) screen.select(screen.sel + dy); return !!dy; },
+    go() { items[screen.sel].go(); },
+    back,
+  };
+  openMenu(screen, {
+    head, back,
+    hint: "↑ ↓ Choose · Enter Select" + (back ? " · Esc Back" : ""),
+    body: `${top}${errLine(message)}
+      <div class="m-list">${items.map((it, i) => `<button class="m-item chrome" data-i="${i}">${esc(it.label)}</button>`).join("")}</div>
+      <p class="m-desc" id="m-desc"></p>`,
+  });
+  mBody.querySelectorAll(".m-item").forEach((b) => {
+    const i = Number(b.dataset.i);
+    b.addEventListener("pointerenter", (e) => { if (e.pointerType === "mouse") screen.select(i); });
+    b.addEventListener("click", () => { screen.select(i); screen.go(); });
+  });
+  screen.select(0);
+  return screen;
+}
+
+// --- Course picker: a lift pass for each course, laid out on a table ---------
+// Each pass shows the course's own line from start to finish, in its colours.
+function courseLineSVG(c) {
+  const xs = [];
+  for (let i = 0; i <= 40; i++) {
+    const z = (i / 40) * COURSE_LEN;
+    let x = c.a1 * Math.sin(z / c.p1 + c.o1) + c.a2 * Math.sin(z / c.p2 + c.o2);
+    if (c.tight && z < c.tight.z1) x += c.tight.a * Math.sin(z / c.tight.p) * (1 - smooth(z / c.tight.z1));
+    xs.push(x);
+  }
+  const max = Math.max(1, ...xs.map(Math.abs));
+  const pts = xs.map((x, i) => `${(50 + (x / max) * 20).toFixed(1)},${(88 - i * 1.9).toFixed(1)}`).join(" ");
+  return `<svg viewBox="0 0 100 100" aria-hidden="true">
+    <polyline points="${pts}" fill="none" stroke="rgba(0,0,0,0.25)" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+    <polyline points="${pts}" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="${pts.split(" ")[0].split(",")[0]}" cy="88" r="5" fill="#fff"/><circle cx="${pts.split(" ").at(-1).split(",")[0]}" cy="12" r="5" fill="#fff"/>
+  </svg>`;
+}
+const hexColor = (n) => `#${n.toString(16).padStart(6, "0")}`;
+function liftPass(id) {
+  const L = LEVELS[id], [c1, c2] = L.furniture.banners;
+  return `<div class="pass" style="--c1:${c1};--c2:${c2};--sky:${hexColor(L.sky)};--fog:${hexColor(L.fog[0])}">
+      <div class="p-hole"></div>
+      <div class="p-scene">
+        <svg viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true"><polygon points="0,40 0,30 16,12 27,22 46,3 63,20 76,10 100,30 100,40" fill="rgba(255,255,255,0.92)"/></svg>
+      </div>
+      <div class="p-badge">${courseLineSVG(L.course)}</div>
+      <div class="p-name">${esc(L.name)}</div>
+      <div class="p-pass">LIFT PASS</div>
+      <div class="p-stub">No. ${String(L.seed).padStart(5, "0")}</div>
+    </div>`;
+}
+
+let coursePreview = 0;
+// The highlighted course is built behind the menu; `go` runs once one is picked.
+function courseScreen({ head, go, back, note = "" }) {
+  const screen = {
+    kind: "courses", sel: Math.max(0, LEVEL_IDS.indexOf(levelId)), count: LEVEL_IDS.length,
+    select(i) {
+      screen.sel = Math.max(0, Math.min(LEVEL_IDS.length - 1, i));
+      const id = LEVEL_IDS[screen.sel];
+      mBody.querySelectorAll(".m-card").forEach((el, j) => {
+        const off = j - screen.sel;
+        el.style.setProperty("--off", off);
+        el.style.setProperty("--abs", Math.abs(off));
+        el.classList.toggle("sel", off === 0);
+      });
+      $("m-desc").textContent = LEVELS[id].blurb + (note ? ` ${note}` : "");
+      // Build the course behind the menu once the choice settles.
+      clearTimeout(coursePreview);
+      coursePreview = setTimeout(() => setLevel(id), 280);
+    },
+    nav(dx) {
+      const i = Math.max(0, Math.min(LEVEL_IDS.length - 1, screen.sel + dx));
+      if (i === screen.sel) return false;
+      screen.select(i);
+      return true;
+    },
+    go() { clearTimeout(coursePreview); setLevel(LEVEL_IDS[screen.sel]); go(); },
+    back,
+  };
+  openMenu(screen, {
+    head, back, go: "Race",
+    hint: "← → Choose · Enter Select · Esc Back",
+    body: `<div class="m-cards">${LEVEL_IDS.map((id, i) => {
+        const b = bestFor(id);
+        return `<div class="m-card" data-i="${i}">
+          <div class="m-label chrome">${esc(LEVELS[id].name)}</div>
+          <div class="m-sub chrome">${b ? `BEST ${fmt(b)}` : "NO RUNS YET"}</div>
+          ${liftPass(id)}
+        </div>`;
+      }).join("")}</div>
+      <p class="m-desc" id="m-desc"></p>`,
+  });
+  mBody.querySelectorAll(".m-card").forEach((el) => {
+    const i = Number(el.dataset.i);
+    el.addEventListener("click", () => (i === screen.sel ? screen.go() : screen.select(i)));
+  });
+  screen.select(screen.sel);
+  return screen;
 }
 
 function showMenu(message = "") {
-  showCard(`
-    <h1>POWDER RUN</h1>
-    <p>Race down the hill. Hit the kickers, spin, flip and grab for points, and land upright with your board pointing downhill.</p>
-    ${errLine(message)}
-    <div class="menu-list">
-      <button id="solo" data-enter>Single player<span>Race the bots on the course of your choice</span></button>
-      <button id="multi" class="secondary">Multiplayer<span>Host a lobby or join your friends</span></button>
-      <button id="scores" class="secondary">High scores</button>
-    </div>
-    <div class="keys-only">${CONTROLS}</div>`);
-  $("solo").addEventListener("click", () => showSolo());
-  $("multi").addEventListener("click", () => showMultiplayer());
-  $("scores").addEventListener("click", () => showScores());
+  listScreen({
+    head: "POWDER RUN", message,
+    items: [
+      { label: "Single Player", desc: "Race the bots on the course of your choice.", go: () => showSolo() },
+      { label: "Multiplayer", desc: "Host a lobby or join your friends' race.", go: () => showMultiplayer() },
+      { label: "High Scores", desc: "Your ten best runs across every course.", go: () => showScores() },
+    ],
+  });
 }
 
 function showSolo() {
-  showCard(`
-    <p class="step">Single player</p>
-    <h1>PICK A COURSE</h1>
-    ${levelPicker()}
-    <div class="buttons"><button id="go" data-enter>Race the bots</button><button id="back" class="secondary" data-back>Back</button></div>`);
-  bindLevelPicker(showSolo);
-  $("go").addEventListener("click", () => startRace());
-  $("back").addEventListener("click", () => showMenu());
+  courseScreen({ head: "SELECT COURSE", go: () => startRace(), back: () => showMenu() });
 }
 
 function showMultiplayer(message = "") {
-  showCard(`
-    <h1>MULTIPLAYER</h1>
-    <p>Race friends over the internet, with bots to fill out the field.</p>
-    ${errLine(message)}
-    <div class="row"><input id="name" maxlength="16" placeholder="Your name" value="${esc(myName)}"></div>
-    <div class="menu-list">
-      <button id="host" data-enter>Host a lobby<span>Pick the course and invite friends with a code</span></button>
-      <button id="join" class="secondary">Join a lobby<span>Enter the code a friend sent you</span></button>
-    </div>
-    <div class="buttons"><button id="back" class="secondary" data-back>Back</button></div>`);
-  $("host").addEventListener("click", () => { readName(); showHostSetup(); });
-  $("join").addEventListener("click", () => { readName(); showJoin(); });
-  $("back").addEventListener("click", () => { readName(); showMenu(); });
+  const leave = (to) => () => { readName(); to(); };
+  listScreen({
+    head: "MULTIPLAYER", message, back: leave(() => showMenu()),
+    top: `<label class="m-field"><span class="chrome">NAME</span><input id="name" maxlength="16" placeholder="Rider" value="${esc(myName)}" autocomplete="off" spellcheck="false"></label>`,
+    items: [
+      { label: "Host Lobby", desc: "Pick the course, then invite friends with a code.", go: leave(() => showHostSetup()) },
+      { label: "Join Lobby", desc: "Enter the code a friend sent you.", go: leave(() => showJoin()) },
+    ],
+  });
 }
 
 function showHostSetup() {
-  showCard(`
-    <p class="step">Multiplayer · Host</p>
-    <h1>PICK A COURSE</h1>
-    ${levelPicker()}
-    <p>You can still change it in the lobby before the race.</p>
-    <div class="buttons"><button id="create" data-enter>Create lobby</button><button id="back" class="secondary" data-back>Back</button></div>`);
-  bindLevelPicker(showHostSetup);
-  $("create").addEventListener("click", hostLobby);
-  $("back").addEventListener("click", () => showMultiplayer());
+  courseScreen({
+    head: "HOST · SELECT COURSE", go: hostLobby, back: () => showMultiplayer(),
+    note: "You can still change it in the lobby.",
+  });
+  mGo.textContent = "Create lobby ▶";
 }
 
 function showJoin(message = "") {
-  showCard(`
-    <p class="step">Multiplayer · Join</p>
-    <h1>JOIN A LOBBY</h1>
-    <p>Enter the 5-character code from the host.</p>
-    ${errLine(message)}
-    <div class="row"><input id="code" maxlength="5" placeholder="Lobby code" autocapitalize="characters" value="${esc(inviteCode)}"><button id="join" data-enter>Join</button></div>
-    <div class="buttons"><button id="back" class="secondary" data-back>Back</button></div>`);
-  $("join").addEventListener("click", () => joinLobby($("code").value));
-  $("back").addEventListener("click", () => showMultiplayer());
-  if (!matchMedia("(pointer: coarse)").matches) $("code").focus();
+  listScreen({
+    head: "JOIN LOBBY", message, back: () => showMultiplayer(),
+    top: `<label class="m-field code"><span class="chrome">CODE</span><input id="code" maxlength="5" placeholder="•••••" autocapitalize="characters" autocomplete="off" spellcheck="false" value="${esc(inviteCode)}"></label>`,
+    items: [{ label: "Join", desc: "Enter the 5-character code from the host.", go: () => joinLobby($("code").value) }],
+  });
+  if (!touchOnly.matches) $("code").focus();
+}
+
+const MENU_DIRS = {
+  ArrowUp: [0, -1], KeyW: [0, -1], ArrowDown: [0, 1], KeyS: [0, 1],
+  ArrowLeft: [-1, 0], KeyA: [-1, 0], ArrowRight: [1, 0], KeyD: [1, 0],
+};
+// Keys on the menu screens. Returns true when the key was the menu's.
+function menuKey(e) {
+  if (!menuOpen()) return false;
+  const k = e.code, inInput = e.target instanceof HTMLInputElement;
+  if (inInput && (k === "KeyA" || k === "KeyD" || k === "KeyW" || k === "KeyS" || k === "Space")) return true; // typing
+  const dir = MENU_DIRS[k];
+  if (dir) {
+    e.preventDefault();
+    if (inInput) e.target.blur();
+    if (menu.nav?.(...dir)) sfx.menu();
+    return true;
+  }
+  if (e.repeat) return true;
+  if (k === "Enter" || k === "NumpadEnter" || (k === "Space" && !inInput)) {
+    e.preventDefault();
+    if (inInput && e.target.id === "name") { e.target.blur(); return true; }
+    menu.go?.();
+    return true;
+  }
+  if (k === "Escape") {
+    e.preventDefault();
+    if (inInput) e.target.blur();
+    menu.back?.();
+    return true;
+  }
+  return inInput;
 }
 
 const fmtDate = (ms) => new Date(ms).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 const fmtClock = (ms) => new Date(ms).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 
-// Clearing takes two clicks so a stray tap can't wipe the list.
+// Clearing takes two presses so a stray tap can't wipe the list.
 function showScores(confirming = false) {
   const list = loadScores();
   const rows = list.map((s, i) => `
-      <tr><td>${i + 1}</td><td class="num"><strong>${fmt(s.score)}</strong><span class="sub">${s.time.toFixed(2)} s</span></td>
+      <tr><td class="rank">${i + 1}</td><td class="num"><strong>${fmt(s.score)}</strong><span class="sub">${s.time.toFixed(2)} s</span></td>
       <td>${s.place && s.riders ? `${ordinal(s.place)} of ${s.riders}` : "–"}${s.mode === "lobby" ? '<span class="sub">lobby</span>' : ""}</td>
       <td>${esc(LEVELS[s.level].name)}</td>
       <td>${esc(fmtDate(s.date))}<span class="sub">${esc(fmtClock(s.date))}</span></td></tr>`).join("");
-  card.innerHTML = `
-    <h1>HIGH SCORES</h1>
-    ${list.length
-      ? `<div class="scroll"><table class="standings scores">
-          <tr><th></th><th class="num">Score · time</th><th>Place</th><th>Course</th><th>Date</th></tr>${rows}
-        </table></div>`
-      : `<p>No finished runs yet. Your ${MAX_SCORES} best scores will show up here, with the date you set them.</p>`}
-    <div class="buttons"><button id="back" data-back>Back</button>${list.length
-      ? `<button id="clear" class="secondary">${confirming ? "Click again to clear" : "Clear history"}</button>` : ""}</div>`;
-  $("back").addEventListener("click", () => showMenu());
-  $("clear")?.addEventListener("click", () => {
+  const clear = () => {
+    if (!list.length) return;
     if (!confirming) return showScores(true);
     store.set(SCORES_KEY, "[]");
     for (const id of LEVEL_IDS) store.set(bestKey(id), "0");
     best = 0;
     showScores();
+  };
+  // Enter shouldn't wipe the list: only the button does.
+  openMenu({ kind: "scores", button: clear, back: () => showMenu() }, {
+    head: "HIGH SCORES", back: () => showMenu(), go: list.length ? (confirming ? "Press again to clear" : "Clear history") : "",
+    hint: "Esc Back",
+    body: list.length
+      ? `<div class="m-scores"><table>
+          <tr><th></th><th class="num">Score · time</th><th>Place</th><th>Course</th><th>Date</th></tr>${rows}
+        </table></div>`
+      : `<p class="m-desc">No finished runs yet. Your ${MAX_SCORES} best scores will show up here, with the date you set them.</p>`,
   });
-  panel.classList.remove("hidden");
 }
 
 function showStatus(text) {
-  card.innerHTML = `<h1>POWDER RUN</h1><p>${esc(text)}</p><button id="cancel" class="secondary" data-back>Cancel</button>`;
-  $("cancel").addEventListener("click", () => leaveLobby());
-  panel.classList.remove("hidden");
+  openMenu({ kind: "status", back: () => leaveLobby() }, {
+    head: "MULTIPLAYER", back: () => leaveLobby(), backLabel: "Cancel", hint: "Esc Cancel", attract: false,
+    body: `<p class="m-status chrome">${esc(text)}</p>`,
+  });
 }
 
+// The lobby. The host steers it from the keyboard too: ← → change the course,
+// ↑ ↓ the number of bots, Enter starts the race.
 function showLobby() {
   const isHost = net.role === "host";
   const bots = lobbyBotCount();
-  const list = net.players.map((p, i) => `
-      <li><span><span class="dot" style="background:${LOOKS[i % PLAYER_LOOKS].tagColor}"></span>${esc(p.name)}</span>
+  const players = net.players.map((p, i) => `
+      <li><span class="dot" style="background:${LOOKS[i % PLAYER_LOOKS].tagColor}"></span><span class="nm">${esc(p.name)}</span>
       <span class="tag">${[i === 0 && "host", p.id === me.id && "you"].filter(Boolean).join(" · ")}</span></li>`).join("");
-  const botLine = isHost
-    ? `<p>Bots <button id="bots-" class="secondary small">−</button> <strong>${bots}</strong> <button id="bots+" class="secondary small">+</button></p>`
-    : `<p>${bots} bot${bots === 1 ? "" : "s"} · ${net.racing ? "A race is on. You'll join the next one." : "Waiting for the host to start the race…"}</p>`;
-  const courseLine = isHost ? levelPicker() : `<p>Course: <strong>${esc(level.name)}</strong></p>`;
-  card.innerHTML = `
-    <h1>LOBBY</h1>
-    <p>Share this code, or send the invite link.</p>
-    <div class="code">${esc(net.code)}</div>
-    <div class="buttons"><button id="copy" class="secondary">Copy invite link</button></div>
-    <ul class="players">${list}</ul>
-    ${courseLine}
-    ${botLine}
-    <div class="buttons">${isHost ? '<button id="start">Start race</button>' : ""}<button id="leave" class="secondary">Leave</button></div>`;
+  const arrows = (id, value) => isHost
+    ? `<button class="m-arrow chrome" id="${id}-">◀</button><span class="m-val chrome lav">${value}</span><button class="m-arrow chrome" id="${id}+">▶</button>`
+    : `<span class="m-val chrome lav">${value}</span>`;
+  const changeCourse = (d) => {
+    const i = (LEVEL_IDS.indexOf(levelId) + d + LEVEL_IDS.length) % LEVEL_IDS.length;
+    setLevel(LEVEL_IDS[i]);
+    broadcastLobby();
+    showLobby();
+  };
+  const screen = {
+    kind: "lobby",
+    nav(dx, dy) {
+      if (!isHost) return false;
+      if (dx) changeCourse(dx);
+      else setBots(bots - dy);
+      return true;
+    },
+    go: isHost ? hostStart : null,
+    back: () => leaveLobby(),
+  };
+  openMenu(screen, {
+    head: "LOBBY", back: screen.back, backLabel: "Leave", go: isHost ? "Start race" : "", attract: false,
+    hint: isHost ? "← → Course · ↑ ↓ Bots · Enter Start · Esc Leave" : "Esc Leave",
+    body: `
+      <div class="m-code chrome lav">${esc(net.code)}</div>
+      <button class="m-small chrome" id="copy">Copy invite link</button>
+      <ul class="m-players">${players}</ul>
+      <div class="m-setting"><span class="chrome">COURSE</span>${arrows("course", esc(level.name))}</div>
+      <div class="m-setting"><span class="chrome">BOTS</span>${arrows("bots", bots)}</div>
+      <p class="m-desc">${isHost ? esc(level.blurb) : net.racing ? "A race is on. You'll join the next one." : "Waiting for the host to start the race…"}</p>`,
+  });
   $("copy").addEventListener("click", (e) => {
     const link = `${location.origin}${location.pathname}?join=${net.code}`;
     navigator.clipboard?.writeText(link).then(() => (e.target.textContent = "Copied!"), () => (e.target.textContent = link));
   });
-  $("leave").addEventListener("click", () => leaveLobby());
   if (isHost) {
-    bindLevelPicker(() => { broadcastLobby(); showLobby(); });
-    $("start").addEventListener("click", hostStart);
+    $("course-").addEventListener("click", () => changeCourse(-1));
+    $("course+").addEventListener("click", () => changeCourse(1));
     $("bots-").addEventListener("click", () => setBots(bots - 1));
     $("bots+").addEventListener("click", () => setBots(bots + 1));
   }
-  panel.classList.remove("hidden");
 }
 // Only redraw the lobby while it's on screen, not over a race or the results.
 const refreshLobby = () => { if (net.role && state === "menu") showLobby(); };
@@ -4410,6 +4750,7 @@ function showResults() {
   });
   result = { bonus, total, isBest, rank };
   renderResults();
+  closeMenu();
   panel.classList.remove("hidden");
 }
 
@@ -4523,6 +4864,7 @@ function netTick(dt) {
 // --- Host ---
 async function hostLobby() {
   readName();
+  stopAttract();
   showStatus("Creating a lobby…");
   let Peer;
   try { Peer = await loadPeerJS(); } catch (e) { return leaveLobby(e.message, showHostSetup); }
@@ -4608,6 +4950,7 @@ async function joinLobby(raw) {
   const code = String(raw).toUpperCase().replace(/[^A-Z0-9]/g, "");
   if (code.length !== 5) return showJoin("Lobby codes are 5 letters and numbers.");
   readName();
+  stopAttract();
   showStatus(`Joining lobby ${code}…`);
   let Peer;
   try { Peer = await loadPeerJS(); } catch (e) { return leaveLobby(e.message, showJoin); }
