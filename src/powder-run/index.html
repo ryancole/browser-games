@@ -67,6 +67,23 @@
     text-shadow: 3px 3px 0 #4a2a00, -1px -1px 0 #4a2a00, 1px -1px 0 #4a2a00, -1px 1px 0 #4a2a00;
   }
   #pos small { font-size: 0.55em; }
+  /* Licensed song for the course: its YouTube video, credited, above the sound buttons.
+     YouTube needs embedded players to be visible and at least 200 x 200. */
+  #yt {
+    position: fixed; left: 12px; bottom: 56px; width: 356px; display: none;
+    background: rgba(12, 16, 26, 0.82); border-radius: 10px; overflow: hidden;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); color: #fff;
+  }
+  #yt.on { display: block; }
+  #yt .credit { display: flex; align-items: center; gap: 0.6rem; padding: 0.45rem 0.7rem; font-size: 0.82rem; line-height: 1.2; }
+  #yt .credit .note { font-size: 1.1rem; color: #ff4f6a; }
+  #yt .credit .who { flex: 1; min-width: 0; }
+  #yt .credit b, #yt .credit span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #yt .credit span { opacity: 0.75; font-size: 0.75rem; }
+  #yt .credit a { color: #fff; background: #e62117; padding: 0.3rem 0.55rem; border-radius: 6px; font-size: 0.72rem; font-weight: 700; text-decoration: none; white-space: nowrap; }
+  #yt .credit a:hover { background: #c4170e; }
+  #yt .video { width: 356px; height: 200px; }
+  #yt .video iframe, #yt .video > div { width: 100%; height: 100%; display: block; border: 0; }
   /* Sound, music, voice and restart sit out of the way in the bottom left. */
   #top-right { position: fixed; left: 12px; bottom: 12px; display: flex; gap: 0.5rem; }
   #top-right button { padding: 0.35rem 0.7rem; font-size: 0.8rem; }
@@ -332,6 +349,9 @@
     #course-map { bottom: 96px; right: 10px; }
     #top-right { left: auto; right: 8px; bottom: auto; top: 68px; flex-direction: column; align-items: flex-end; gap: 0.3rem; }
     #top-right button { padding: 0.3rem 0.55rem; font-size: 0.72rem; }
+    /* Under the time on the left, clear of the touch controls. */
+    #yt { left: 8px; bottom: auto; top: 96px; width: 220px; }
+    #yt .video { width: 220px; height: 200px; }
   }
   /* On the menus the sound buttons sit in a row along the top, above the heading. */
   @media (pointer: coarse) {
@@ -359,6 +379,15 @@
 </div>
 <div id="speedo" class="race-hud"><div class="band"><span class="val" id="speed">0</span><span class="lbl">km/h</span></div></div>
 <div id="course-map" class="race-hud"><div id="pos">1<small>st</small></div><canvas id="map"></canvas></div>
+<!-- The course's song, when it has one: credit, link and the playing video. -->
+<div id="yt">
+  <div class="credit">
+    <div class="note">&#9835;</div>
+    <div class="who"><b id="yt-title"></b><span id="yt-artist"></span></div>
+    <a id="yt-link" target="_blank" rel="noopener">Watch on YouTube</a>
+  </div>
+  <div class="video"><div id="yt-player"></div></div>
+</div>
 <div id="top-right">
   <button id="voice" class="secondary">Voice: on</button>
   <button id="music" class="secondary">Music: on</button>
@@ -1891,6 +1920,7 @@ const LEVELS = {
   peak: {
     name: "Snowy Peak", blurb: "An overcast day high on a snowy mountain.",
     seed: 7331, build: buildPeak, ground: snowGround,
+    track: { artist: "Avicii", title: "Levels", video: "_ovdm2yX4MA" },
     course: { a1: 16, p1: 130, o1: 0, a2: 7, p2: 53, o2: 1.3, bump: 0 },
     kickers: { start: 150, offsets: [0, -7, 6, -3, 8, -6], gaps: [100, 120, 140] },
     terrain: {
@@ -1904,6 +1934,7 @@ const LEVELS = {
   city: {
     name: "Neon Nights", blurb: "A snowy street run through the city after dark, past lamps, towers and neon signs.",
     seed: 90210, build: buildCity, ground: snowGround,
+    track: { artist: "Post Malone", title: "Saint-Tropez", video: "MRyLC2M1K2w" },
     course: { a1: 12, p1: 170, o1: 0.6, a2: 9, p2: 61, o2: 2.2, bump: 1.7 },
     kickers: { start: 130, offsets: [4, -6, 0, 7, -4, 2], gaps: [95, 120, 145] },
     terrain: {
@@ -1917,6 +1948,7 @@ const LEVELS = {
   valley: {
     name: "Lakeside Valley", blurb: "Sunny spring snow above the countryside, with a lake in the valley below.",
     seed: 2468, build: buildValley, ground: valleyGround,
+    track: { artist: "Dave Matthews Band", title: "Crash Into Me", video: "k7in-9E3ImQ" },
     course: { a1: 20, p1: 150, o1: 2, a2: 5, p2: 47, o2: 0, bump: 3.1 },
     kickers: { start: 160, offsets: [-5, 3, 8, -8, 0, 5], gaps: [105, 130] },
     terrain: {
@@ -1930,6 +1962,7 @@ const LEVELS = {
   gorge: {
     name: "Frozen Gorge", blurb: "A technical run through an icy gorge at dusk: tight turns, bridges over ravines, high ledges, an ice cave and a cabin to ride through.",
     seed: 31337, build: buildGorge, ground: gorgeGround, layout: gorgeLayout,
+    track: { artist: "Pendulum", title: "Watercolour", video: "tEPB7uzKuh4" },
     course: { a1: 12, p1: 150, o1: 0.4, a2: 6, p2: 60, o2: 2.5, bump: 0.8, tight: { a: 9, p: 24, z1: 330 } },
     kickers: { at: [[150, 0], [300, -4, true], [440, 2], [610, -2], [760, 0], [1020, 3, true], [1330, -3]] },
     terrain: { logs: "log", pines: [[0x24473a, 0x2a523f], 0xdfe6f5] },
@@ -1940,6 +1973,7 @@ const LEVELS = {
   bowl: {
     name: "Glacier Bowl", blurb: "A huge open bowl above the trees. Pick your own line past stone pillars, off giant cliffs and down an ice half-pipe.",
     seed: 4242, build: buildBowl, ground: bowlGround, layout: bowlLayout, halfW: 40,
+    track: { artist: "Foo Fighters", title: "Everlong", video: "eBG7P-K-r1Y" },
     course: { a1: 10, p1: 220, o1: 1, a2: 5, p2: 90, o2: 0.3, bump: 2.2 },
     kickers: { at: [[175, -14], [360, 0], [740, 12], [890, 14], [1140, -8, true], [1330, 0]] },
     terrain: { pines: [[0x2f5d46, 0x356b4c], 0xeef4fb] },
@@ -2774,7 +2808,7 @@ function updateWeather(dt) {
 }
 
 // ---------------------------------------------------------------------------
-// Sound (synthesized, no audio files)
+// Sound effects (synthesized, no audio files)
 // ---------------------------------------------------------------------------
 const store = {
   get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
@@ -2808,7 +2842,6 @@ function initAudio() {
   carve.connect(hp).connect(carveGain).connect(master);
   wind.start();
   carve.start(0, 0.7);
-  startMusic(buf);
 }
 // Browsers only allow sound after the player interacts, so start it on the first click or key.
 window.addEventListener("pointerdown", initAudio, { once: true });
@@ -2852,438 +2885,71 @@ function updateAudio(speed, slip) {
   windFilter.frequency.setTargetAtTime(250 + s * 25, t, 0.15);
   const c = moving && me.grounded ? Math.min(0.1, slip * 0.012 + s * 0.0015) : 0;
   carveGain.gain.setTargetAtTime(c, t, 0.05);
-  // The music opens up as you pick up speed.
-  // The menu theme plays wide open; on a course it starts muffled and opens up with speed.
-  if (musicFilter) musicFilter.frequency.setTargetAtTime(onMenus() ? 7000 : moving ? 900 + Math.min(s, 35) * 120 : 1800, t, 0.3);
 }
 
 // ---------------------------------------------------------------------------
-// Music: original loops sequenced live with the Web Audio API, one per course
-// plus a fast skate-punk theme for the title screen and menus. On a course the
-// countdown and the results get a lighter mix, and the drums come in for the
-// race itself.
+// Music: real songs, played from the artists' official YouTube videos in a
+// visible player, credited with a link to the video so the plays and ads count
+// for them. Each course can have its own song, and the title screen and menus
+// have one too. A place with no song is silent.
 // ---------------------------------------------------------------------------
-const MUSIC_VOL = 0.55;
-const midi = (n) => 440 * 2 ** ((n - 69) / 12);
+// The song for the title screen and menus: { artist, title, video }, or null for none.
+const MENU_TRACK = { artist: "blink-182", title: "All The Small Things", video: "9Ht5RZpzPqw" };
+const TRACK_VOL = 70;
 
 let musicOn = store.get("powderrun-music") !== "0";
-let musicGain = null, musicFilter = null, guitarIn = null, noiseBuf = null;
-let musicStep = 0, musicNext = 0, songId = null, song = null;
-
-// A distortion curve for the power chords: soft clipping, driven hard.
-function distCurve(k = 24) {
-  const n = 1024, c = new Float32Array(n);
-  for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1; c[i] = ((1 + k) * x) / (1 + k * Math.abs(x)); }
-  return c;
-}
-
-function startMusic(noise) {
-  noiseBuf = noise;
-  musicGain = ac.createGain();
-  musicGain.gain.value = musicOn ? MUSIC_VOL : 0;
-  musicGain.connect(master);
-  musicFilter = ac.createBiquadFilter();
-  musicFilter.type = "lowpass"; musicFilter.frequency.value = 1800; musicFilter.Q.value = 0.8;
-  musicFilter.connect(musicGain);
-  // Guitar: notes are driven into the distortion, then through a "cabinet" that tames the fizz.
-  guitarIn = ac.createGain();
-  const shaper = ac.createWaveShaper();
-  shaper.curve = distCurve(); shaper.oversample = "2x";
-  const hp = ac.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 90;
-  const cab = ac.createBiquadFilter(); cab.type = "lowpass"; cab.frequency.value = 3200; cab.Q.value = 0.7;
-  const mid = ac.createBiquadFilter(); mid.type = "peaking"; mid.frequency.value = 800; mid.gain.value = -4;
-  const out = ac.createGain(); out.gain.value = 0.06;
-  guitarIn.connect(shaper).connect(hp).connect(cab).connect(mid).connect(out).connect(musicFilter);
-  musicNext = ac.currentTime + 0.1;
-  setInterval(scheduleMusic, 25);
-}
-
 function toggleMusic() {
   musicOn = !musicOn;
   store.set("powderrun-music", musicOn ? "1" : "0");
-  if (musicGain) musicGain.gain.setTargetAtTime(musicOn ? MUSIC_VOL : 0, ac.currentTime, 0.1);
   musicBtn.textContent = `Music: ${musicOn ? "on" : "off"}`;
 }
 
 const onMenus = () => state === "title" || state === "menu";
-// Which song should be playing: the menu theme, or the course's own.
-const wantSong = () => (onMenus() ? "menu" : levelId);
-// 1: countdown and after you finish, 2: racing (and always on the menus).
-function musicLevel() {
-  if (onMenus()) return 2;
-  return state === "run" && !me.finished ? 2 : 1;
+// The song that belongs where you are: the menu song, or the course's own.
+const currentTrack = () => (onMenus() ? MENU_TRACK : level.track) || null;
+
+const ytBox = document.getElementById("yt");
+let yt = null, ytReady = false, ytLoading = false, ytVideo = null, ytPlayingNow = false;
+
+function loadYouTube() {
+  if (ytLoading) return;
+  ytLoading = true;
+  window.onYouTubeIframeAPIReady = () => {
+    yt = new YT.Player("yt-player", {
+      playerVars: { playsinline: 1, rel: 0, modestbranding: 1 },
+      events: {
+        onReady: () => { ytReady = true; yt.setVolume(TRACK_VOL); },
+        // Loop the song for as long as it's the one that should be playing.
+        onStateChange: (e) => { if (e.data === YT.PlayerState.ENDED && ytPlayingNow) yt.playVideo(); },
+      },
+    });
+  };
+  const s = document.createElement("script");
+  s.src = "https://www.youtube.com/iframe_api";
+  document.head.appendChild(s);
 }
 
-// Schedule notes a little ahead of time so timer jitter doesn't make them late.
-function scheduleMusic() {
-  if (ac.state !== "running") return;
-  const now = ac.currentTime;
-  const id = wantSong();
-  if (id !== songId && SONGS[id]) {
-    // Change songs from the top, straight away.
-    songId = id; song = SONGS[id];
-    song.six = 60 / song.bpm / 4;
-    musicStep = 0;
-    musicNext = Math.max(musicNext, now + 0.06);
-  }
-  const loop = song.bars * 16;
-  if (!musicOn || muted || musicNext < now - 0.2) {
-    // Silent, or catching up after the tab was in the background: skip ahead rather than play a burst.
-    while (musicNext < now) { musicNext += song.six; musicStep = (musicStep + 1) % loop; }
-    if (!musicOn || muted) return;
-  }
-  const lvl = musicLevel();
-  while (musicNext < now + 0.12) {
-    song.play(Math.floor(musicStep / 16), musicStep % 16, musicNext, lvl, song.six);
-    musicNext += song.six;
-    musicStep = (musicStep + 1) % loop;
-  }
-}
-
-// --- Instruments ----------------------------------------------------------------
-function tone(type, freq, t, dur, gain, cutoff) {
-  const o = ac.createOscillator(), f = ac.createBiquadFilter(), g = ac.createGain();
-  o.type = type; o.frequency.value = freq;
-  f.type = "lowpass"; f.frequency.value = cutoff;
-  g.gain.setValueAtTime(0, t);
-  g.gain.linearRampToValueAtTime(gain, t + 0.005);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  o.connect(f).connect(g).connect(musicFilter);
-  o.start(t); o.stop(t + dur + 0.02);
-}
-
-// Two slightly detuned saws with a slow swell, held for the bar.
-function pad(freq, t, dur, gain = 0.016, cutoff = 1100) {
-  const g = ac.createGain();
-  g.gain.setValueAtTime(0, t);
-  g.gain.linearRampToValueAtTime(gain, t + Math.min(0.6, dur / 3));
-  g.gain.setValueAtTime(gain, t + dur - 0.3);
-  g.gain.linearRampToValueAtTime(0, t + dur + 0.25);
-  const f = ac.createBiquadFilter();
-  f.type = "lowpass"; f.frequency.value = cutoff;
-  f.connect(g).connect(musicFilter);
-  for (const cents of [-8, 8]) {
-    const o = ac.createOscillator();
-    o.type = "sawtooth"; o.frequency.value = freq; o.detune.value = cents;
-    o.connect(f);
-    o.start(t); o.stop(t + dur + 0.3);
+// Called every frame: show and play the song for where you are, pause and hide it otherwise.
+// It waits for the first click or key press (ac), since browsers block sound until then.
+function syncTrack() {
+  const t = ac && musicOn && !muted ? currentTrack() : null;
+  if (t) {
+    if (ytVideo !== t.video) {
+      document.getElementById("yt-title").textContent = t.title;
+      document.getElementById("yt-artist").textContent = t.artist;
+      document.getElementById("yt-link").href = `https://www.youtube.com/watch?v=${t.video}`;
+    }
+    ytBox.classList.add("on");
+    loadYouTube();
+    if (!ytReady) return;
+    if (ytVideo !== t.video) { ytVideo = t.video; yt.loadVideoById(t.video); ytPlayingNow = true; }
+    else if (!ytPlayingNow) { yt.playVideo(); ytPlayingNow = true; }
+  } else if (ytBox.classList.contains("on")) {
+    ytBox.classList.remove("on");
+    if (ytReady && ytPlayingNow) yt.pauseVideo();
+    ytPlayingNow = false;
   }
 }
-
-// A distorted power chord (root, fifth and octave). Palm-muted chords are short and dark.
-function guitar(root, t, dur, { mute = false, drive = 0.8 } = {}) {
-  const g = ac.createGain(), f = ac.createBiquadFilter();
-  f.type = "lowpass"; f.frequency.value = mute ? 700 : 4000;
-  g.gain.setValueAtTime(0, t);
-  g.gain.linearRampToValueAtTime(drive, t + 0.004);
-  g.gain.setTargetAtTime(drive * (mute ? 0.2 : 0.7), t + 0.01, mute ? 0.03 : 0.25);
-  g.gain.setTargetAtTime(0, t + dur, 0.03);
-  f.connect(g).connect(guitarIn);
-  for (const [n, cents] of [[0, -6], [7, 5], [12, 0]]) {
-    const o = ac.createOscillator();
-    o.type = "sawtooth"; o.frequency.value = midi(root + n); o.detune.value = cents;
-    o.connect(f);
-    o.start(t); o.stop(t + dur + 0.2);
-  }
-}
-
-// A lead line: square and saw together, scooping up into each note like a bend.
-function lead(note, t, dur, gain = 0.035, cutoff = 2800) {
-  const g = ac.createGain(), f = ac.createBiquadFilter();
-  f.type = "lowpass"; f.frequency.value = cutoff;
-  g.gain.setValueAtTime(0, t);
-  g.gain.linearRampToValueAtTime(gain, t + 0.01);
-  g.gain.setTargetAtTime(gain * 0.6, t + 0.02, dur * 0.5);
-  g.gain.setTargetAtTime(0, t + dur, 0.04);
-  f.connect(g).connect(musicFilter);
-  for (const [type, cents] of [["square", 0], ["sawtooth", 7]]) {
-    const o = ac.createOscillator();
-    o.type = type; o.detune.value = cents;
-    o.frequency.setValueAtTime(midi(note) * 0.97, t);
-    o.frequency.linearRampToValueAtTime(midi(note), t + 0.035);
-    o.connect(f);
-    o.start(t); o.stop(t + dur + 0.25);
-  }
-}
-
-// A plucked string: bright, quick to fade.
-function pluck(note, t, gain = 0.03) {
-  tone("triangle", midi(note), t, 0.35, gain, 3500);
-  tone("square", midi(note), t, 0.08, gain * 0.25, 2400);
-}
-
-// A bell or glockenspiel: a sine with a clangy upper partial, ringing on.
-function bell(note, t, dur = 1.2, gain = 0.04) {
-  for (const [mul, g0, d] of [[1, gain, dur], [2.76, gain * 0.35, dur * 0.4], [5.4, gain * 0.12, dur * 0.2]]) {
-    const o = ac.createOscillator(), g = ac.createGain();
-    o.type = "sine"; o.frequency.value = midi(note) * mul;
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(g0, t + 0.004);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + d);
-    o.connect(g).connect(musicFilter);
-    o.start(t); o.stop(t + d + 0.02);
-  }
-}
-
-// Drums skip the speed filter so the beat stays punchy.
-function kick(t, gain = 0.4) {
-  const o = ac.createOscillator(), g = ac.createGain();
-  o.frequency.setValueAtTime(140, t);
-  o.frequency.exponentialRampToValueAtTime(42, t + 0.12);
-  g.gain.setValueAtTime(gain, t);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
-  o.connect(g).connect(musicGain);
-  o.start(t); o.stop(t + 0.32);
-}
-function tom(t, freq, gain = 0.3) {
-  const o = ac.createOscillator(), g = ac.createGain();
-  o.frequency.setValueAtTime(freq, t);
-  o.frequency.exponentialRampToValueAtTime(freq * 0.55, t + 0.25);
-  g.gain.setValueAtTime(gain, t);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
-  o.connect(g).connect(musicGain);
-  o.start(t); o.stop(t + 0.37);
-}
-function noiseHit(t, type, freq, gain, dur) {
-  const src = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
-  src.buffer = noiseBuf;
-  f.type = type; f.frequency.value = freq;
-  g.gain.setValueAtTime(gain, t);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  src.connect(f).connect(g).connect(musicGain);
-  src.start(t, Math.random() * 1.5, dur + 0.02);
-}
-// An 808: a long sine bass that thumps in from above the note and can slide from another note.
-function bass808(note, t, dur, gain = 0.32, from = null) {
-  const o = ac.createOscillator(), g = ac.createGain(), sh = ac.createWaveShaper();
-  sh.curve = distCurve(3);
-  o.type = "sine";
-  o.frequency.setValueAtTime(midi(from ?? note) * 1.6, t);
-  o.frequency.exponentialRampToValueAtTime(midi(from ?? note), t + 0.04);
-  if (from != null) o.frequency.exponentialRampToValueAtTime(midi(note), t + 0.14);
-  g.gain.setValueAtTime(gain, t);
-  g.gain.setTargetAtTime(gain * 0.7, t + 0.05, 0.3);
-  g.gain.setTargetAtTime(0, t + dur, 0.05);
-  o.connect(sh).connect(g).connect(musicGain);
-  o.start(t); o.stop(t + dur + 0.3);
-}
-
-// A reese: detuned saws growling through a lowpass that opens and closes, over a sine sub.
-function reese(note, t, dur, gain = 0.07) {
-  const g = ac.createGain(), f = ac.createBiquadFilter();
-  f.type = "lowpass"; f.Q.value = 3;
-  f.frequency.setValueAtTime(220, t);
-  f.frequency.linearRampToValueAtTime(700, t + dur * 0.5);
-  f.frequency.linearRampToValueAtTime(260, t + dur);
-  g.gain.setValueAtTime(0, t);
-  g.gain.linearRampToValueAtTime(gain, t + 0.01);
-  g.gain.setValueAtTime(gain, t + dur - 0.04);
-  g.gain.linearRampToValueAtTime(0, t + dur);
-  f.connect(g).connect(musicFilter);
-  for (const cents of [-14, 14]) {
-    const o = ac.createOscillator();
-    o.type = "sawtooth"; o.frequency.value = midi(note); o.detune.value = cents;
-    o.connect(f);
-    o.start(t); o.stop(t + dur + 0.02);
-  }
-  tone("sine", midi(note - 12), t, dur, gain * 2.6, 200);
-}
-
-const snare = (t, gain, dur = 0.16) => { noiseHit(t, "bandpass", 1800, gain, dur); tom(t, 220, gain * 0.5); };
-// A clap: three quick bursts of noise and a short tail.
-const clap = (t, gain) => { for (const d of [0, 0.011, 0.023]) noiseHit(t + d, "bandpass", 1300, gain, d === 0.023 ? 0.18 : 0.02); };
-const hat = (t, gain, dur = 0.045) => noiseHit(t, "highpass", 7500, gain, dur);
-const cymbal = (t, gain = 0.12) => noiseHit(t, "highpass", 5000, gain, 1.4);
-const ride = (t, gain = 0.04) => noiseHit(t, "bandpass", 6500, gain, 0.22);
-
-// Chord tones from a root, for arpeggios and pads.
-const triad = (root, minor) => [root, root + (minor ? 3 : 4), root + 7];
-
-// --- Songs ----------------------------------------------------------------------
-// Each song plays one sixteenth-note step at a time: play(bar, step, time, level, sixteenth).
-// Melodies are written in eighth notes, eight to a bar; 0 is a rest.
-const SONGS = {
-  // Title screen and menus: fast skate punk in E minor. Palm-muted verse riff,
-  // then a chorus with a polka beat and a lead guitar line over the top.
-  menu: {
-    bpm: 182, bars: 8,
-    roots: [40, 40, 36, 38, 40, 40, 43, 45],
-    lead: [
-      76, 76, 74, 71, 74, 76, 0, 71,
-      71, 74, 76, 79, 76, 74, 71, 0,
-      79, 79, 76, 74, 76, 74, 71, 67,
-      69, 71, 74, 76, 78, 0, 75, 0,
-    ],
-    play(bar, s, t, lvl, six) {
-      const root = bar === 7 && s >= 8 ? 47 : this.roots[bar];
-      const chorus = bar >= 4;
-      if (s % 2 === 0) {
-        const accent = chorus ? s % 4 === 0 : s === 0 || s === 6 || s === 10;
-        guitar(root, t, accent ? six * (chorus ? 3.6 : 3) : six * 1.1, { mute: !accent });
-        tone("sawtooth", midi(root - 12), t, six * 1.8, 0.11, 520);
-      }
-      if (chorus && s % 2 === 0) { const n = this.lead[(bar - 4) * 8 + s / 2]; if (n) lead(n, t, six * 1.9, 0.03); }
-      if (chorus) {
-        if (s % 4 === 0) kick(t);
-        if (s % 4 === 2) snare(t, 0.2);
-      } else {
-        if (s === 0 || s === 6 || s === 8) kick(t);
-        if (s === 4 || s === 12) snare(t, 0.24);
-      }
-      if (s % 2 === 0) hat(t, s % 4 === 0 ? 0.05 : 0.03);
-      if (s === 0 && bar % 4 === 0) cymbal(t);
-      if (bar === 3 && s >= 12) snare(t, 0.1 + 0.04 * (s - 12)); // fill into the chorus
-    },
-  },
-
-  // Snowy Peak: melodic house in D minor. Dm Bb F C | Gm Bb F A. Four-on-the-floor
-  // kick, claps, open hats and a bass on the offbeats, under pads and an arpeggio.
-  peak: {
-    bpm: 124, bars: 8,
-    chords: [
-      { bass: 38, pad: [62, 65, 69] }, { bass: 34, pad: [62, 65, 70] }, { bass: 41, pad: [60, 65, 69] }, { bass: 36, pad: [60, 64, 67] },
-      { bass: 43, pad: [62, 67, 70] }, { bass: 34, pad: [62, 65, 70] }, { bass: 41, pad: [60, 65, 69] }, { bass: 33, pad: [61, 64, 69] },
-    ],
-    play(bar, s, t, lvl, six) {
-      const ch = this.chords[bar];
-      if (s === 0) for (const n of ch.pad) pad(midi(n), t, six * 16);
-      const tones = [...ch.pad, ch.pad[0] + 12, ch.pad[1] + 12];
-      if (s % 2 === 0 || lvl === 2) tone("square", midi(tones[[0, 1, 2, 3, 4, 3, 2, 1][s % 8]] + 12), t, 0.16, s % 2 ? 0.018 : 0.028, 2000);
-      // The bass sits on the offbeats, house style; at the lighter level it just marks the bar.
-      if (s % 4 === 2 || (lvl < 2 && s === 0)) tone("sawtooth", midi(ch.bass), t, six * 1.5, 0.13, 480);
-      if (lvl < 2) return;
-      if (s % 4 === 0) kick(t);
-      if (s === 4 || s === 12) clap(t, 0.16);
-      else if (bar === 7 && s > 12) snare(t, 0.08 + 0.04 * (s - 12));
-      hat(t, s % 4 === 2 ? 0.06 : 0.018, s % 4 === 2 ? 0.14 : 0.04);
-      if (s === 0 && bar % 4 === 0) cymbal(t, 0.07);
-    },
-  },
-
-  // Neon Nights: dark trap in A minor at 140 BPM, felt in half time. Am F Dm E.
-  // Sliding 808s, a clap on beat three, rolling hi-hats and a bell melody.
-  city: {
-    bpm: 140, bars: 8,
-    roots: [45, 45, 41, 41, 38, 38, 40, 40],
-    minor: [true, true, false, false, true, true, false, false],
-    bells: [
-      76, 0, 72, 0, 69, 0, 72, 76,
-      0, 0, 74, 72, 71, 0, 69, 0,
-      77, 0, 72, 0, 69, 0, 72, 77,
-      0, 0, 76, 74, 72, 0, 0, 0,
-      74, 0, 77, 0, 81, 0, 77, 74,
-      0, 0, 77, 76, 74, 0, 72, 0,
-      71, 0, 68, 0, 64, 0, 68, 71,
-      0, 0, 74, 72, 71, 0, 68, 0,
-    ],
-    play(bar, s, t, lvl, six) {
-      const root = this.roots[bar];
-      if (s === 0 && bar % 2 === 0) for (const n of triad(root + 12, this.minor[bar])) pad(midi(n), t, six * 32, 0.011, 1000);
-      if (s % 2 === 0) { const n = this.bells[bar * 8 + s / 2]; if (n) bell(n + 12, t, 0.7, 0.028); }
-      const b = root - 12;
-      if (lvl < 2) { if (s === 0) bass808(b, t, six * 12, 0.2); return; }
-      // 808 and kick together: on the one, a dotted hit, and a slide down from the octave.
-      if (s === 0) { kick(t, 0.35); bass808(b, t, six * 5.5); }
-      if (s === 6) { kick(t, 0.3); bass808(b, t, six * 3.5); }
-      if (s === 11) { kick(t, 0.3); bass808(b, t, six * 4.5, 0.32, b + 12); }
-      if (s === 8) { clap(t, 0.2); snare(t, 0.1); }
-      // Hats on the eighths, rolling into sixteenths and thirty-seconds at the end of every other bar.
-      const roll = bar % 2 === 1 && s >= 12;
-      if (s % 2 === 0 || roll) hat(t, s % 4 === 0 ? 0.04 : 0.028);
-      if (roll && s >= 14) hat(t + six / 2, 0.022);
-    },
-  },
-
-  // Lakeside Valley: sunny, laid-back indie in G major for cruising. Strummed
-  // plucks, a bouncy root-and-fifth bass, a glockenspiel tune and a shaker.
-  valley: {
-    bpm: 132, bars: 8,
-    roots: [43, 38, 40, 36, 43, 38, 36, 38],
-    minor: [false, false, true, false, false, false, false, false],
-    tune: [
-      74, 0, 71, 0, 67, 0, 71, 74,
-      76, 0, 74, 0, 69, 0, 66, 69,
-      71, 0, 67, 0, 64, 0, 67, 71,
-      72, 0, 71, 0, 67, 0, 64, 0,
-      79, 0, 78, 0, 74, 0, 71, 74,
-      76, 0, 78, 0, 81, 0, 78, 76,
-      79, 0, 76, 0, 72, 0, 76, 79,
-      78, 0, 74, 0, 69, 0, 0, 0,
-    ],
-    play(bar, s, t, lvl, six) {
-      const root = this.roots[bar], ch = triad(root + 12, this.minor[bar]);
-      if (s % 2 === 0) {
-        // A strum: the chord's notes a hair apart, down on the beat and up off it.
-        const notes = s % 4 === 0 ? ch : [...ch].reverse();
-        notes.forEach((n, k) => pluck(n + 12, t + k * 0.012, s % 4 === 0 ? 0.03 : 0.018));
-      }
-      if (s % 4 === 0) tone("triangle", midi(root - 12 + (s % 8 === 4 ? 7 : 0)), t, six * 3, 0.16, 900);
-      if (s % 2 === 0) { const n = this.tune[bar * 8 + s / 2]; if (n && lvl === 2) bell(n + 12, t, 0.9, 0.03); }
-      if (lvl < 2) return;
-      if (s === 0 || s === 8 || s === 10) kick(t, 0.32);
-      if (s === 4 || s === 12) { snare(t, 0.13); hat(t, 0.06, 0.12); }
-      hat(t, s % 2 ? 0.012 : 0.022);
-    },
-  },
-
-  // Frozen Gorge: dark drum & bass in D minor at 174 BPM. A growling reese bass,
-  // a two-step breakbeat with ghost snares, a cold pad and sparse bells.
-  gorge: {
-    bpm: 174, bars: 8,
-    roots: [38, 38, 34, 33, 38, 38, 43, 33],
-    minor: [true, true, false, false, true, true, true, false],
-    bells: [
-      74, 0, 0, 0, 72, 0, 69, 0,
-      70, 0, 0, 0, 69, 0, 0, 0,
-      70, 0, 0, 0, 74, 0, 77, 0,
-      76, 0, 0, 0, 73, 0, 0, 0,
-      74, 0, 0, 0, 77, 0, 81, 0,
-      79, 0, 77, 0, 74, 0, 0, 0,
-      79, 0, 0, 0, 77, 0, 74, 0,
-      73, 0, 76, 0, 79, 0, 0, 0,
-    ],
-    play(bar, s, t, lvl, six) {
-      const root = this.roots[bar];
-      if (s === 0) for (const n of triad(root + 24, this.minor[bar])) pad(midi(n), t, six * 16, 0.012, 900);
-      if (s === 0 || s === 8) reese(root, t, six * 7.8, lvl < 2 ? 0.045 : 0.07);
-      if (s % 2 === 0) { const n = this.bells[bar * 8 + s / 2]; if (n) bell(n, t, 1.6, 0.03); }
-      if (lvl < 2) return;
-      if (s === 0 || s === 10) kick(t, 0.42);
-      if (s === 4 || s === 12) snare(t, 0.24);
-      else if (s === 7 || s === 15) snare(t, 0.05, 0.06); // ghost notes
-      hat(t, s % 4 === 2 ? 0.04 : 0.014);
-      if (s % 4 === 2) ride(t, 0.025);
-      if (bar === 7 && s >= 8 && s % 2 === 0) tom(t, [180, 150, 120, 95][(s - 8) / 2], 0.32);
-    },
-  },
-
-  // Glacier Bowl: big, open anthem rock in D major. Ringing power chords, a
-  // soaring lead and crashing drums.
-  bowl: {
-    bpm: 150, bars: 8,
-    roots: [38, 45, 47, 43, 38, 45, 43, 45],
-    lead: [
-      74, 0, 76, 78, 81, 0, 78, 0,
-      76, 0, 0, 73, 76, 0, 81, 0,
-      79, 0, 78, 76, 74, 0, 71, 0,
-      73, 0, 76, 0, 81, 0, 0, 0,
-    ],
-    play(bar, s, t, lvl, six) {
-      const root = this.roots[bar];
-      const g = root > 44 ? root - 12 : root;
-      if (s === 0 || s === 10) guitar(g, t, six * (s === 0 ? 9 : 5.5), { drive: 0.7 });
-      else if (s % 2 === 0) guitar(g, t, six * 1.1, { mute: true, drive: 0.5 });
-      if (s % 2 === 0) tone("sawtooth", midi(g - 12), t, six * 1.8, 0.1, 480);
-      if (lvl < 2) return;
-      if (bar >= 4 && s % 2 === 0) { const n = this.lead[(bar - 4) * 8 + s / 2]; if (n) lead(n, t, six * 2.8, 0.032); }
-      if (s === 0 || s === 8 || s === 10) kick(t);
-      if (s === 4 || s === 12) snare(t, 0.26);
-      if (s % 2 === 0) ride(t, s % 4 === 0 ? 0.05 : 0.03);
-      if (s === 0 && bar % 2 === 0) cymbal(t);
-      if (bar === 7 && s >= 12) snare(t, 0.1 + 0.05 * (s - 12));
-    },
-  },
-};
 
 // ---------------------------------------------------------------------------
 // Announcer: spoken callouts for your tricks and wipeouts, using the browser's
@@ -5289,8 +4955,8 @@ function leaveLobby(message = "", screen = null) {
 // ---------------------------------------------------------------------------
 // Title screen: your rider frozen mid-grab high against a blue sky, shot from
 // below with snow spraying off the board. It has its own small scene, so it
-// looks the same whichever course is picked. The first key or tap starts the
-// music and the next goes to the menu.
+// looks the same whichever course is picked. When there's a menu song, the
+// first key or tap starts it and the next goes to the menu.
 // ---------------------------------------------------------------------------
 const titleEl = $("title");
 let title = null;
@@ -5433,12 +5099,13 @@ function showTitle() {
   document.body.classList.add("on-title");
   titleEl.classList.remove("hidden");
 }
-// Browsers keep the page silent until the first key or tap, so the first press
-// on the title just starts the menu theme; the next one goes on to the menu.
+// Browsers keep the page silent until the first key or tap, so when there's a
+// menu song the first press on the title just starts it; the next one goes on to the menu.
 let titleMusicStarted = false;
 function leaveTitle() {
   if (state !== "title") return;
-  if (!titleMusicStarted && musicOn && !muted) {
+  initAudio();
+  if (!titleMusicStarted && MENU_TRACK && musicOn && !muted) {
     titleMusicStarted = true;
     initAudio();
     titleEl.querySelector(".press").innerHTML =
@@ -5468,6 +5135,7 @@ let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
+  syncTrack();
   if (state === "title") {
     updateTitle(dt);
     updateAudio(0, 0);

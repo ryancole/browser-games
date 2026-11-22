@@ -2,7 +2,7 @@
 
 A 3D snowboarding game for the browser. Race computer rivals or your friends down a winding run, launch off the kickers, and spin, flip and grab in the air for points. Your final score is your trick points plus a time bonus for finishing under par.
 
-It's a single HTML file with no build step or asset files. The 3D graphics use [Three.js](https://threejs.org/) (r170), loaded from the jsDelivr CDN through an import map, so the page needs an internet connection the first time it loads. The courses, scenery and riders are generated in code, and the sound effects and music are made with the Web Audio API. Multiplayer uses [PeerJS](https://peerjs.com/) 1.5.4, which is loaded from jsDelivr only when you host or join a lobby.
+It's a single HTML file with no build step or asset files. The 3D graphics use [Three.js](https://threejs.org/) (r170), loaded from the jsDelivr CDN through an import map, so the page needs an internet connection the first time it loads. The courses, scenery and riders are generated in code, and the sound effects are made with the Web Audio API. The music is played from the artists' YouTube videos. Multiplayer uses [PeerJS](https://peerjs.com/) 1.5.4, which is loaded from jsDelivr only when you host or join a lobby.
 
 ## Play
 
@@ -103,20 +103,24 @@ Every rider leaves tracks in the snow wherever their board is on the ground. A c
 
 ## Music
 
-Every song is an original eight-bar loop, played live by a small sequencer in the page rather than from audio files. The guitars are synthesized too: sawtooth power chords driven through a distortion curve and a speaker-like filter.
+The music is real songs, played from the artists' official YouTube videos so the plays and ads count for them. There's no music built into the game any more.
 
-| Where | Style |
-| ----- | ----- |
-| **Title screen and menus** | Fast skate punk in E minor at 182 BPM: a palm-muted verse riff, then a chorus with a polka beat and a lead guitar line. |
-| **Snowy Peak** | Melodic house in D minor at 124 BPM: a four-on-the-floor kick, claps, open hats and an offbeat bass under pads and an arpeggio. |
-| **Neon Nights** | Dark trap in A minor at 140 BPM, felt in half time: sliding 808s, a clap on beat three, rolling hi-hats and a bell melody. |
-| **Lakeside Valley** | Sunny, laid-back indie in G major at 132 BPM for cruising: strummed plucks, a bouncy bass, a glockenspiel tune and a shaker. |
-| **Frozen Gorge** | Dark drum & bass in D minor at 174 BPM: a growling reese bass, a two-step breakbeat with ghost snares, a cold pad and sparse bells. |
-| **Glacier Bowl** | Big, open anthem rock in D major at 150 BPM: ringing power chords, a soaring lead and crashing drums. |
+| Where | Song | Video |
+| ----- | ---- | ----- |
+| **Title screen and menus** | blink-182 – All The Small Things | [youtube.com/watch?v=9Ht5RZpzPqw](https://www.youtube.com/watch?v=9Ht5RZpzPqw) |
+| **Snowy Peak** | Avicii – Levels | [youtube.com/watch?v=_ovdm2yX4MA](https://www.youtube.com/watch?v=_ovdm2yX4MA) |
+| **Neon Nights** | Post Malone – Saint-Tropez | [youtube.com/watch?v=MRyLC2M1K2w](https://www.youtube.com/watch?v=MRyLC2M1K2w) |
+| **Lakeside Valley** | Dave Matthews Band – Crash Into Me | [youtube.com/watch?v=k7in-9E3ImQ](https://www.youtube.com/watch?v=k7in-9E3ImQ) |
+| **Frozen Gorge** | Pendulum – Watercolour | [youtube.com/watch?v=tEPB7uzKuh4](https://www.youtube.com/watch?v=tEPB7uzKuh4) |
+| **Glacier Bowl** | Foo Fighters – Everlong | [youtube.com/watch?v=eBG7P-K-r1Y](https://www.youtube.com/watch?v=eBG7P-K-r1Y) |
 
-The styles follow what snowboarders tend to ride to: punk and rock, electronic (house and drum & bass), hip-hop and trap, and laid-back indie for cruising.
+If a place has no song, it's silent apart from the sound effects.
 
-On a course, the countdown and the results screen get a lighter mix, and the drums come in once the race starts. The music sounds muffled when you're slow and gets brighter the faster you go. The menu theme always plays at full brightness. Browsers block sound until your first click or key press, so on the title screen the first press starts the music and the next one goes to the menu.
+The video plays by itself in a small player in the bottom left (below the time on touch screens), under a credit with the song, the artist and a **Watch on YouTube** link to the video. A course's song plays during the countdown, the race and the results, and loops while you stay on the course. The menu song plays on the title screen and menus. The **Music** and **Sound** buttons pause and hide it. YouTube's embed rules ask for a visible player at least 200 × 200 pixels, so it isn't hidden or shrunk further. It needs YouTube to be reachable, and the IFrame API is only loaded the first time a song is needed.
+
+Browsers block sound until your first click or key press. When there's a menu song, the first press on the title screen starts it and the next one goes to the menu; with no menu song, the first press goes straight to the menu.
+
+To add a song to a course, give its entry in `LEVELS` a `track: { artist, title, video }`, where `video` is the YouTube video ID. For the title screen and menus, set `MENU_TRACK` to the same shape. Check the video allows embedding first: `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=<id>` returns 200 if it does.
 
 ## Announcer
 
