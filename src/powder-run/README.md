@@ -93,6 +93,10 @@ Every rider wears snowboarding gear: boots strapped into bindings, warm pants, a
 
 Scarves, beanie pom-poms and tails, and jacket hems flap in the wind. They aren't physics objects: each one points along the air rushing past the rider (your speed plus the weather's wind) and gravity, and ripples faster the faster you go.
 
+## Snow spray
+
+Boards throw sheets of snow. Carving, skidding or braking scrapes a curtain of snow off the edge that's digging in and throws it out to the side you're sliding towards, with a few loose grains flying off its top. The harder you slide or brake, the bigger and higher the sheet. It arcs out, spreads, falls and fades, shaded blue-grey low down so it stands out against the snow. Landing a jump blows a ring-shaped sheet out from under the board. Riding fast also kicks a fine trail of powder off the tail, and a wipeout sprays snow wherever you slide. Every rider throws snow, bots and other players included.
+
 ## Board tracks
 
 Every rider leaves tracks in the snow wherever their board is on the ground. A clean carve leaves a narrow line, and skidding, braking or wiping out leaves a wide smear, because the track is as wide as the board looks from the direction you're moving. Tracks break off when you leave the ground and start again where you land. They last the whole race and clear when a new race starts or you change course. Up to 12,000 pieces of track are kept across all riders, and the oldest are reused first.

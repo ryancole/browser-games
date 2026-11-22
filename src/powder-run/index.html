@@ -1995,6 +1995,9 @@ function setLevel(id) {
   riderLight.intensity = level.riderLight;
   snowfall.visible = level.snow > 0;
   snowfall.material.opacity = level.snow;
+  // Thrown snow would glow white at night: shade it to the street light.
+  sprayMat.color.set(level.riderLight ? 0xa4acd0 : 0xffffff);
+  sheetMat.color.copy(sprayMat.color);
 
   best = bestFor(id);
   clearTrails();
@@ -2297,12 +2300,22 @@ function nameTag(text, color) {
 // ---------------------------------------------------------------------------
 // Snow spray particles
 // ---------------------------------------------------------------------------
-const SPRAY_N = 1200;
+// Every particle is a soft puff that grows as it drifts and fades out. Puffs
+// have a cool grey-blue rim so they still read against white snow, and each
+// has its own size and fade, which plain PointsMaterial can't do, so its
+// shaders get two extra attributes.
+const SPRAY_N = 2400;
 const sprayPos = new Float32Array(SPRAY_N * 3).fill(-9999);
 const sprayVel = new Float32Array(SPRAY_N * 3);
-const sprayLife = new Float32Array(SPRAY_N);
+const sprayLife = new Float32Array(SPRAY_N);   // seconds left
+const sprayMax = new Float32Array(SPRAY_N);    // seconds it started with
+const sprayBase = new Float32Array(SPRAY_N);   // size when it's thrown
+const spraySize = new Float32Array(SPRAY_N);
+const sprayAlpha = new Float32Array(SPRAY_N);
 const sprayGeo = new THREE.BufferGeometry();
 sprayGeo.setAttribute("position", new THREE.BufferAttribute(sprayPos, 3));
+sprayGeo.setAttribute("aSize", new THREE.BufferAttribute(spraySize, 1));
+sprayGeo.setAttribute("aAlpha", new THREE.BufferAttribute(sprayAlpha, 1));
 const dot = document.createElement("canvas");
 dot.width = dot.height = 32;
 {
@@ -2313,55 +2326,266 @@ dot.width = dot.height = 32;
   g.fillStyle = grd;
   g.fillRect(0, 0, 32, 32);
 }
-const spray = new THREE.Points(sprayGeo, new THREE.PointsMaterial({
-  color: 0xffffff, size: 0.16, map: new THREE.CanvasTexture(dot), transparent: true, depthWrite: false,
-}));
+const sprayTex = canvasTexture(64, 64, (g) => {
+  const grd = g.createRadialGradient(32, 30, 0, 32, 32, 32);
+  grd.addColorStop(0, "rgba(255,255,255,1)");
+  grd.addColorStop(0.45, "rgba(246,249,255,0.95)");
+  grd.addColorStop(0.75, "rgba(180,196,220,0.5)");
+  grd.addColorStop(1, "rgba(160,178,205,0)");
+  g.fillStyle = grd;
+  g.fillRect(0, 0, 64, 64);
+});
+const sprayMat = new THREE.PointsMaterial({ color: 0xffffff, size: 1, map: sprayTex, transparent: true, depthWrite: false });
+sprayMat.onBeforeCompile = (sh) => {
+  sh.vertexShader = sh.vertexShader
+    .replace("#include <common>", "#include <common>\nattribute float aSize;\nattribute float aAlpha;\nvarying float vAlpha;")
+    .replace("gl_PointSize = size;", "gl_PointSize = size * aSize;\n\tvAlpha = aAlpha;");
+  sh.fragmentShader = sh.fragmentShader
+    .replace("#include <common>", "#include <common>\nvarying float vAlpha;")
+    .replace("vec4 diffuseColor = vec4( diffuse, opacity );", "vec4 diffuseColor = vec4( diffuse, opacity * vAlpha );");
+};
+const spray = new THREE.Points(sprayGeo, sprayMat);
 spray.frustumCulled = false;
 scene.add(spray);
-let sprayNext = 0, sprayAcc = 0;
-const tailLocal = new THREE.Vector3();
+let sprayNext = 0;
 
-function emitSpray(r, rate, dt) {
-  sprayAcc += rate * dt;
-  while (sprayAcc >= 1) {
-    sprayAcc -= 1;
-    const i = sprayNext; sprayNext = (sprayNext + 1) % SPRAY_N;
+function sprayOne(x, y, z, vx, vy, vz, life, size) {
+  const i = sprayNext; sprayNext = (sprayNext + 1) % SPRAY_N;
+  sprayPos[i * 3] = x; sprayPos[i * 3 + 1] = y; sprayPos[i * 3 + 2] = z;
+  sprayVel[i * 3] = vx; sprayVel[i * 3 + 1] = vy; sprayVel[i * 3 + 2] = vz;
+  sprayLife[i] = sprayMax[i] = life;
+  sprayBase[i] = size;
+}
+
+// Sheets of snow. A scraping board edge throws snow out in a curtain, not in
+// lumps: every 1/45 s it throws a "slice", SHEET_K points leaving the same spot
+// on the edge at different strengths (from a dribble to the full throw), and
+// each slice is stitched to the one before into a strip of quads. As the
+// points fly, slow down and fall, the strip spreads into an arcing, streaky
+// sheet that fades away. The ring of snow from a landing is one closed sheet.
+const SHEET_K = 4, SHEET_N = 1400, SHEET_RATE = 45;
+const SHEET_ROW = [0.12, 0.42, 0.72, 1];    // how much of the full throw each row gets
+const SHEET_ROW_A = [0.9, 1, 0.85, 0.4];    // and how dense it looks: thin at the tip
+// Shaded blue-grey low down, where the sheet is thick, so it stands out against the snow.
+const SHEET_ROW_C = [[0.72, 0.79, 0.9], [0.84, 0.89, 0.96], [0.94, 0.96, 1], [1, 1, 1]];
+const shPos = new Float32Array(SHEET_N * SHEET_K * 3).fill(-9999);
+const shVel = new Float32Array(SHEET_N * SHEET_K * 3);
+const shCol = new Float32Array(SHEET_N * SHEET_K * 4);
+const shUV = new Float32Array(SHEET_N * SHEET_K * 2);
+const shLife = new Float32Array(SHEET_N), shMax = new Float32Array(SHEET_N), shStrength = new Float32Array(SHEET_N);
+const shSerial = new Int32Array(SHEET_N), shPrev = new Int32Array(SHEET_N).fill(-1), shPrevSerial = new Int32Array(SHEET_N);
+const shIdx = new Uint32Array(SHEET_N * (SHEET_K - 1) * 6);
+for (let i = 0; i < SHEET_N * SHEET_K; i++) shCol.set(SHEET_ROW_C[i % SHEET_K], i * 4);
+const sheetGeo = new THREE.BufferGeometry();
+sheetGeo.setAttribute("position", new THREE.BufferAttribute(shPos, 3));
+sheetGeo.setAttribute("color", new THREE.BufferAttribute(shCol, 4));
+sheetGeo.setAttribute("uv", new THREE.BufferAttribute(shUV, 2));
+sheetGeo.setIndex(new THREE.BufferAttribute(shIdx, 1));
+// Streaks running out from the edge, ragged and thinning towards the tip.
+const sheetTex = canvasTexture(128, 128, (g) => {
+  const r = mulberry32(99);
+  // A thin veil under the streaks, so the sheet reads as one sheet.
+  const veil = g.createLinearGradient(0, 128, 0, 0);
+  veil.addColorStop(0, "rgba(255,255,255,0.55)");
+  veil.addColorStop(0.7, "rgba(255,255,255,0.3)");
+  veil.addColorStop(1, "rgba(255,255,255,0)");
+  g.fillStyle = veil;
+  g.fillRect(0, 0, 128, 128);
+  for (let n = 0; n < 140; n++) {
+    const x = r() * 128, w = 1 + r() * 5, top = 128 * (0.35 + r() * 0.65);
+    const shade = r() < 0.4 ? "170,188,215" : "255,255,255";
+    const grd = g.createLinearGradient(0, 128, 0, 128 - top);
+    grd.addColorStop(0, `rgba(${shade},${0.45 + r() * 0.5})`);
+    grd.addColorStop(0.6, `rgba(${shade},${0.3 + r() * 0.4})`);
+    grd.addColorStop(1, `rgba(${shade},0)`);
+    g.fillStyle = grd;
+    g.fillRect(x, 128 - top, w, top);
+    if (x + w > 128) g.fillRect(x - 128, 128 - top, w, top); // wrap round, so it tiles along the sheet
+  }
+}, true);
+const sheetMat = new THREE.MeshBasicMaterial({
+  map: sheetTex, vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+});
+const sheets = new THREE.Mesh(sheetGeo, sheetMat);
+sheets.frustumCulled = false;
+scene.add(sheets);
+let shNext = 0, shCount = 0;
+
+// One slice: every row leaves (x, y, z) with the shared velocity `v` plus its
+// share of the throw `o`. `prev` is the slice it joins on to, or -1.
+function sheetSlice(x, y, z, vx, vy, vz, ox, oy, oz, life, strength, u, prev) {
+  const i = shNext; shNext = (shNext + 1) % SHEET_N;
+  shSerial[i] = ++shCount;
+  for (let k = 0; k < SHEET_K; k++) {
+    const j = i * SHEET_K + k, f = SHEET_ROW[k];
+    shPos[j * 3] = x + ox * f * 0.02; shPos[j * 3 + 1] = y + oy * f * 0.02; shPos[j * 3 + 2] = z + oz * f * 0.02;
+    shVel[j * 3] = vx + ox * f; shVel[j * 3 + 1] = vy + oy * f; shVel[j * 3 + 2] = vz + oz * f;
+    shUV[j * 2] = u; shUV[j * 2 + 1] = k / (SHEET_K - 1);
+    shCol[j * 4 + 3] = 0;
+  }
+  shLife[i] = shMax[i] = life;
+  shStrength[i] = strength;
+  shPrev[i] = prev;
+  shPrevSerial[i] = prev >= 0 ? shSerial[prev] : 0;
+  return i;
+}
+
+function updateSheets(dt) {
+  const drag = Math.exp(-1.7 * dt);
+  let n = 0;
+  for (let i = 0; i < SHEET_N; i++) {
+    if (shLife[i] <= 0) continue;
+    shLife[i] -= dt;
+    const age = 1 - Math.max(0, shLife[i]) / shMax[i];
+    const a = shLife[i] <= 0 ? 0 : shStrength[i] * Math.min(1, age * 10) * (1 - age) ** 1.4;
+    for (let k = 0; k < SHEET_K; k++) {
+      const j = i * SHEET_K + k;
+      shVel[j * 3] *= drag; shVel[j * 3 + 2] *= drag;
+      shVel[j * 3 + 1] = shVel[j * 3 + 1] * drag - 7 * dt;
+      shPos[j * 3] += shVel[j * 3] * dt; shPos[j * 3 + 1] += shVel[j * 3 + 1] * dt; shPos[j * 3 + 2] += shVel[j * 3 + 2] * dt;
+      const ground = terrainH(shPos[j * 3], shPos[j * 3 + 2]) + 0.03;
+      if (shPos[j * 3 + 1] < ground) { shPos[j * 3 + 1] = ground; shVel[j * 3 + 1] = 0; }
+      shCol[j * 4 + 3] = a * SHEET_ROW_A[k];
+    }
+    // Stitch to the slice before, if that's still the one this was joined to.
+    const p = shPrev[i];
+    if (a > 0 && p >= 0 && shLife[p] > 0 && shSerial[p] === shPrevSerial[i]) {
+      for (let k = 0; k < SHEET_K - 1; k++) {
+        const pa = p * SHEET_K + k, ia = i * SHEET_K + k;
+        shIdx[n++] = pa; shIdx[n++] = ia; shIdx[n++] = pa + 1;
+        shIdx[n++] = pa + 1; shIdx[n++] = ia; shIdx[n++] = ia + 1;
+      }
+    }
+  }
+  sheetGeo.setDrawRange(0, n);
+  for (const name of ["position", "color"]) sheetGeo.attributes[name].needsUpdate = true;
+  sheetGeo.attributes.uv.needsUpdate = true;
+  const idx = sheetGeo.index;
+  idx.clearUpdateRanges();
+  idx.addUpdateRange(0, Math.max(1, n));
+  idx.needsUpdate = true;
+}
+function clearSheets() {
+  shLife.fill(0);
+  for (let i = 0; i < SHEET_N * SHEET_K; i++) shCol[i * 4 + 3] = 0;
+  shPos.fill(-9999);
+}
+
+// Snow thrown up by a rider's board. Whatever sideways speed the board has
+// (carving round a turn, skidding, braking) scrapes a sheet of snow off the
+// edge and throws it out that way, to the outside of the turn, with a few
+// loose grains flying off it. Riding fast also kicks up a fine trail of
+// powder off the tail.
+function emitSpray(r, dt) {
+  const speed = Math.hypot(r.vx, r.vz);
+  if (r.rag) {
+    r.sheetLast = -1;
     // A crashed rider sprays snow from wherever their body is sliding.
-    if (r.rag) tailLocal.set(r.x + (rand() - 0.5) * 0.9, r.y + 0.1, r.z + (rand() - 0.5) * 0.9);
-    else r.model.root.localToWorld(tailLocal.set((rand() - 0.5) * 0.5, 0.08, -0.75 + rand() * 0.6));
-    sprayPos[i * 3] = tailLocal.x; sprayPos[i * 3 + 1] = tailLocal.y; sprayPos[i * 3 + 2] = tailLocal.z;
-    sprayVel[i * 3] = r.vx * 0.3 + (rand() - 0.5) * 4;
-    sprayVel[i * 3 + 1] = 1.5 + rand() * 3;
-    sprayVel[i * 3 + 2] = r.vz * 0.3 + (rand() - 0.5) * 4;
-    sprayLife[i] = 0.4 + rand() * 0.4;
+    r.sprayAcc = (r.sprayAcc || 0) + Math.min(speed, 20) * 6 * dt;
+    for (; r.sprayAcc >= 1; r.sprayAcc--) {
+      sprayOne(r.x + (rand() - 0.5) * 1.2, r.y + 0.15, r.z + (rand() - 0.5) * 1.2,
+        r.vx * 0.3 + (rand() - 0.5) * 3, 1 + rand() * 2.5, r.vz * 0.3 + (rand() - 0.5) * 3, 0.6 + rand() * 0.6, 0.14 + rand() * 0.14);
+    }
+    return;
+  }
+  if (!r.grounded || speed < 2) { r.sheetLast = -1; return; }
+  const fx = Math.sin(r.heading), fz = Math.cos(r.heading);
+  const sx = Math.cos(r.heading), sz = -Math.sin(r.heading);
+  const vf = r.vx * fx + r.vz * fz, vs = r.vx * sx + r.vz * sz;
+  const side = Math.sign(vs) || 1;
+  const ctl = canControl(r), brake = ctl && r.inp.brake;
+  const steer = ctl && (r.inp.left || r.inp.right) ? 1 : 0;
+  const slip = Math.abs(vs);
+
+  // The sheet off the scraping edge. It breaks off when the scraping stops
+  // or swaps to the other edge.
+  const scrape = slip * 34 + steer * speed * 2.2 + (brake ? speed * 7 : 0);
+  const strength = Math.min(1, scrape / 110);
+  if (strength < 0.12 || side !== r.sheetSide) r.sheetLast = -1;
+  r.sheetSide = side;
+  if (strength >= 0.12) {
+    r.sheetAcc = (r.sheetAcc || 0) + SHEET_RATE * dt;
+    const out = 2 + slip * 0.6 + (brake ? speed * 0.16 : 0);
+    const up = 2.3 + slip * 0.22 + (brake ? 1.8 : 0);
+    for (; r.sheetAcc >= 1; r.sheetAcc--) {
+      r.sheetU = (r.sheetU || 0) + 0.07;
+      const wob = 0.85 + 0.3 * Math.sin(r.sheetU * 9.1) * Math.sin(r.sheetU * 3.7); // a ragged, rippling top edge
+      const along = -0.15 + 0.35 * Math.sin(r.sheetU * 5.3);
+      const ex = r.x + fx * along + sx * side * 0.27, ez = r.z + fz * along + sz * side * 0.27;
+      const carry = vf * 0.55;
+      r.sheetLast = sheetSlice(ex, r.y + 0.05, ez,
+        fx * carry, 0.3, fz * carry,
+        sx * side * out * wob, up * wob, sz * side * out * wob,
+        0.75 + rand() * 0.25, 0.6 + strength * 0.4, r.sheetU, r.sheetLast ?? -1);
+    }
+    // Loose grains flung off the top of the sheet.
+    r.edgeAcc = (r.edgeAcc || 0) + scrape * 0.25 * dt;
+    for (; r.edgeAcc >= 1; r.edgeAcc--) {
+      const along = (rand() - 0.5) * 1.2;
+      const o = out * (0.8 + rand() * 0.6);
+      sprayOne(r.x + fx * along + sx * side * 0.28, r.y + 0.08, r.z + fz * along + sz * side * 0.28,
+        fx * vf * 0.55 + sx * side * o, up * (0.8 + rand() * 0.6), fz * vf * 0.55 + sz * side * o,
+        0.4 + rand() * 0.4, 0.07 + rand() * 0.08);
+    }
+  }
+
+  // Fine powder off the tail at speed.
+  r.trailAcc = (r.trailAcc || 0) + Math.max(0, speed - 6) * 1.4 * dt;
+  for (; r.trailAcc >= 1; r.trailAcc--) {
+    const back = -0.7 - rand() * 0.2;
+    sprayOne(r.x + fx * back + sx * (rand() - 0.5) * 0.4, r.y + 0.05, r.z + fz * back + sz * (rand() - 0.5) * 0.4,
+      r.vx * 0.55 + (rand() - 0.5) * 1.2, 0.4 + rand() * 1.1, r.vz * 0.55 + (rand() - 0.5) * 1.2,
+      0.5 + rand() * 0.5, 0.08 + rand() * 0.1);
   }
 }
+
+// Landing blows a closed ring-shaped sheet of snow out from under the board.
+function landingPuff(r, airTime) {
+  const N = 20, s = 2 + airTime * 1.6, up = 1 + airTime * 0.9;
+  let first = -1, prev = -1;
+  for (let k = 0; k < N; k++) {
+    const a = (k / N) * Math.PI * 2, w = 0.8 + rand() * 0.4;
+    prev = sheetSlice(r.x + Math.cos(a) * 0.35, r.y + 0.05, r.z + Math.sin(a) * 0.35,
+      r.vx * 0.4, 0.2, r.vz * 0.4, Math.cos(a) * s * w, up * w, Math.sin(a) * s * w,
+      0.6 + airTime * 0.15, Math.min(1, 0.5 + airTime * 0.4), k * 0.11, prev);
+    if (first < 0) first = prev;
+  }
+  shPrev[first] = prev; shPrevSerial[first] = shSerial[prev]; // close the ring
+}
+
 function updateSpray(dt) {
+  const drag = Math.exp(-1.6 * dt);
   for (let i = 0; i < SPRAY_N; i++) {
     if (sprayLife[i] <= 0) continue;
     sprayLife[i] -= dt;
-    if (sprayLife[i] <= 0) { sprayPos[i * 3 + 1] = -9999; continue; }
-    sprayVel[i * 3 + 1] -= 9 * dt;
+    if (sprayLife[i] <= 0) { sprayPos[i * 3 + 1] = -9999; sprayAlpha[i] = 0; continue; }
+    // Powder hangs in the air: air drag slows it, and gravity pulls it down gently.
+    sprayVel[i * 3] *= drag; sprayVel[i * 3 + 2] *= drag;
+    sprayVel[i * 3 + 1] = sprayVel[i * 3 + 1] * drag - 6.5 * dt;
     sprayPos[i * 3] += sprayVel[i * 3] * dt;
     sprayPos[i * 3 + 1] += sprayVel[i * 3 + 1] * dt;
     sprayPos[i * 3 + 2] += sprayVel[i * 3 + 2] * dt;
+    // Settle on the snow rather than falling through it.
+    const ground = terrainH(sprayPos[i * 3], sprayPos[i * 3 + 2]) + 0.05;
+    if (sprayPos[i * 3 + 1] < ground) { sprayPos[i * 3 + 1] = ground; sprayVel[i * 3 + 1] = 0; }
+    // Grows as it spreads out, fades in fast and out slowly.
+    const age = 1 - sprayLife[i] / sprayMax[i];
+    spraySize[i] = sprayBase[i] * (1 + age * 0.8);
+    sprayAlpha[i] = Math.min(1, age * 12) * (1 - age * age) * 0.9;
   }
   sprayGeo.attributes.position.needsUpdate = true;
+  sprayGeo.attributes.aSize.needsUpdate = true;
+  sprayGeo.attributes.aAlpha.needsUpdate = true;
+  updateSheets(dt);
 }
 // A burst of loose snow, like it knocked off a branch.
 function snowPuff(x, y, z, count, spread) {
   for (let k = 0; k < count; k++) {
-    const i = sprayNext; sprayNext = (sprayNext + 1) % SPRAY_N;
-    sprayPos[i * 3] = x + (rand() - 0.5) * spread;
-    sprayPos[i * 3 + 1] = y + rand() * spread * 0.5;
-    sprayPos[i * 3 + 2] = z + (rand() - 0.5) * spread;
-    sprayVel[i * 3] = (rand() - 0.5) * 3;
-    sprayVel[i * 3 + 1] = rand() * 2;
-    sprayVel[i * 3 + 2] = (rand() - 0.5) * 3;
-    sprayLife[i] = 0.6 + rand() * 0.6;
+    sprayOne(x + (rand() - 0.5) * spread, y + rand() * spread * 0.5, z + (rand() - 0.5) * spread,
+      (rand() - 0.5) * 3, rand() * 2, (rand() - 0.5) * 3, 0.6 + rand() * 0.6, 0.12 + rand() * 0.14);
   }
 }
-function clearSpray() { sprayLife.fill(0); sprayPos.fill(-9999); }
+function clearSpray() { sprayLife.fill(0); sprayAlpha.fill(0); sprayPos.fill(-9999); clearSheets(); }
 
 // ---------------------------------------------------------------------------
 // Board tracks: every rider on the ground leaves a groove in the snow behind
@@ -3540,6 +3764,7 @@ function land(r, ground) {
   else if (Math.abs(rel) > Math.PI - 0.75) r.sw = true;
   else return crash(r, "Landed sideways!");
   r.heading = phi;
+  if (airTime > 0.25) landingPuff(r, airTime);
   if (airTime > 0.25 && r.isPlayer) sfx.land();
   scoreTrick(r, airTime, spin, flip, grabTime, grabName);
 }
@@ -4134,12 +4359,7 @@ function stopAttract() {
 }
 
 function emitRiderSpray(dt) {
-  for (const r of riders) {
-    const speed = Math.hypot(r.vx, r.vz);
-    if (!r.grounded || speed <= 3) continue;
-    const rate = r.crashT > 0 ? 200 : speed * 2.5 + r.slip * 25 + (r.inp.brake && canControl(r) ? speed * 6 : 0);
-    emitSpray(r, rate, dt);
-  }
+  for (const r of riders) emitSpray(r, dt);
 }
 
 function update(dt) {
