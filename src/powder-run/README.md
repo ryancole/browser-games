@@ -1,21 +1,29 @@
 # Powder Run
 
-A 3D snowboarding game for the browser. Race computer rivals or your friends down a winding mountain run, launch off the kickers, and spin, flip and grab in the air for points. Your final score is your trick points plus a time bonus for finishing under par.
+A 3D snowboarding game for the browser. Race computer rivals or your friends down a winding run, launch off the kickers, and spin, flip and grab in the air for points. Your final score is your trick points plus a time bonus for finishing under par.
 
-It's a snowy, overcast day on the mountain: snow falls around you, powder blows across the slope, and fog hides the far end of the run.
-
-It's a single HTML file with no build step or asset files. The 3D graphics use [Three.js](https://threejs.org/) (r170), loaded from the jsDelivr CDN through an import map, so the page needs an internet connection the first time it loads. The course, trees and riders are generated in code, and the sound effects and music are made with the Web Audio API. Multiplayer uses [PeerJS](https://peerjs.com/) 1.5.4, which is loaded from jsDelivr only when you host or join a lobby.
+It's a single HTML file with no build step or asset files. The 3D graphics use [Three.js](https://threejs.org/) (r170), loaded from the jsDelivr CDN through an import map, so the page needs an internet connection the first time it loads. The courses, scenery and riders are generated in code, and the sound effects and music are made with the Web Audio API. Multiplayer uses [PeerJS](https://peerjs.com/) 1.5.4, which is loaded from jsDelivr only when you host or join a lobby.
 
 ## Play
 
 Serve the `src/` folder from any static web server and open `powder-run/`. Opening `index.html` straight from disk also works in most browsers.
 
+## Courses
+
+Pick a course on the main menu. Picking one builds it straight away behind the menu, and the game remembers your choice. All three are the same length with the same par time, but each has its own bends, kicker layout, obstacles and scenery.
+
+| Course | What it's like |
+| ------ | -------------- |
+| **Snowy Peak** | A snowy, overcast day on the mountain. Snow falls around you, powder blows across the slope, fog hides the far end of the run, and the banks are lined with snowy pines. |
+| **Neon Nights** | A snowy street run through a city at night. Towers full of lit windows climb the banks on both sides, with neon signs facing the run and a skyline of blinking rooftop lights beyond. Street lamps along the edges throw pools of warm light on the snow, and hitting one wipes you out. The banks have small pines wrapped in coloured lights, and a light snow falls under a starry sky and a low moon. |
+| **Lakeside Valley** | A clear, sunny spring day. Green grass shows through the snow on the banks, which are lined with pines and leafy trees. Ahead, the run looks down over a green valley with fields, rolling hills and a lake, with a lakeside village and snow-capped mountains beyond. |
+
 ## How to play
 
 - Solo, you race three bots: Juniper, Blaze and Nova, from easiest to hardest. Your place is shown in the HUD, and the results screen lists the finishing order, filling in live as other riders cross the line. Riders pass through each other.
-- Carve left and right to follow the run. The banks on either side are steep and lined with trees, and hitting a tree wipes you out. Orange safety nets part way up each bank stop you leaving the course: you can't jump over them, and riding into one turns you along it and scrubs off a little speed.
+- Carve left and right to follow the run. The banks on either side are steep and lined with trees (and lamp posts in the city), and hitting one wipes you out. Safety nets part way up each bank stop you leaving the course: you can't jump over them, and riding into one turns you along it and scrubs off a little speed.
 - Tuck to go faster. Brake to skid and turn more sharply.
-- Each kicker has an orange lip. Hold jump on the approach to charge an ollie and release it at the lip to get more air. You can also release just after leaving the lip.
+- Each kicker has a bright lip (orange on most courses, neon pink in the city). Hold jump on the approach to charge an ollie and release it at the lip to get more air. You can also release just after leaving the lip.
 - In the air, steer to spin, hold tuck to front flip or brake to back flip, and hold grab to grab the board. Hold tuck or brake as you start a grab for a Tail or Nose grab.
 - Spins and flips combine, so you can throw a backflip with a 360 in it.
 - Let go of the grab and line your board up with the direction you're travelling before you touch down. Landing sideways, upside down, part way through a flip or while still grabbing is a wipeout. Landing backwards counts, and you ride switch until your next trick.
@@ -40,6 +48,7 @@ Up to 8 riders can race in a lobby, with the host's choice of 0 to 3 bots fillin
 
 - **Host:** enter a name and choose **Host a lobby**. You get a 5-character code and a **Copy invite link** button. Opening the invite link fills in the code.
 - **Join:** enter a name and the code, then choose **Join**. If a race is already on, you join the next one.
+- The host picks the course in the lobby, and everyone races on it.
 - The host starts each race, and only the host can restart. Anyone can leave from the lobby, the results screen, or the **Leave lobby** button during a race. If the host leaves, the lobby closes for everyone.
 
 How it works:
@@ -79,10 +88,10 @@ How it works:
 
 ## High scores
 
-Each time you finish a race, solo or in a lobby, the run is saved to your high scores. **High scores** on the main menu lists your 10 best, each with its score, time, finishing place, whether it was in a lobby, and the date and time you set it. The results screen tells you when a run makes the list. **Clear history** empties the list after a second click to confirm.
+Each time you finish a race, solo or in a lobby, the run is saved to your high scores. **High scores** on the main menu lists your 10 best across all courses, each with its score, time, finishing place, whether it was in a lobby, the course, and the date and time you set it. The results screen tells you when a run makes the list. Each course also keeps its own best score, which the HUD and the course picker show. **Clear history** empties the list and every course's best after a second click to confirm.
 
 High scores are stored only in this browser, so they don't follow you to other browsers or devices, and clearing the site's data removes them.
 
 ## Saved settings
 
-Your high scores, best score, the sound, music and announcer settings and your multiplayer name are kept in the browser's `localStorage` under the keys `powderrun-scores`, `powderrun-best`, `powderrun-muted`, `powderrun-music`, `powderrun-voice` and `powderrun-name`.
+Your high scores, best scores, chosen course, the sound, music and announcer settings and your multiplayer name are kept in the browser's `localStorage` under the keys `powderrun-scores`, `powderrun-best` (Snowy Peak), `powderrun-best-city`, `powderrun-best-valley`, `powderrun-level`, `powderrun-muted`, `powderrun-music`, `powderrun-voice` and `powderrun-name`.
