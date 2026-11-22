@@ -149,9 +149,13 @@
   .card .buttons { display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap; }
   .card .levels { display: grid; grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr)); gap: 0.4rem; margin: 0.6rem 0 0.2rem; }
   .card .levels button { padding: 0.45rem 0.3rem; font-size: 0.85rem; }
+  .card .levels button small { display: block; font-size: 0.7rem; opacity: 0.7; margin-top: 0.1rem; }
   .card p.blurb { font-size: 0.82rem; min-height: 2.3em; margin-top: 0.4rem; }
-  .card .mp { border-top: 1px solid #2a2f3a; margin-top: 1.1rem; padding-top: 0.9rem; }
-  .card .mp h2 { font-size: 0.75rem; letter-spacing: 0.08em; opacity: 0.6; margin: 0 0 0.5rem; font-weight: 600; }
+  /* Big stacked choices on the main and multiplayer menus. */
+  .card .menu-list { display: flex; flex-direction: column; gap: 0.5rem; margin: 0.9rem 0 1rem; }
+  .card .menu-list button { padding: 0.75rem 1rem; font-size: 1.05rem; font-weight: 700; text-align: left; }
+  .card .menu-list button span { display: block; font-size: 0.78rem; font-weight: 400; opacity: 0.75; margin-top: 0.15rem; }
+  .card .step { font-size: 0.72rem; letter-spacing: 0.1em; opacity: 0.5; margin: 0 0 0.2rem; text-transform: uppercase; }
   .card .row { display: flex; gap: 0.5rem; margin: 0.45rem 0; }
   .card .row input { flex: 1; min-width: 0; }
   .card .wide { flex: 1; }
@@ -2976,6 +2980,12 @@ function readInput() {
 }
 const GAME_KEYS = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space"]);
 window.addEventListener("keydown", (e) => {
+  // On the menus, Enter picks the screen's main choice and Escape goes back.
+  if (state === "menu" && !panel.classList.contains("hidden") && !e.repeat && (e.key === "Enter" || e.key === "Escape")) {
+    const focusedBtn = document.activeElement instanceof HTMLButtonElement && card.contains(document.activeElement);
+    const target = card.querySelector(e.key === "Enter" ? "[data-enter]" : "[data-back]");
+    if (target && !(e.key === "Enter" && focusedBtn)) { e.preventDefault(); target.click(); return; }
+  }
   if (e.target instanceof HTMLInputElement) return; // typing a name or lobby code
   if (GAME_KEYS.has(e.code)) e.preventDefault();
   if (e.repeat) { keys.add(e.code); return; }
@@ -2984,7 +2994,6 @@ window.addEventListener("keydown", (e) => {
   else if (e.code === "KeyN") toggleMusic();
   else if (e.code === "KeyV") toggleVoice();
   else if (e.code === "KeyR" && state !== "menu" && state !== "title") requestRestart();
-  else if (e.code === "Enter" && state === "menu" && !net.role) startRace();
   else if (e.code === "Enter" && resultsShown) requestRestart();
 });
 window.addEventListener("keyup", (e) => keys.delete(e.code));
@@ -4222,8 +4231,11 @@ const CONTROLS = `
 // straight away, so you see it behind the menu.
 function levelPicker() {
   return `
-    <div class="levels">${LEVEL_IDS.map((id) => `<button data-level="${id}" class="${id === levelId ? "" : "secondary"}">${esc(LEVELS[id].name)}</button>`).join("")}</div>
-    <p class="blurb">${esc(level.blurb)}${best ? ` Best: ${fmt(best)}` : ""}</p>`;
+    <div class="levels">${LEVEL_IDS.map((id) => {
+      const b = bestFor(id);
+      return `<button data-level="${id}" class="${id === levelId ? "" : "secondary"}">${esc(LEVELS[id].name)}${b ? `<small>Best ${fmt(b)}</small>` : ""}</button>`;
+    }).join("")}</div>
+    <p class="blurb">${esc(level.blurb)}</p>`;
 }
 function bindLevelPicker(redraw) {
   for (const b of card.querySelectorAll("[data-level]")) {
@@ -4237,27 +4249,81 @@ function bindLevelPicker(redraw) {
 
 const inviteCode =(new URLSearchParams(location.search).get("join") || "").toUpperCase().slice(0, 5);
 
+// Menu screens: main menu → single player (pick a course) or multiplayer
+// (host → pick a course, or join → enter a code). On every screen Enter picks
+// the button marked data-enter and Escape clicks the one marked data-back.
+const errLine = (message) => (message ? `<p class="err">${esc(message)}</p>` : "");
+function showCard(html) {
+  card.innerHTML = html;
+  panel.classList.remove("hidden");
+}
+
 function showMenu(message = "") {
-  card.innerHTML = `
+  showCard(`
     <h1>POWDER RUN</h1>
     <p>Race down the hill. Hit the kickers, spin, flip and grab for points, and land upright with your board pointing downhill.</p>
-    ${levelPicker()}
-    <div class="keys-only">${CONTROLS}</div>
-    <div class="buttons"><button id="go">Race the bots</button><button id="scores" class="secondary">High scores</button></div>
-    <div class="mp">
-      <h2>MULTIPLAYER</h2>
-      ${message ? `<p class="err">${esc(message)}</p>` : ""}
-      <div class="row"><input id="name" maxlength="16" placeholder="Your name" value="${esc(myName)}"></div>
-      <div class="row"><button id="host" class="secondary wide">Host a lobby</button></div>
-      <div class="row"><input id="code" maxlength="5" placeholder="Lobby code" autocapitalize="characters" value="${esc(inviteCode)}"><button id="join">Join</button></div>
-    </div>`;
-  bindLevelPicker(() => showMenu(message));
-  $("go").addEventListener("click", () => startRace());
+    ${errLine(message)}
+    <div class="menu-list">
+      <button id="solo" data-enter>Single player<span>Race the bots on the course of your choice</span></button>
+      <button id="multi" class="secondary">Multiplayer<span>Host a lobby or join your friends</span></button>
+      <button id="scores" class="secondary">High scores</button>
+    </div>
+    <div class="keys-only">${CONTROLS}</div>`);
+  $("solo").addEventListener("click", () => showSolo());
+  $("multi").addEventListener("click", () => showMultiplayer());
   $("scores").addEventListener("click", () => showScores());
-  $("host").addEventListener("click", hostLobby);
+}
+
+function showSolo() {
+  showCard(`
+    <p class="step">Single player</p>
+    <h1>PICK A COURSE</h1>
+    ${levelPicker()}
+    <div class="buttons"><button id="go" data-enter>Race the bots</button><button id="back" class="secondary" data-back>Back</button></div>`);
+  bindLevelPicker(showSolo);
+  $("go").addEventListener("click", () => startRace());
+  $("back").addEventListener("click", () => showMenu());
+}
+
+function showMultiplayer(message = "") {
+  showCard(`
+    <h1>MULTIPLAYER</h1>
+    <p>Race friends over the internet, with bots to fill out the field.</p>
+    ${errLine(message)}
+    <div class="row"><input id="name" maxlength="16" placeholder="Your name" value="${esc(myName)}"></div>
+    <div class="menu-list">
+      <button id="host" data-enter>Host a lobby<span>Pick the course and invite friends with a code</span></button>
+      <button id="join" class="secondary">Join a lobby<span>Enter the code a friend sent you</span></button>
+    </div>
+    <div class="buttons"><button id="back" class="secondary" data-back>Back</button></div>`);
+  $("host").addEventListener("click", () => { readName(); showHostSetup(); });
+  $("join").addEventListener("click", () => { readName(); showJoin(); });
+  $("back").addEventListener("click", () => { readName(); showMenu(); });
+}
+
+function showHostSetup() {
+  showCard(`
+    <p class="step">Multiplayer · Host</p>
+    <h1>PICK A COURSE</h1>
+    ${levelPicker()}
+    <p>You can still change it in the lobby before the race.</p>
+    <div class="buttons"><button id="create" data-enter>Create lobby</button><button id="back" class="secondary" data-back>Back</button></div>`);
+  bindLevelPicker(showHostSetup);
+  $("create").addEventListener("click", hostLobby);
+  $("back").addEventListener("click", () => showMultiplayer());
+}
+
+function showJoin(message = "") {
+  showCard(`
+    <p class="step">Multiplayer · Join</p>
+    <h1>JOIN A LOBBY</h1>
+    <p>Enter the 5-character code from the host.</p>
+    ${errLine(message)}
+    <div class="row"><input id="code" maxlength="5" placeholder="Lobby code" autocapitalize="characters" value="${esc(inviteCode)}"><button id="join" data-enter>Join</button></div>
+    <div class="buttons"><button id="back" class="secondary" data-back>Back</button></div>`);
   $("join").addEventListener("click", () => joinLobby($("code").value));
-  $("code").addEventListener("keydown", (e) => { if (e.key === "Enter") joinLobby($("code").value); });
-  panel.classList.remove("hidden");
+  $("back").addEventListener("click", () => showMultiplayer());
+  if (!matchMedia("(pointer: coarse)").matches) $("code").focus();
 }
 
 const fmtDate = (ms) => new Date(ms).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
@@ -4278,7 +4344,7 @@ function showScores(confirming = false) {
           <tr><th></th><th class="num">Score · time</th><th>Place</th><th>Course</th><th>Date</th></tr>${rows}
         </table></div>`
       : `<p>No finished runs yet. Your ${MAX_SCORES} best scores will show up here, with the date you set them.</p>`}
-    <div class="buttons"><button id="back">Back</button>${list.length
+    <div class="buttons"><button id="back" data-back>Back</button>${list.length
       ? `<button id="clear" class="secondary">${confirming ? "Click again to clear" : "Clear history"}</button>` : ""}</div>`;
   $("back").addEventListener("click", () => showMenu());
   $("clear")?.addEventListener("click", () => {
@@ -4292,7 +4358,7 @@ function showScores(confirming = false) {
 }
 
 function showStatus(text) {
-  card.innerHTML = `<h1>POWDER RUN</h1><p>${esc(text)}</p><button id="cancel" class="secondary">Cancel</button>`;
+  card.innerHTML = `<h1>POWDER RUN</h1><p>${esc(text)}</p><button id="cancel" class="secondary" data-back>Cancel</button>`;
   $("cancel").addEventListener("click", () => leaveLobby());
   panel.classList.remove("hidden");
 }
@@ -4424,7 +4490,9 @@ const makeCode = () => Array.from({ length: 5 }, () => CODE_CHARS[Math.floor(Mat
 const gearSeed = (v) => (Number.isFinite(v) ? v >>> 0 : 0);
 const cleanName = (s) => String(s ?? "").replace(/\s+/g, " ").trim().slice(0, 16) || "Rider";
 function readName() {
-  myName = cleanName($("name")?.value);
+  const input = $("name");
+  if (!input) return; // the name box is on the multiplayer menu
+  myName = cleanName(input.value);
   store.set("powderrun-name", myName);
 }
 
@@ -4457,7 +4525,7 @@ async function hostLobby() {
   readName();
   showStatus("Creating a lobby…");
   let Peer;
-  try { Peer = await loadPeerJS(); } catch (e) { return leaveLobby(e.message); }
+  try { Peer = await loadPeerJS(); } catch (e) { return leaveLobby(e.message, showHostSetup); }
   const open = (attempt) => {
     const code = makeCode();
     const peer = new Peer(PEER_PREFIX + code, { debug: 0 });
@@ -4538,11 +4606,11 @@ function hostStart() {
 // --- Client ---
 async function joinLobby(raw) {
   const code = String(raw).toUpperCase().replace(/[^A-Z0-9]/g, "");
-  if (code.length !== 5) return showMenu("Lobby codes are 5 letters and numbers.");
+  if (code.length !== 5) return showJoin("Lobby codes are 5 letters and numbers.");
   readName();
   showStatus(`Joining lobby ${code}…`);
   let Peer;
-  try { Peer = await loadPeerJS(); } catch (e) { return leaveLobby(e.message); }
+  try { Peer = await loadPeerJS(); } catch (e) { return leaveLobby(e.message, showJoin); }
   const peer = new Peer({ debug: 0 });
   Object.assign(net, { role: "client", peer, code, host: null, players: [], racing: false });
   const timer = setTimeout(() => {
@@ -4600,8 +4668,11 @@ function onClientData(m) {
 }
 
 // Back to solo play. `message` explains why, if it wasn't the player's choice.
-function leaveLobby(message = "") {
-  const peer = net.peer;
+// Leaving a lobby goes back to the multiplayer menu (the join screen if joining
+// failed); a solo race goes back to the main menu.
+function leaveLobby(message = "", screen = null) {
+  const peer = net.peer, role = net.role;
+  screen ??= role === "client" && message ? showJoin : role ? showMultiplayer : showMenu;
   Object.assign(net, { role: null, peer: null, host: null, conns: new Map(), code: "", players: [], racing: false });
   peer?.destroy();
   me.id = "me";
@@ -4612,7 +4683,7 @@ function leaveLobby(message = "") {
   leaveTopBtn.style.display = "none";
   setRoster(soloRoster());
   snapCamera();
-  showMenu(message);
+  screen(message);
 }
 
 // ---------------------------------------------------------------------------
@@ -4791,8 +4862,8 @@ setLevel(store.get("powderrun-level") || "peak");
 setRoster(soloRoster());
 for (const r of riders) updateRider(r, 1);
 snapCamera();
-// Invite links go straight to the menu with the lobby code filled in.
-if (inviteCode) showMenu(); else showTitle();
+// Invite links go straight to the join screen with the lobby code filled in.
+if (inviteCode) showJoin(); else showTitle();
 let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);

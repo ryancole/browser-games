@@ -8,11 +8,13 @@ It's a single HTML file with no build step or asset files. The 3D graphics use [
 
 Serve the `src/` folder from any static web server and open `powder-run/`. Opening `index.html` straight from disk also works in most browsers.
 
-The game opens on a title screen: your rider, in your outfit for this visit, hangs in a slow-motion grab high against a blue sky, shot from below with snow spraying off the board. Press any key, or tap, to go to the main menu. Invite links skip the title screen and go straight to the menu.
+The game opens on a title screen: your rider, in your outfit for this visit, hangs in a slow-motion grab high against a blue sky, shot from below with snow spraying off the board. Press any key, or tap, to go to the main menu. Invite links skip the title screen and go straight to the join screen with the code filled in.
+
+The main menu offers **Single player**, **Multiplayer** and **High scores**. **Single player** asks which course to race, then starts a race against the bots. **Multiplayer** asks for your name and whether you're hosting or joining: hosting asks which course to use and then creates the lobby, and joining asks for the lobby code. **Enter** picks the highlighted choice on each menu and **Esc** goes back.
 
 ## Courses
 
-Pick a course on the main menu. Picking one builds it straight away behind the menu, and the game remembers your choice. All five are the same length with the same par time, but each has its own bends, kicker layout, obstacles and scenery.
+Pick a course when you start a single-player race or host a lobby. Picking one builds it straight away behind the menu, and the game remembers your choice. All five are the same length with the same par time, but each has its own bends, kicker layout, obstacles and scenery.
 
 | Course | What it's like |
 | ------ | -------------- |
@@ -120,9 +122,9 @@ An announcer calls out your tricks as you complete them in the air ("one-eighty"
 
 Up to 8 riders can race in a lobby, with the host's choice of 0 to 3 bots filling spare places.
 
-- **Host:** enter a name and choose **Host a lobby**. You get a 5-character code and a **Copy invite link** button. Opening the invite link fills in the code.
-- **Join:** enter a name and the code, then choose **Join**. If a race is already on, you join the next one.
-- The host picks the course in the lobby, and everyone races on it.
+- **Host:** choose **Multiplayer**, enter a name, choose **Host a lobby** and pick a course, then **Create lobby**. You get a 5-character code and a **Copy invite link** button. Opening the invite link fills in the code.
+- **Join:** choose **Multiplayer**, enter a name, choose **Join a lobby**, type the code and choose **Join**. If a race is already on, you join the next one.
+- The host's course is the one everyone races on. The host can still change it in the lobby between races.
 - The host starts each race, and only the host can restart. Anyone can leave from the lobby, the results screen, or the **Leave lobby** button during a race. If the host leaves, the lobby closes for everyone.
 
 How it works:
