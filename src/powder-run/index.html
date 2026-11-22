@@ -82,6 +82,29 @@
     color: #fff; text-shadow: 0 2px 10px rgba(0, 0, 0, 0.55);
     opacity: 0; transition: opacity 0.25s; pointer-events: none;
   }
+  /* The trick you're throwing: every part you've completed on this jump, newest
+     at the bottom, under the points you'd get for landing it now. */
+  #air {
+    left: 0; right: 0; bottom: 17%;
+    flex-direction: column; align-items: center;
+    opacity: 0; transition: opacity 0.3s;
+  }
+  body.racing #air { display: flex; }
+  #air.show { opacity: 1; }
+  #air .band {
+    clip-path: none; padding: 0.05rem 2.2rem 0.1rem;
+    background: linear-gradient(90deg, rgba(18, 22, 32, 0) 0%, rgba(18, 22, 32, 0.65) 22%, rgba(18, 22, 32, 0.65) 78%, rgba(18, 22, 32, 0) 100%);
+  }
+  #air ol { list-style: none; margin: 0.3rem 0 0; padding: 0; display: flex; flex-direction: column; align-items: center; }
+  #air li {
+    font-weight: 900; font-size: clamp(0.95rem, 2.6vw, 1.45rem); line-height: 1.15;
+    letter-spacing: 0.06em; text-transform: uppercase; color: #f4f6fa; opacity: 0.85;
+    text-shadow: 2px 2px 0 #1a1d26, -1px -1px 0 #1a1d26, 1px -1px 0 #1a1d26, -1px 1px 0 #1a1d26;
+  }
+  #air li:last-child { color: #ffd84f; opacity: 1; animation: air-pop 0.25s ease-out; }
+  @keyframes air-pop { from { transform: scale(1.4); } }
+  #air.landed .val, #air.landed li { color: #7fe0a8; }
+  #air.lost .val, #air.lost li { color: #ff6b6b; text-decoration: line-through; }
   #popup .pts { display: block; font-size: 0.75em; color: #ffd84f; }
   #popup.bad .pts { color: #ff6b6b; }
   #count {
@@ -228,6 +251,10 @@
   <button id="mute" class="secondary">Sound: on</button>
   <button id="restart" class="secondary">Restart</button>
   <button id="leave-lobby" class="secondary" style="display: none">Leave lobby</button>
+</div>
+<div id="air" class="race-hud">
+  <div class="band"><span class="lbl" id="air-lbl">TRICK</span><span class="val" id="air-val">0</span></div>
+  <ol id="air-list"></ol>
 </div>
 <div id="popup"></div>
 <div id="count"></div>
@@ -3150,7 +3177,7 @@ function crash(r, reason) {
   r.crashSpin = 0;
   r.grabbing = false; r.spin = 0; r.flip = 0; r.charge = 0;
   startRag(r, r.vx, r.vy, r.vz);
-  if (r.isPlayer) { sfx.crash(); showPopup(reason, "WIPEOUT", true); announceWipeout(); }
+  if (r.isPlayer) { airTrickEnd("lost"); sfx.crash(); showPopup(reason, "WIPEOUT", true); announceWipeout(); }
 }
 
 function recover(r) {
@@ -3336,40 +3363,42 @@ function callTricksInAir(r) {
   c.flip = Math.max(c.flip, nFlip); c.spin = Math.max(c.spin, n180); c.grab ||= grab;
   if (!part) return;
   c.any = true;
-  const parts = [];
-  if (c.flip > 0) parts.push(flipName(c.flip, r.flip));
-  if (c.spin > 0) parts.push(spinName(c.spin, r.spin));
-  if (c.grab) parts.push(`${r.grabName} Grab`);
-  showPopup(parts.join(" + "), "", false);
+  airTrickAdd(r, part);
   announceInAir(part);
+}
+
+// Points for a trick: each flip, spin and grab, a bit for air time, more for
+// combining kinds of trick, and more again for taking off switch.
+function trickPoints(nFlip, n180, grabTime, airTime, sw) {
+  let pts = 0;
+  if (nFlip > 0) pts += FLIP_POINTS[Math.min(nFlip, FLIP_POINTS.length - 1)];
+  if (n180 > 0) pts += SPIN_POINTS[Math.min(n180, SPIN_POINTS.length - 1)];
+  if (grabTime > GRAB_MIN) pts += Math.round(100 + 400 * Math.min(grabTime, 1.5));
+  if (airTime > 0.6) pts += Math.round(airTime * 60);
+  const kinds = (nFlip > 0) + (n180 > 0) + (grabTime > GRAB_MIN);
+  if (kinds >= 2) pts = Math.round(pts * (kinds === 3 ? 2 : 1.5));
+  if (sw) pts = Math.round(pts * 1.25);
+  return pts;
 }
 
 function scoreTrick(r, airTime, spin, flip, grabTime, grabName) {
   const n180 = Math.round(Math.abs(spin) / Math.PI);
   const nFlip = Math.round(Math.abs(flip) / (Math.PI * 2));
   const parts = [];
-  let pts = 0;
-  if (nFlip > 0) {
-    const i = Math.min(nFlip, FLIP_POINTS.length - 1);
-    parts.push(flipName(nFlip, flip));
-    pts += FLIP_POINTS[i];
-  }
-  if (n180 > 0) {
-    parts.push(spinName(n180, spin));
-    pts += SPIN_POINTS[Math.min(n180, SPIN_POINTS.length - 1)];
-  }
-  if (grabTime > GRAB_MIN) {
-    parts.push(`${grabName} Grab`);
-    pts += Math.round(100 + 400 * Math.min(grabTime, 1.5));
-  }
+  if (nFlip > 0) parts.push(flipName(nFlip, flip));
+  if (n180 > 0) parts.push(spinName(n180, spin));
+  if (grabTime > GRAB_MIN) parts.push(`${grabName} Grab`);
   if (parts.length === 0 && airTime > 0.8) parts.push("Big Air");
-  if (airTime > 0.6) pts += Math.round(airTime * 60);
   if (parts.length === 0) return;
-  const kinds = (nFlip > 0) + (n180 > 0) + (grabTime > 0.12);
-  if (kinds >= 2) pts = Math.round(pts * (kinds === 3 ? 2 : 1.5));
-  if (r.takeoffSw) { parts.unshift("Switch"); pts = Math.round(pts * 1.25); }
+  if (r.takeoffSw) parts.unshift("Switch");
+  const pts = trickPoints(nFlip, n180, grabTime, airTime, r.takeoffSw);
   r.trickScore += pts;
-  if (r.isPlayer) { sfx.trick(); showPopup(parts.join(" + "), `+${pts}`, false); announceTrick(parts, pts, r.called?.any); }
+  if (!r.isPlayer) return;
+  sfx.trick();
+  // A trick built up in the air already has its list on screen: mark it landed. Otherwise pop it up.
+  if (r.called?.any) airTrickEnd("landed", pts);
+  else showPopup(parts.join(" + "), `+${pts}`, false);
+  announceTrick(parts, pts, r.called?.any);
 }
 
 // Riding into a net stops you going further out and you slide along it,
@@ -3855,6 +3884,7 @@ function startRace(roster = soloRoster()) {
   setRoster(roster);
   clearSpray();
   clearTrails();
+  airTrickClear();
   raceTime = 0; simAcc = 0; netAcc = 0;
   resultsShown = false; result = null;
   countT = 3; lastCount = 4;
@@ -4024,6 +4054,7 @@ function updateHUD() {
   timeEl.textContent = fmtRaceTime(me.finished ? me.finishTime : raceTime);
   speedEl.textContent = Math.round(Math.hypot(me.vx, me.vz) * 3.6);
   tricksEl.textContent = fmt(me.trickScore);
+  updateAirTrick();
   const place = standings().indexOf(me) + 1;
   if (place !== hudPlace) {
     hudPlace = place;
@@ -4079,6 +4110,49 @@ function drawMap(place) {
   disc({ x: mapPath[mapPath.length - 1].x, y: 1 }, 10 * dpr, "#1a9c88", "G");
   for (const r of riders) if (r !== me) disc(mapPoint(r.z), 4.5 * dpr, (LOOKS[r.look] || LOOKS[0]).tagColor);
   disc(mapPoint(me.z), 9 * dpr, "#ffb02e", String(place), "#3d2400");
+}
+
+// The in-air trick list (see #air). It builds up while you're in the air, then
+// turns green with your points if you land it, or red and struck out if you crash.
+const airEl = $("air"), airLbl = $("air-lbl"), airVal = $("air-val"), airList = $("air-list");
+let airLive = false, airTimer = 0;
+function airTrickAdd(r, part) {
+  if (!airLive) {
+    airLive = true;
+    clearTimeout(airTimer);
+    airList.replaceChildren();
+    airEl.classList.remove("landed", "lost");
+    airEl.classList.add("show");
+    airLbl.textContent = "TRICK";
+    if (r.takeoffSw) airTrickLine("Switch");
+  }
+  airTrickLine(part);
+}
+function airTrickLine(text) {
+  const li = document.createElement("li");
+  li.textContent = text;
+  airList.append(li);
+}
+function airTrickEnd(outcome, pts) {
+  if (!airLive) return;
+  airLive = false;
+  airEl.classList.add(outcome);
+  airLbl.textContent = outcome === "landed" ? "LANDED" : "LOST";
+  if (pts != null) airVal.textContent = `+${fmt(pts)}`;
+  airTimer = setTimeout(() => airEl.classList.remove("show"), 1400);
+}
+function airTrickClear() {
+  airLive = false;
+  clearTimeout(airTimer);
+  airEl.classList.remove("show", "landed", "lost");
+}
+// While you're in the air, the points you'd get for landing right now.
+function updateAirTrick() {
+  if (!airLive) return;
+  // Touched down without the trick being scored (finishing mid-air, say): it doesn't count.
+  if (me.grounded) return airTrickEnd("lost");
+  const c = me.called;
+  airVal.textContent = fmt(trickPoints(c.flip, c.spin, c.grab ? me.grabTime : 0, me.airTime, me.takeoffSw));
 }
 
 let popupTimer = 0;
