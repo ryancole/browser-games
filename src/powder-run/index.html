@@ -1933,6 +1933,46 @@ function part(geo, m, parent, x = 0, y = 0, z = 0) {
 }
 const box = (w, h, d, x = 0, y = 0, z = 0) => new THREE.BoxGeometry(w, h, d).translate(x, y, z);
 
+// A snowboard's shape, lying flat along z: rounded nose and tail, a gentle
+// sidecut that pinches the waist, and tips that curve up past the contact
+// points. `faces: "bottom"` builds just the base, for a graphic printed on it.
+const BOARD_L = 1.7, BOARD_W = 0.5;
+const BOARD_CONTACT = 0.56; // where the tips start, either side of the middle
+const BOARD_RISE = 0.12;    // how far the very ends turn up
+const boardRise = (z) => {
+  const u = (Math.abs(z) - BOARD_CONTACT) / (BOARD_L / 2 - BOARD_CONTACT);
+  return u > 0 ? BOARD_RISE * Math.min(1, u) ** 2 : 0;
+};
+function boardGeometry({ w = BOARD_W, len = BOARD_L, thick = 0.06, y0 = 0, faces = "all" } = {}) {
+  // Sample the outline from tail to nose: each tip is a quarter ellipse, the middle has the sidecut.
+  const c = Math.min(BOARD_CONTACT, len / 2 - 0.05), tip = len / 2 - c, rows = [];
+  for (let i = 0; i <= 8; i++) { const a = (Math.PI / 2) * (1 - i / 8); rows.push([-c - tip * Math.sin(a), (w / 2) * Math.cos(a)]); }
+  for (let i = 1; i < 10; i++) { const z = -c + (2 * c * i) / 10; rows.push([z, w / 2 - w * 0.05 * (1 - (z / c) ** 2)]); }
+  for (let i = 0; i <= 8; i++) { const a = (Math.PI / 2) * (i / 8); rows.push([c + tip * Math.sin(a), (w / 2) * Math.cos(a)]); }
+  const pos = [], uv = [], idx = [];
+  const vert = (x, y, z) => { pos.push(x, y, z); uv.push(x / w + 0.5, z / len + 0.5); return pos.length / 3 - 1; };
+  // Per row: top left, top right, bottom left, bottom right.
+  const v = rows.map(([z, h]) => {
+    const y = y0 + boardRise(z);
+    return [vert(-h, y + thick, z), vert(h, y + thick, z), vert(-h, y, z), vert(h, y, z)];
+  });
+  for (let i = 0; i < v.length - 1; i++) {
+    const [tl, tr, bl, br] = v[i], [tl2, tr2, bl2, br2] = v[i + 1];
+    if (faces === "all") {
+      idx.push(tl, tl2, tr, tr, tl2, tr2);   // top
+      idx.push(tr, tr2, br, br, tr2, br2);   // right edge
+      idx.push(tl, bl, tl2, bl, bl2, tl2);   // left edge
+    }
+    idx.push(bl, br, bl2, br, br2, bl2);     // base
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+
 // Cloth that flaps: a chain of thin panels hanging from a pivot. updateGear
 // points the chain along the wind and gravity (plus a "rest" pull for stiffer
 // bits like a pom-pom) and ripples it.
@@ -1967,8 +2007,8 @@ function buildRiderModel(look, g) {
   // crash the board comes off and the boots go with the legs (see the ragdoll).
   const board = new THREE.Group();
   pose.add(board);
-  part(box(0.5, 0.06, 1.7, 0, 0.03), mat(g.board, "shiny"), board);
-  part(box(0.14, 0.062, 1.5, 0, 0.032), mat(g.stripe, "shiny"), board);
+  part(boardGeometry(), mat(g.board, "shiny"), board);
+  part(boardGeometry({ w: 0.14, len: 1.5, thick: 0.004, y0: 0.06 }), mat(g.stripe, "shiny"), board);
   const boots = [0.28, -0.28].map((z) => {
     part(box(0.34, 0.06, 0.26, 0, 0.09, z), mat(g.binding), board);
     const b = new THREE.Group();
@@ -4633,7 +4673,7 @@ function buildTitle() {
   const tilt = new THREE.Group();
   tilt.add(model.root);
   s.add(tilt);
-  const deck = new THREE.Mesh(new THREE.PlaneGeometry(0.48, 1.66).rotateX(Math.PI / 2), new THREE.MeshStandardMaterial({ map: boardGraphic(rollGear(myGear)), roughness: 0.35 }));
+  const deck = new THREE.Mesh(boardGeometry({ faces: "bottom" }), new THREE.MeshStandardMaterial({ map: boardGraphic(rollGear(myGear)), roughness: 0.35 }));
   deck.position.y = -0.003;
   model.pose.add(deck);
   const legScale = 1 - 0.45 * 0.85;
