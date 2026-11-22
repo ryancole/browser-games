@@ -70,6 +70,7 @@ Any of them can give you air. Pop an ollie at the top of a bump for more height.
 - Each kicker has a bright lip (orange on most courses, neon pink in the city). Hold jump on the approach to charge an ollie and release it at the lip to get more air. You can also release just after leaving the lip.
 - In the air, steer to spin, hold tuck to front flip or brake to back flip, and hold grab to grab the board. Hold tuck or brake as you start a grab for a Tail or Nose grab.
 - Spins and flips combine, so you can throw a backflip with a 360 in it.
+- Each part of a trick shows on screen the moment you complete it in the air: every half turn of spin (180, 360, 540...), every full flip, and a grab once you've held it long enough. The whole trick and its points come up when you land.
 - Let go of the grab and line your board up with the direction you're travelling before you touch down. Landing sideways, upside down, part way through a flip or while still grabbing is a wipeout. Landing backwards counts, and you ride switch until your next trick.
 - When you wipe out you go limp: your body becomes a ragdoll that tumbles and slides down the hill with the speed you had, bouncing off trees, posts, walls and the nets and knocking the snow off whatever it hits. Your board comes off and slides away on its own. After a couple of seconds you get up, back on your board, wherever your body came to rest.
 
@@ -112,7 +113,7 @@ On a course, the countdown and the results screen get a lighter mix, and the dru
 
 ## Announcer
 
-An announcer calls out your tricks as you land them ("Backflip, backside three-sixty! Clean!"), with extra hype for big scores, and reacts when you wipe out. It uses the browser's built-in text-to-speech, so there are no audio files. The voice depends on your browser and operating system: Edge and Chrome often have natural-sounding online voices, while others may sound more robotic. The announcer only calls out your own tricks, not other riders'. Turn it off with the **Voice** button or `V`.
+An announcer calls out your tricks as you complete them in the air ("one-eighty", "three-sixty", "Backflip", "Indy Grab"), reacts to your landing, with extra hype for big scores, and reacts when you wipe out. A jump with no tricks called in the air, like a Big Air, is called out in full when you land. It uses the browser's built-in text-to-speech, so there are no audio files. The voice depends on your browser and operating system: Edge and Chrome often have natural-sounding online voices, while others may sound more robotic. The announcer only calls out your own tricks, not other riders'. Turn it off with the **Voice** button or `V`.
 
 ## Multiplayer
 

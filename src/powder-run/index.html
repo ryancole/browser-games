@@ -2863,13 +2863,20 @@ function say(text, rate = 1.08) {
   speech.speak(u);
 }
 
-function announceTrick(parts, pts) {
+// On landing. If the tricks were already called out in the air, just react to the landing.
+function announceTrick(parts, pts, calledInAir) {
   const words = parts.map((p) => p.replace(/\d+/, (n) => SPIN_WORDS[n] || n)).join(", ");
   const hype = pts >= 4000 ? pickOne(["Unbelievable!", "Are you kidding me?", "Legendary!"])
     : pts >= 2000 ? pickOne(["Huge!", "Massive!", "Sending it!"])
     : pts >= 900 ? pickOne(["Nice!", "Clean!", "Stomped it!"])
     : "";
-  say(`${words}! ${hype}`.trim());
+  if (calledInAir) say(hype || pickOne(["Landed it!", "Rode it out!", "Clean!"]));
+  else say(`${words}! ${hype}`.trim());
+}
+
+// In the air, each rotation is called the moment you complete it: "Backflip", "three-sixty", "seven-twenty"...
+function announceInAir(part) {
+  say(part.replace(/^(Frontside|Backside) (\d+)$/, (_, side, n) => SPIN_WORDS[n] || n), 1.2);
 }
 
 function announceWipeout() {
@@ -3119,6 +3126,7 @@ function leaveGround(r, y, vy) {
   r.y = y; r.vy = vy;
   r.airTime = 0; r.spin = 0; r.flip = 0; r.grabTime = 0; r.grabbing = false; r.popped = false;
   r.takeoffSw = r.sw;
+  r.called = { spin: 0, flip: 0, grab: false, any: false }; // what's been called out on this jump so far
   // Players' held inputs are latched (see airStep). Bots plan their tricks, so they aren't.
   const i = r.inp || NO_INPUT;
   r.latch = r.isPlayer ? { left: i.left, right: i.right, tuck: i.tuck, brake: i.brake } : null;
@@ -3251,6 +3259,7 @@ function airStep(r, h, inp) {
       }
       r.grabTime += h;
     } else r.grabbing = false;
+    if (r.isPlayer) callTricksInAir(r);
   }
   const ground = terrainH(r.x, r.z);
   if (r.y <= ground) land(r, ground);
@@ -3307,6 +3316,34 @@ function land(r, ground) {
 }
 
 const FLIP_COUNT = ["", "", "Double ", "Triple ", "Quad "];
+const flipName = (nFlip, flip) => `${FLIP_COUNT[nFlip] ?? nFlip + "x "}${flip > 0 ? "Frontflip" : "Backflip"}`;
+const spinName = (n180, spin) => `${spin > 0 ? "Frontside" : "Backside"} ${n180 * 180}`;
+const GRAB_MIN = 0.12; // seconds a grab has to be held to count
+
+// Call out each part of the trick as you complete it in the air: every half
+// turn of spin, every full flip, and a grab once it's held long enough. A
+// rotation counts as done a little before it's exactly round, about when it
+// would land clean. The full trick and its points still come on landing.
+function callTricksInAir(r) {
+  const c = r.called;
+  const n180 = Math.floor((Math.abs(r.spin) + 0.25) / Math.PI);
+  const nFlip = Math.floor((Math.abs(r.flip) + 0.3) / (Math.PI * 2));
+  const grab = r.grabTime > GRAB_MIN;
+  let part = null;
+  if (nFlip > c.flip) part = flipName(nFlip, r.flip);
+  else if (n180 > c.spin) part = spinName(n180, r.spin);
+  else if (grab && !c.grab) part = `${r.grabName} Grab`;
+  c.flip = Math.max(c.flip, nFlip); c.spin = Math.max(c.spin, n180); c.grab ||= grab;
+  if (!part) return;
+  c.any = true;
+  const parts = [];
+  if (c.flip > 0) parts.push(flipName(c.flip, r.flip));
+  if (c.spin > 0) parts.push(spinName(c.spin, r.spin));
+  if (c.grab) parts.push(`${r.grabName} Grab`);
+  showPopup(parts.join(" + "), "", false);
+  announceInAir(part);
+}
+
 function scoreTrick(r, airTime, spin, flip, grabTime, grabName) {
   const n180 = Math.round(Math.abs(spin) / Math.PI);
   const nFlip = Math.round(Math.abs(flip) / (Math.PI * 2));
@@ -3314,14 +3351,14 @@ function scoreTrick(r, airTime, spin, flip, grabTime, grabName) {
   let pts = 0;
   if (nFlip > 0) {
     const i = Math.min(nFlip, FLIP_POINTS.length - 1);
-    parts.push(`${FLIP_COUNT[nFlip] ?? nFlip + "x "}${flip > 0 ? "Frontflip" : "Backflip"}`);
+    parts.push(flipName(nFlip, flip));
     pts += FLIP_POINTS[i];
   }
   if (n180 > 0) {
-    parts.push(`${spin > 0 ? "Frontside" : "Backside"} ${n180 * 180}`);
+    parts.push(spinName(n180, spin));
     pts += SPIN_POINTS[Math.min(n180, SPIN_POINTS.length - 1)];
   }
-  if (grabTime > 0.12) {
+  if (grabTime > GRAB_MIN) {
     parts.push(`${grabName} Grab`);
     pts += Math.round(100 + 400 * Math.min(grabTime, 1.5));
   }
@@ -3332,7 +3369,7 @@ function scoreTrick(r, airTime, spin, flip, grabTime, grabName) {
   if (kinds >= 2) pts = Math.round(pts * (kinds === 3 ? 2 : 1.5));
   if (r.takeoffSw) { parts.unshift("Switch"); pts = Math.round(pts * 1.25); }
   r.trickScore += pts;
-  if (r.isPlayer) { sfx.trick(); showPopup(parts.join(" + "), `+${pts}`, false); announceTrick(parts, pts); }
+  if (r.isPlayer) { sfx.trick(); showPopup(parts.join(" + "), `+${pts}`, false); announceTrick(parts, pts, r.called?.any); }
 }
 
 // Riding into a net stops you going further out and you slide along it,
