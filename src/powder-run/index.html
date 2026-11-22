@@ -103,7 +103,7 @@
   .card table.scores td { white-space: nowrap; vertical-align: top; }
   .card table.scores .sub { display: block; font-size: 0.72rem; opacity: 0.6; }
   .card .buttons { display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap; }
-  .card .levels { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem; margin: 0.6rem 0 0.2rem; }
+  .card .levels { display: grid; grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr)); gap: 0.4rem; margin: 0.6rem 0 0.2rem; }
   .card .levels button { padding: 0.45rem 0.3rem; font-size: 0.85rem; }
   .card p.blurb { font-size: 0.82rem; min-height: 2.3em; margin-top: 0.4rem; }
   .card .mp { border-top: 1px solid #2a2f3a; margin-top: 1.1rem; padding-top: 0.9rem; }
@@ -237,7 +237,7 @@ import * as THREE from "three";
 // ---------------------------------------------------------------------------
 const COURSE_LEN = 1400;   // metres from start to the finish line
 const RUNOUT = 180;        // flat-ish area past the finish
-const HALF_W = 18;         // half-width of the groomed run
+let HALF_W = 18;           // half-width of the groomed run (set per level)
 const SLOPE = 0.3;         // average fall-line gradient
 const PAR_TIME = 70;       // seconds; finishing faster earns a time bonus
 
@@ -250,6 +250,7 @@ const FLIP_RATE = 6.0;     // rad/s flip rate in the air
 const FLIP_POINTS = [0, 600, 1500, 2800, 4500];
 const FLIP_LAND_TOL = 0.75; // rad of leftover flip rotation you can still ride away from
 const FLIP_PIVOT = 0.9;     // flips rotate about the rider's middle, not their feet
+const WALL_STEP = 0.6;      // m the ground can rise in one physics step before it counts as a wall
 
 function mulberry32(seed) {
   return () => {
@@ -264,14 +265,25 @@ const smooth = (t) => t * t * (3 - 2 * t);
 const wrapAngle = (a) => a - Math.PI * 2 * Math.round(a / (Math.PI * 2));
 
 // The run's middle line. Each level sets its own bends (see LEVELS).
-const course = { a1: 16, p1: 130, o1: 0, a2: 7, p2: 53, o2: 1.3, bump: 0 };
-const center = (z) => course.a1 * Math.sin(z / course.p1 + course.o1) + course.a2 * Math.sin(z / course.p2 + course.o2);
+// `tight` adds quick, tight turns near the top that straighten out by z = tight.z1.
+const course = { a1: 16, p1: 130, o1: 0, a2: 7, p2: 53, o2: 1.3, bump: 0, tight: null };
+const center = (z) => {
+  let c = course.a1 * Math.sin(z / course.p1 + course.o1) + course.a2 * Math.sin(z / course.p2 + course.o2);
+  const t = course.tight;
+  if (t && z < t.z1) c += t.a * Math.sin(z / t.p) * (1 - smooth(Math.max(0, z) / t.z1));
+  return c;
+};
 
 // Kickers: a ramp that curves up over `len` metres, then drops off at the lip.
 const KICK_HALF = 5, KICK_FADE = 2.5, LIP_DROP = 2;
 const kickers = [];
-function layoutKickers({ start, offsets, gaps }) {
+function layoutKickers({ start, offsets, gaps, at }) {
   kickers.length = 0;
+  // Courses with a hand-made layout list their kickers: [z, offset across the run, big?].
+  if (at) {
+    for (const [z, off, big] of at) kickers.push({ z, x: center(z) + off, h: big ? 3.2 : 2.1, len: big ? 15 : 12 });
+    return;
+  }
   let z = start, i = 0;
   while (z < COURSE_LEN - 80) {
     const big = i % 4 === 3;
@@ -306,8 +318,11 @@ function kickerH(x, z) {
 // islands): each is { z0, z1, h(u, z), color?(u, z) }, where u is the distance
 // across the run from its middle line. See placeFeatures.
 const features = [];
-// Stretches where the run splits around an island; bots pick a side.
+// Stretches where the run splits into routes: { z0, z1, opts: [u, ...] }. Bots pick one.
 const lanes = [];
+// Roofs over caves and cabins: { z0, z1, u0, u1, clear }, where `clear` is how
+// high your feet can go above the floor underneath.
+const ceilings = [];
 
 function featureH(x, z) {
   let h = 0, u = null;
@@ -449,10 +464,10 @@ const ROCK_FACE = [0.42, 0.44, 0.48];
 function buildTerrain(rnd, ground, kickerColor) {
   // Columns follow the run's middle line: a metre apart across the run, where
   // the moguls, logs and cliffs are, and wider apart up the banks.
-  const U = [];
-  for (let u = -100; u < -26; u += 3) U.push(u);
-  for (let u = -26; u < 26; u += 1) U.push(u);
-  for (let u = 26; u <= 100; u += 3) U.push(u);
+  const U = [], fine = HALF_W + 8, far = HALF_W + 82;
+  for (let u = -far; u < -fine; u += 3) U.push(u);
+  for (let u = -fine; u < fine; u += 1) U.push(u);
+  for (let u = fine; u <= far; u += 3) U.push(u);
   const NX = U.length - 1;
   const Z0 = -60, Z1 = COURSE_LEN + RUNOUT, DZ = 1;
   const NZ = Math.round((Z1 - Z0) / DZ);
@@ -506,7 +521,7 @@ function snowGround(x, z, d, n) {
 // --- Course furniture: poles, kicker lips, safety nets, banners ---------------
 // Safety nets a little way up each bank keep riders on the course. Collision is
 // in checkFence; the nets block at any height, so you can't jump over them.
-const FENCE_D = HALF_W + 7;  // distance from the middle of the run
+let FENCE_D = HALF_W + 7;    // distance from the middle of the run (set with HALF_W)
 const FENCE_H = 1.6;
 const FENCE_Z0 = -30, FENCE_Z1 = COURSE_LEN + RUNOUT;
 const centerSlope = (z) => center(z + 0.5) - center(z - 0.5);
@@ -745,10 +760,15 @@ function fRollers(z0, z1, A = 2.1) {
 function fCliff(a, b, rnd, cfg) {
   const run = Math.min(32, b - a - 24);
   if (run < 14) return fRollers(a, b);
-  const z0 = a, zE = a + run, D = cfg.drop, EDGE = 1.6;
   const left = rnd() < 0.5;
-  const u0 = left ? -HALF_W - 2 : -1, u1 = left ? 1 : HALF_W + 2;
-  const face = cfg.face === "rock" ? ROCK_FACE : [0.55, 0.56, 0.6];
+  return fCliffAt(a + run, left ? -HALF_W - 2 : -1, left ? 1 : HALF_W + 2, cfg.drop, run, cfg.face, rnd);
+}
+
+// A drop of D metres at zE across [u0, u1], with a shelf that builds up over `run` metres before it.
+function fCliffAt(zE, u0, u1, D, run, faceKind, rnd) {
+  const z0 = zE - run, EDGE = 1.6;
+  const face = faceKind === "rock" ? ROCK_FACE : [0.55, 0.56, 0.6];
+  const cfg = { face: faceKind };
   features.push({
     z0, z1: zE + EDGE,
     h: (u, z) => {
@@ -955,7 +975,7 @@ function fRockKicker(a, b, rnd) {
 // the other has logs or barriers.
 function fSplit(z0, z1, rnd, cfg) {
   features.push({ z0, z1, h: (u, z) => 1.4 * band(u, -3, 3, 3) * band(z, z0 + 5, z1 - 5, 5) });
-  lanes.push({ z0, z1, off: 10.5 });
+  lanes.push({ z0, z1, opts: [-10.5, 10.5] });
   const left = rnd() < 0.5;
   fMoguls(z0 + 6, z1 - 6, left ? -HALF_W : 6.5, left ? -6.5 : HALF_W, 0.7);
   const logs = fLogs(z0 + 8, z1 - 8, rnd, cfg, left ? 7 : -HALF_W + 1, left ? HALF_W - 1 : -7);
@@ -1002,6 +1022,358 @@ function placeFeatures(cfg, rnd) {
   kickers.sort((p, q) => p.z - q.z);
   // Meshes go in once every feature has shaped the ground they sit on.
   for (const v of visuals) v();
+}
+
+// --- Route features for the hand-built courses --------------------------------------
+const ICE = [0.74, 0.88, 0.98];
+const iceMat = () => new THREE.MeshStandardMaterial({ color: 0xbfe6ff, roughness: 0.15, metalness: 0.1, emissive: 0x3a6a8a, emissiveIntensity: 0.35, transparent: true, opacity: 0.88, flatShading: true });
+
+// A ravine across the run: a steep drop, a floor, and a long slope back up the
+// far side, so if you fall in you can still ride out (slowly). An optional
+// bridge spans it at the run's original height.
+function fGully(zA, W, D, { bridge = null, opts = null } = {}) {
+  const EDGE = 1.8, R = D * 4, zB = zA + W, zC = zB + R;
+  const g = (z) => (z < zA ? 0 : z < zA + EDGE ? -D * smooth((z - zA) / EDGE) : z < zB ? -D : -D * (1 - smooth((z - zB) / R)));
+  const deck = (u) => (bridge ? band(u, bridge.u - bridge.w / 2, bridge.u + bridge.w / 2, 0.25) : 0);
+  features.push({
+    z0: zA, z1: zC,
+    h: (u, z) => g(z) * band(u, -HALF_W - 3, HALF_W + 3, 3) * (1 - deck(u)),
+    color: (u, z) => (z < zA + EDGE + 0.6 && deck(u) < 0.5 && band(u, -HALF_W - 3, HALF_W + 3, 3) > 0.5 ? ROCK_FACE : null),
+  });
+  if (bridge || opts) lanes.push({ z0: zA - 6, z1: zB + R * 0.5, opts: opts || [bridge.u] });
+  if (!bridge) return;
+  return () => {
+    // Planks laid along the deck, with posts and rails either side and two piers in the ravine.
+    const wood = new THREE.MeshStandardMaterial({ color: 0x6b4a2f, roughness: 0.9, flatShading: true });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x3a2817, roughness: 0.9 });
+    const z1 = zB + R * 0.6;
+    for (let z = zA - 1.5; z < z1; z += 2) {
+      const x = center(z + 1) + bridge.u, ya = terrainH(x, z), yb = terrainH(x, z + 2);
+      const plank = new THREE.Mesh(new THREE.BoxGeometry(bridge.w, 0.3, 2.05), wood);
+      plank.position.set(x, (ya + yb) / 2 - 0.16, z + 1);
+      plank.rotation.x = Math.atan2(ya - yb, 2);
+      plank.castShadow = plank.receiveShadow = true;
+      levelGroup.add(plank);
+      for (const s of [-1, 1]) {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.1, 0.14), dark);
+        post.position.set(x + s * (bridge.w / 2 - 0.1), ya + 0.55, z);
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 2.05), dark);
+        rail.position.set(x + s * (bridge.w / 2 - 0.1), (ya + yb) / 2 + 1.05, z + 1);
+        rail.rotation.x = plank.rotation.x;
+        levelGroup.add(post, rail);
+      }
+    }
+    for (const z of [zA + W * 0.3, zA + W * 0.75]) {
+      const x = center(z) + bridge.u, top = terrainH(x, z);
+      for (const s of [-1, 1]) {
+        const pier = new THREE.Mesh(new THREE.BoxGeometry(0.5, D + 2, 0.5), dark);
+        pier.position.set(x + s * (bridge.w / 2 - 0.4), top - (D + 2) / 2 - 0.3, z);
+        levelGroup.add(pier);
+      }
+    }
+  };
+}
+
+// A raised path along one side of the run: ride up the ramp at its start, stay
+// high along the top, then drop off the end back onto the run. Its inner side
+// is a rock wall to whoever is riding the low line beside it.
+function fLedge(z0, hold, side, D) {
+  // The ramp climbs a little slower than the hill falls away, so you keep your speed.
+  const RAMP = Math.max(20, D / 0.16), zE = z0 + RAMP + hold, EDGE = 1.6;
+  const u0 = side < 0 ? -HALF_W - 3 : 3, u1 = side < 0 ? -3 : HALF_W + 3;
+  features.push({
+    z0, z1: zE + EDGE,
+    h: (u, z) => {
+      const lat = band(u, u0, u1, 1.2);
+      if (!lat) return 0;
+      const p = z < z0 + RAMP ? smooth((z - z0) / RAMP) : z <= zE ? 1 : 1 - smooth((z - zE) / EDGE);
+      return D * p * lat;
+    },
+    color: (u, z) => {
+      const lat = band(u, u0, u1, 1.2);
+      return (lat > 0.06 && lat < 0.94 && z > z0 + 8) || (z >= zE - 0.3 && lat > 0.5) ? ROCK_FACE : null;
+    },
+  });
+  lanes.push({ z0, z1: zE, opts: [(u0 + u1) / 2, side < 0 ? HALF_W / 2 : -HALF_W / 2] });
+  return () => {
+    const rocks = [];
+    for (let u = Math.max(u0, -HALF_W) + 1; u < Math.min(u1, HALF_W) - 0.5; u += 2.4) {
+      const z = zE + EDGE + 1, x = center(z) + u, s = 0.7 + Math.abs(Math.sin(u * 3.1)) * 0.6;
+      rocks.push({ x, z, y: terrainH(x, z) - s * 0.3, s });
+    }
+    addRocks(rocks);
+  };
+}
+
+// A block of rock H metres high across [ua, ub]. With a channel cut through it,
+// it's a slot to ride through; with a roof as well, it's an ice cave.
+function fMass(z0, len, ua, ub, H, { channel = null, roof = false } = {}) {
+  const z1 = z0 + len, F = 1.4;
+  const chan = (u) => (channel ? band(u, channel.u - channel.w / 2, channel.u + channel.w / 2, 0.8) : 0);
+  features.push({
+    z0: z0 - F, z1: z1 + F,
+    h: (u, z) => {
+      const m = band(u, ua, ub, F) * band(z, z0, z1, F);
+      return m ? H * m * (1 - chan(u)) : 0;
+    },
+    color: (u, z) => {
+      const m = band(u, ua, ub, F) * band(z, z0, z1, F);
+      if (m <= 0.02) return null;
+      const c = chan(u);
+      if (c > 0.97) return roof ? ICE : null;
+      return m * (1 - c) > 0.97 ? [0.86, 0.89, 0.95] : ROCK_FACE;
+    },
+  });
+  if (!roof) return;
+  ceilings.push({ z0, z1, u0: channel.u - channel.w / 2, u1: channel.u + channel.w / 2, clear: H - 2.4 });
+  return () => {
+    // Slabs of ice over the channel, icicles hanging from them, and a cold glow inside.
+    const mat = iceMat(), icicles = [], glow = [];
+    for (let z = z0; z < z1; z += 4) {
+      const x = center(z + 2) + channel.u, ya = terrainH(x, z), yb = terrainH(x, z + 4);
+      const slab = new THREE.Mesh(new THREE.BoxGeometry(channel.w + 2.4, 0.7, 4.05), mat);
+      slab.position.set(x, (ya + yb) / 2 + H - 0.35, z + 2);
+      slab.rotation.x = Math.atan2(ya - yb, 4);
+      slab.castShadow = true;
+      levelGroup.add(slab);
+      for (let k = 0; k < 5; k++) {
+        const ix = x + (Math.sin(z * 7 + k * 13) * 0.45) * channel.w, iz = z + k * 0.8, iy = terrainH(ix, iz) + H - 0.7;
+        icicles.push({ x: ix, y: iy, z: iz, s: 0.6 + Math.abs(Math.sin(k + z)) * 0.8 });
+        if (k === 2) glow.push(x, terrainH(x, iz) + H * 0.6, iz);
+      }
+    }
+    instanced(new THREE.ConeGeometry(0.16, 1, 5), icicles, (c, o) => { o.position.set(c.x, c.y - c.s / 2, c.z); o.scale.set(1, c.s, 1); o.rotation.set(Math.PI, 0, 0); }, { mat: iceMat(), shadow: false });
+    levelGroup.add(new THREE.Points(
+      new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(glow, 3)),
+      new THREE.PointsMaterial({ size: 4, map: glowTexture("rgba(140,210,255,0.5)"), color: 0x8fd0ff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }),
+    ));
+  };
+}
+
+// A log cabin built across the run with an open doorway right through it. Ride
+// through the middle, or go round either side. The walls are solid.
+function fCabinThrough(z, uc) {
+  const W = 14, L = 10, door = 6, H = 4.2, wallW = (W - door) / 2;
+  for (let zz = z + 0.4; zz <= z + L - 0.4; zz += 1.1) {
+    for (const s of [-1, 1]) {
+      for (let k = 0.55; k < wallW; k += 1.1) {
+        const x = center(zz) + uc + s * (door / 2 + k);
+        addObstacle({ x, z: zz, y: terrainH(x, zz), r: 0.65, h: H + 3, name: "Hit the cabin!" });
+      }
+    }
+    for (let k = -door / 2 + 0.5; k < door / 2; k += 1.1) {
+      const x = center(zz) + uc + k;
+      addObstacle({ x, z: zz, y: terrainH(x, zz), r: 0.65, lo: H, h: H + 3, name: "Hit the cabin!" });
+    }
+  }
+  ceilings.push({ z0: z, z1: z + L, u0: uc - door / 2, u1: uc + door / 2, clear: H - 1.9 });
+  lanes.push({ z0: z - 4, z1: z + L, opts: [uc, uc - W / 2 - 4.5, uc + W / 2 + 4.5] });
+  return () => {
+    const zc = z + L / 2, x = center(zc) + uc;
+    const y0 = terrainH(center(z) + uc, z), y1 = terrainH(center(z + L) + uc, z + L);
+    const g = new THREE.Group();
+    g.position.set(x, (y0 + y1) / 2, zc);
+    g.rotation.x = Math.atan2(y0 - y1, L);
+    levelGroup.add(g);
+    const { side } = roofLookTextures("cabin");
+    const wallMat = new THREE.MeshStandardMaterial({ map: side, roughness: 0.9 });
+    const inner = new THREE.MeshStandardMaterial({ color: 0x3a2817, roughness: 0.95 });
+    const add = (geo, m, px, py, pz) => { const mesh = new THREE.Mesh(geo, m); mesh.position.set(px, py, pz); mesh.castShadow = mesh.receiveShadow = true; g.add(mesh); return mesh; };
+    for (const s of [-1, 1]) add(new THREE.BoxGeometry(wallW, H + 1, L), [wallMat, wallMat, inner, inner, wallMat, wallMat], s * (door / 2 + wallW / 2), (H + 1) / 2 - 1, 0);
+    add(new THREE.BoxGeometry(door, 0.8, L), inner, 0, H + 0.4, 0);
+    // A snowy gable roof.
+    const a = W / 2 + 0.6, pitch = 0.5, rise = a * Math.tan(pitch);
+    const snow = new THREE.MeshStandardMaterial({ color: 0xf2f6fb, roughness: 0.9, flatShading: true });
+    for (const s of [-1, 1]) {
+      const slope = add(new THREE.BoxGeometry(a / Math.cos(pitch), 0.35, L + 1), snow, s * a / 2, H + 0.8 + rise / 2, 0);
+      slope.rotation.z = -s * pitch;
+    }
+    const gable = new THREE.Shape([new THREE.Vector2(-W / 2, 0), new THREE.Vector2(W / 2, 0), new THREE.Vector2(0, rise)]);
+    for (const s of [-1, 1]) add(new THREE.ShapeGeometry(gable), new THREE.MeshStandardMaterial({ map: side, side: THREE.DoubleSide }), 0, H + 0.8, s * L / 2);
+    // A warm lamp inside the doorway.
+    const lamp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture("rgba(255,200,120,0.9)"), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    lamp.position.set(0, H - 0.6, 0); lamp.scale.setScalar(3);
+    g.add(lamp);
+  };
+}
+
+// An ice half-pipe running down the run: a flat floor between curved walls you
+// can carve up and launch off.
+function fPipe(z0, len, uc, W = 18, wallH = 5) {
+  const half = W / 2, flat = 3;
+  const shape = (u) => {
+    const du = Math.abs(u - uc);
+    if (du <= half) { const t = Math.max(0, (du - flat) / (half - flat)); return wallH * t * t; }
+    if (du <= half + 3) return wallH;
+    return wallH * (1 - smooth(Math.min(1, (du - half - 3) / 5)));
+  };
+  features.push({
+    z0, z1: z0 + len,
+    h: (u, z) => shape(u) * band(z, z0 + 8, z0 + len - 8, 8),
+    color: (u, z) => (Math.abs(u - uc) <= half + 3 && band(z, z0 + 8, z0 + len - 8, 8) > 0.3 ? ICE : null),
+  });
+}
+
+// Tall stone pillars standing in the snow: obstacles to weave between.
+function addPillars(list) {
+  for (const p of list) addObstacle({ x: p.x, z: p.z, y: p.y, r: p.r + 0.3, h: p.h, name: "Rock!" });
+  instanced(new THREE.CylinderGeometry(0.72, 1, 1, 7), list, (p, o, c) => {
+    o.position.set(p.x, p.y + p.h / 2 - 0.5, p.z); o.scale.set(p.r, p.h, p.r); o.rotation.set(0, p.x, 0);
+    c.set(ROCKS[Math.floor(Math.abs(p.x * 5 + p.z)) % ROCKS.length]);
+  });
+  instanced(new THREE.DodecahedronGeometry(1, 0), list, (p, o, c) => {
+    o.position.set(p.x, p.y + p.h - 0.3, p.z); o.scale.set(p.r * 0.85, p.r * 0.45, p.r * 0.85); o.rotation.set(p.z, p.x, 0);
+    c.set(0xf2f6fb);
+  });
+}
+
+// A patch of trees across [u0, u1] between z0 and z1.
+function glade(rnd, z0, z1, u0, u1, n) {
+  const list = [];
+  for (let i = 0; i < n; i++) {
+    const z = z0 + rnd() * (z1 - z0), x = center(z) + u0 + rnd() * (u1 - u0);
+    list.push({ x, z, y: terrainH(x, z), s: 0.8 + rnd() * 0.6 });
+  }
+  return list;
+}
+
+// Hand-built courses list their own features. Meshes go in once every feature
+// has shaped the ground they sit on.
+function runLayout(layout, rnd, cfg) {
+  const visuals = layout(rnd, cfg).filter(Boolean);
+  kickers.sort((p, q) => p.z - q.z);
+  for (const v of visuals) v();
+}
+
+// --- Frozen Gorge: a technical run through an icy gorge at dusk -------------------
+function gorgeLayout(rnd, cfg) {
+  const V = [];
+  fRollers(60, 105, 1.4);
+  V.push(fLedge(185, 40, -1, 6));
+  V.push(fGully(345, 12, 7, { bridge: { u: 4, w: 6 } }));
+  // The ice cave on the right; moguls on the open left side.
+  V.push(fMass(480, 80, 2, HALF_W + 5, 9, { channel: { u: 11, w: 8 }, roof: true }));
+  fMoguls(485, 555, -HALF_W, -3, 0.75);
+  lanes.push({ z0: 478, z1: 560, opts: [11, -10] });
+  // A gap jump off a kicker, or the narrow bridge round the right.
+  kickers.push({ z: 650, x: center(650) - 6, h: 2.4, len: 12 });
+  V.push(fGully(651.5, 14, 8, { bridge: { u: 12, w: 5 }, opts: [-6, 12] }));
+  V.push(fLedge(785, 30, 1, 8));
+  V.push(fLogs(795, 850, rnd, cfg, -HALF_W + 1.5, -4));
+  // The narrows: rock walls close in from both sides.
+  fMass(905, 70, -HALF_W - 5, -6, 8);
+  fMass(905, 70, 6, HALF_W + 5, 8);
+  V.push(fGully(1065, 10, 6, { bridge: { u: -5, w: 6 } }));
+  V.push(fSplit(1140, 1200, rnd, cfg));
+  V.push(fCabinThrough(1262, 0));
+  return V;
+}
+
+function gorgeGround(x, z, d, n) {
+  if (d < HALF_W) return [0.86 + n, 0.89 + n, 0.97 + n * 0.5];
+  // Steep, rocky banks with snow caught in the hollows.
+  const e = d - HALF_W, rocky = Math.sin(x * 0.11 + z * 0.07) * Math.sin(z * 0.05 - x * 0.13) + e * 0.05;
+  if (e > 3 && rocky > 0.15) return [0.33 + n, 0.34 + n, 0.4 + n];
+  return [0.8 + n, 0.83 + n, 0.93 + n * 0.5];
+}
+
+// Distant peaks in a ring, each a cone with a snow cap, drawn behind everything.
+function peakRing(rnd, { n, r0, r1, h0, h1, base, colors, cap, spread = Math.PI * 2, offset = 0 }) {
+  const mats = colors.map((c) => new THREE.MeshLambertMaterial({ color: c, flatShading: true, fog: false }));
+  const capMat = new THREE.MeshLambertMaterial({ color: cap, flatShading: true, fog: false });
+  for (let i = 0; i < n; i++) {
+    const a = offset + (i / n) * spread + rnd() * 0.15, r = r0 + rnd() * (r1 - r0), ht = h0 + rnd() * (h1 - h0), rad = ht * (0.45 + rnd() * 0.2);
+    const x = Math.sin(a) * r, z = Math.cos(a) * r, rot = rnd() * 3;
+    const m = new THREE.Mesh(new THREE.ConeGeometry(rad, ht, 6), mats[i % mats.length]);
+    m.position.set(x, base + ht / 2, z); m.rotation.y = rot; m.renderOrder = -5;
+    const c = new THREE.Mesh(new THREE.ConeGeometry(rad * 0.38, ht * 0.35, 6), capMat);
+    c.position.set(x, base + ht * 0.825, z); c.rotation.y = rot; c.renderOrder = -5;
+    backdrop.add(m, c);
+  }
+}
+
+function buildGorge(rnd) {
+  const trees = [];
+  scatter(rnd, { step: 3, chance: 0.35, dMin: HALF_W + 2.5, dSpread: 24, power: 1.4 }, (t) => trees.push(t));
+  addPines(trees, [0x24473a, 0x2a523f], 0xdfe6f5);
+  const rocks = [];
+  scatter(rnd, { step: 6, chance: 0.5, dMin: HALF_W + 9, dSpread: 20 }, (t) => rocks.push({ ...t, s: 1 + t.s * 1.5, y: t.y - 0.5 }));
+  addRocks(rocks);
+
+  skyDome(0x1a2350, 0xf0a878, 0x8f86b8);
+  peakRing(rnd, { n: 22, r0: 900, r1: 1150, h0: 380, h1: 640, base: -420, colors: [0x4a4870, 0x3f3d62, 0x56527a], cap: 0xc8c4e0 });
+  const sunGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture("rgba(255,190,120,0.95)", "rgba(255,140,90,0)"), fog: false, depthWrite: false }));
+  sunGlow.position.set(380, 60, 1250); sunGlow.scale.setScalar(380); sunGlow.renderOrder = -15;
+  backdrop.add(sunGlow);
+}
+
+// --- Glacier Bowl: a huge open bowl above the treeline -----------------------------
+function bowlLayout(rnd, cfg) {
+  const V = [];
+  // Big drops need long shelves that climb slower than the hill falls, so you
+  // reach the edge at speed.
+  const cliff = (zE, u0, u1, D) => V.push(fCliffAt(zE, u0, u1, D, D / 0.16, "rock", rnd));
+  cliff(22, -HALF_W - 3, HALF_W + 3, 3); // a small drop off the start
+  fGully(58, 5, 4); // a crevasse to jump
+  fMoguls(95, 150, -HALF_W, -8, 0.8);
+  const trees = glade(rnd, 95, 200, 10, HALF_W - 2, 22);
+  cliff(240, -HALF_W - 3, -6, 12);
+  cliff(300, 6, HALF_W + 3, 14);
+  cliff(470, -14, 14, 11);
+  fMoguls(445, 500, -HALF_W, -18, 0.85);
+  fMoguls(445, 500, 18, HALF_W, 0.85);
+  fPipe(560, 130, 22);
+  fMoguls(570, 680, -HALF_W, -4, 0.8);
+  cliff(800, -HALF_W - 3, -4, 13);
+  trees.push(...glade(rnd, 775, 860, 6, HALF_W - 2, 20));
+  fRollers(915, 965, 2.4);
+  cliff(1060, 4, HALF_W + 3, 18);
+  fMoguls(1035, 1090, -HALF_W, -4, 0.85);
+  cliff(1220, -16, 16, 12);
+  trees.push(...glade(rnd, 1240, 1330, -HALF_W + 2, -12, 16), ...glade(rnd, 1240, 1330, 12, HALF_W - 2, 16));
+
+  // Stone pillars scattered across the bowl, clear of kickers and the half-pipe.
+  const pillars = [];
+  for (let tries = 0; pillars.length < 24 && tries < 400; tries++) {
+    const z = 110 + rnd() * 1250, u = -HALF_W + 4 + rnd() * (HALF_W * 2 - 8), x = center(z) + u;
+    if (kickers.some((k) => Math.abs(z - k.z) < 22 && Math.abs(x - k.x) < 12)) continue;
+    if (u > 8 && z > 550 && z < 700) continue;
+    if (pillars.some((p) => Math.hypot(p.x - x, p.z - z) < 18) || trees.some((t) => Math.hypot(t.x - x, t.z - z) < 4)) continue;
+    pillars.push({ x, z, y: terrainH(x, z) - 0.5, r: 1.6 + rnd() * 1.8, h: 8 + rnd() * 16 });
+  }
+  V.push(() => { addPines(trees, cfg.pines[0], cfg.pines[1]); addPillars(pillars); });
+  return V;
+}
+
+function bowlGround(x, z, d, n) {
+  if (d < HALF_W) return [0.92 + n, 0.95 + n, 1 + n * 0.5];
+  const e = d - HALF_W, rocky = Math.sin(x * 0.09 + z * 0.05) * Math.sin(z * 0.04 - x * 0.1) + e * 0.03;
+  if (e > 6 && rocky > 0.35) return [0.45 + n, 0.47 + n, 0.53 + n];
+  return [0.88 + n, 0.92 + n, 0.99 + n * 0.5];
+}
+
+function buildBowl(rnd) {
+  const trees = [];
+  scatter(rnd, { step: 6, chance: 0.25, dMin: HALF_W + 3, dSpread: 22, power: 1.5 }, (t) => trees.push(t));
+  addPines(trees, [0x2f5d46, 0x356b4c], 0xeef4fb);
+  skyDome(0x2f6fd6, 0xd6ecff, 0xe8f4ff);
+  peakRing(rnd, { n: 18, r0: 850, r1: 1050, h0: 440, h1: 680, base: -420, colors: [0x8ea3bf, 0x7f95b3, 0x9cb0ca], cap: 0xf6f9fd });
+  const cloudTex = canvasTexture(256, 128, (g) => {
+    for (let i = 0; i < 7; i++) {
+      const x = 50 + i * 26, y = 70 - Math.sin((i / 6) * Math.PI) * 18, r = 22 + Math.sin((i / 6) * Math.PI) * 16;
+      const grd = g.createRadialGradient(x, y, 0, x, y, r);
+      grd.addColorStop(0, "rgba(255,255,255,0.9)"); grd.addColorStop(1, "rgba(255,255,255,0)");
+      g.fillStyle = grd; g.fillRect(0, 0, 256, 128);
+    }
+  });
+  for (let i = 0; i < 10; i++) {
+    const a = rnd() * Math.PI * 2, el = 0.25 + rnd() * 0.3;
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: cloudTex, fog: false, depthWrite: false, opacity: 0.8 }));
+    s.position.set(Math.cos(el) * Math.sin(a) * 1250, Math.sin(el) * 1250, Math.cos(el) * Math.cos(a) * 1250);
+    s.scale.set(300 + rnd() * 200, 120 + rnd() * 50, 1);
+    s.renderOrder = -16;
+    backdrop.add(s);
+  }
 }
 
 // --- Snowy Peak: the original overcast mountain --------------------------------
@@ -1374,6 +1746,26 @@ const LEVELS = {
     snow: 0, puffs: 0.25, kickerColor: [0.55, 0.78, 1.0],
     furniture: { poles: [0xd8432e, 0x2f7ad8], lip: 0xff8a2a, net: "#d0482f", post: 0x5a3e2b, banners: ["#2f8a4a", "#d0482f"] },
   },
+  gorge: {
+    name: "Frozen Gorge", blurb: "A technical run through an icy gorge at dusk: tight turns, bridges over ravines, high ledges, an ice cave and a cabin to ride through.",
+    seed: 31337, build: buildGorge, ground: gorgeGround, layout: gorgeLayout,
+    course: { a1: 12, p1: 150, o1: 0.4, a2: 6, p2: 60, o2: 2.5, bump: 0.8, tight: { a: 9, p: 24, z1: 330 } },
+    kickers: { at: [[150, 0], [300, -4, true], [440, 2], [610, -2], [760, 0], [1020, 3, true], [1330, -3]] },
+    terrain: { logs: "log", pines: [[0x24473a, 0x2a523f], 0xdfe6f5] },
+    sky: 0x8f86b8, fog: [0x9a8fbc, 40, 320], hemi: [0xb8c2ee, 0x3d3550, 1.05], sun: [0xffb27a, 1.8], riderLight: 0,
+    snow: 0.45, puffs: 0.5, kickerColor: [0.55, 0.7, 1.0],
+    furniture: { poles: [0xff6a2a, 0x3a6dff], lip: 0xff8a2a, net: "#ff7a1a", banners: ["#3a6dff", "#e0443a"] },
+  },
+  bowl: {
+    name: "Glacier Bowl", blurb: "A huge open bowl above the trees. Pick your own line past stone pillars, off giant cliffs and down an ice half-pipe.",
+    seed: 4242, build: buildBowl, ground: bowlGround, layout: bowlLayout, halfW: 40,
+    course: { a1: 10, p1: 220, o1: 1, a2: 5, p2: 90, o2: 0.3, bump: 2.2 },
+    kickers: { at: [[175, -14], [360, 0], [740, 12], [890, 14], [1140, -8, true], [1330, 0]] },
+    terrain: { pines: [[0x2f5d46, 0x356b4c], 0xeef4fb] },
+    sky: 0xcfe6ff, fog: [0xd8ecff, 80, 700], hemi: [0xeef6ff, 0x9fb2cc, 1.45], sun: [0xfff4e0, 2.3], riderLight: 0,
+    snow: 0, puffs: 0.8, kickerColor: [0.55, 0.75, 1.0],
+    furniture: { poles: [0xff6a2a, 0x3a6dff], lip: 0xff8a2a, net: "#ff7a1a", banners: ["#3a6dff", "#e0443a"] },
+  },
 };
 const LEVEL_IDS = Object.keys(LEVELS);
 
@@ -1398,10 +1790,15 @@ function setLevel(id) {
   obstacles.clear();
   features.length = 0;
   lanes.length = 0;
-  Object.assign(course, level.course);
+  ceilings.length = 0;
+  HALF_W = level.halfW ?? 18;
+  FENCE_D = HALF_W + 7;
+  Object.assign(course, { tight: null }, level.course);
   layoutKickers(level.kickers);
   // Features get their own random stream, so they don't shift the scenery's.
-  placeFeatures(level.terrain, mulberry32(level.seed ^ 0x5bd1e995));
+  const frnd = mulberry32(level.seed ^ 0x5bd1e995);
+  if (level.layout) runLayout(level.layout, frnd, level.terrain);
+  else placeFeatures(level.terrain, frnd);
 
   const rnd = mulberry32(level.seed);
   buildTerrain(rnd, level.ground, level.kickerColor);
@@ -2176,7 +2573,7 @@ function resetRider(r) {
     trickScore: 0, finished: false, finishTime: 0, inp: NO_INPUT, net: null, netRaw: null,
   });
   r.y = terrainH(r.x, r.z);
-  if (r.bot) Object.assign(r.bot, { t: 0, phase: Math.random() * 10, kickIdx: -1, plan: null });
+  if (r.bot) Object.assign(r.bot, { t: 0, phase: Math.random() * 10, kickIdx: -1, plan: null, lane: null });
 }
 
 // What a browser sends about the riders it runs, about 15 times a second.
@@ -2339,6 +2736,9 @@ function groundStep(r, h, inp) {
 
   const nx = r.x + r.vx * h, nz = r.z + r.vz * h;
   const ground = terrainH(nx, nz);
+  // Ground that rises too steeply to ride (a rock face, a cliff from below, the
+  // side of a ledge) is a wall: stay put and bounce or slide along it.
+  if (ground - r.y > WALL_STEP) return hitWall(r, nx, nz);
   const yPred = r.y + r.groundVy * h - 0.5 * G_AIR * h * h;
   r.x = nx; r.z = nz;
   if (yPred > ground + 0.04) {
@@ -2350,7 +2750,10 @@ function groundStep(r, h, inp) {
     const [gx2, gz2] = grad(nx, nz);
     const sp = Math.hypot(r.vx, r.vz) || 1;
     const mOld = (gx * r.vx + gz * r.vz) / sp, mNew = (gx2 * r.vx + gz2 * r.vz) / sp;
-    const scale = Math.sqrt((1 + mOld * mOld) / (1 + mNew * mNew));
+    let scale = Math.sqrt((1 + mOld * mOld) / (1 + mNew * mNew));
+    // A sudden steepening (the lip of a cliff or kicker, about to send you
+    // airborne) mustn't take away the speed you leave it with.
+    if (mNew < mOld) scale = Math.max(scale, 0.985);
     r.vx *= scale; r.vz *= scale;
     // Use the actual height change rather than the local gradient, so touching
     // down for one substep on a kicker's drop-off doesn't glue us to the snow.
@@ -2364,8 +2767,20 @@ function airStep(r, h, inp) {
   r.vy -= G_AIR * h;
   const drag = Math.exp(-0.05 * h);
   r.vx *= drag; r.vz *= drag;
-  r.x += r.vx * h; r.y += r.vy * h; r.z += r.vz * h;
+  const nx = r.x + r.vx * h, nz = r.z + r.vz * h;
+  // Flying into a face well above your feet is a wall, not a landing.
+  if (terrainH(nx, nz) - (r.y + r.vy * h) > 1.2) hitWall(r, nx, nz);
+  else { r.x = nx; r.z = nz; }
+  r.y += r.vy * h;
   r.airTime += h;
+  // Cave and cabin roofs: you can't fly up through them from underneath.
+  for (const c of ceilings) {
+    if (r.z < c.z0 || r.z > c.z1) continue;
+    const u = r.x - center(r.z);
+    if (u < c.u0 || u > c.u1) continue;
+    const top = terrainH(r.x, r.z) + c.clear;
+    if (r.y > top && r.y < top + 3) { r.y = top; r.vy = Math.min(r.vy, 0); }
+  }
   if (canControl(r)) {
     // Leaving the ground off a bump or drop without an ollie, a turn or tuck you
     // were already holding doesn't count until you let go and press it again,
@@ -2387,6 +2802,18 @@ function airStep(r, h, inp) {
   }
   const ground = terrainH(r.x, r.z);
   if (r.y <= ground) land(r, ground);
+}
+
+// Push back off a wall at (nx, nz): the part of your speed heading into it is
+// turned back, the rest carries you along it. Hitting it hard wipes you out.
+function hitWall(r, nx, nz) {
+  const [gx, gz] = grad(nx, nz);
+  const len = Math.hypot(gx, gz) || 1;
+  const wx = gx / len, wz = gz / len; // pointing into the wall
+  const vin = r.vx * wx + r.vz * wz;
+  if (vin > 0) { r.vx -= 1.3 * vin * wx; r.vz -= 1.3 * vin * wz; }
+  if (vin > 7 && !r.finished) crash(r, "Hit the wall!");
+  if (r.grounded && Math.hypot(r.vx, r.vz) > 2) r.heading = Math.atan2(r.vx, r.vz);
 }
 
 function land(r, ground) {
@@ -2484,7 +2911,7 @@ function checkObstacles(r) {
     for (const t of list) {
       const dx = r.x - t.x, dz = r.z - t.z;
       const rad = t.r;
-      if (dx * dx + dz * dz >= rad * rad || r.y > t.y + t.h) continue;
+      if (dx * dx + dz * dz >= rad * rad || r.y > t.y + t.h || r.y + 1.7 < t.y + (t.lo || 0)) continue;
       const d = Math.hypot(dx, dz) || 1;
       r.x = t.x + (dx / d) * (rad + 0.05);
       r.z = t.z + (dz / d) * (rad + 0.05);
@@ -2566,6 +2993,24 @@ function planTrick(r, b) {
   };
 }
 
+// The nearest obstacle within reach of the straight line from the bot to its
+// target, and a point to pass it on whichever side the line already favours.
+function botDodge(r, tx, look) {
+  const z0 = r.z + 1, z1 = r.z + look + 8;
+  let hit = null;
+  for (let k = Math.floor(z0 / BUCKET); k <= Math.floor(z1 / BUCKET); k++) {
+    for (const o of obstacles.get(k) || []) {
+      if (o.z < z0 || o.z > z1 || o.lo) continue;
+      const d = o.z - r.z;
+      const px = r.x + (tx - r.x) * Math.min(1, d / look);
+      if (Math.abs(px - o.x) < o.r + 1.4 && (!hit || d < hit.d)) hit = { o, d, px };
+    }
+  }
+  if (!hit) return null;
+  const s = Math.sign(hit.px - hit.o.x) || 1;
+  return { x: hit.o.x + s * (hit.o.r + 2.2), d: Math.max(4, hit.d) };
+}
+
 function botControls(r, h) {
   const b = r.bot;
   const inp = { left: false, right: false, tuck: false, brake: false, grab: false, jump: false };
@@ -2599,10 +3044,22 @@ function botControls(r, h) {
   const look = Math.max(7, speed * 0.7);
   let tx = center(r.z + look) + 5 * Math.sin(b.t * 0.25 + b.phase);
   if (k && b.goKick && toKick < 40) tx = k.x + b.kickOff;
-  // Go round tree islands on whichever side we're already on.
+  // Where the run splits into routes (round an island, over a bridge, through a
+  // cave), commit to the nearest one when we first see it.
   const lane = lanes.find((l) => r.z + look > l.z0 - 30 && r.z < l.z1);
-  if (lane) tx = center(r.z + look) + (r.x >= center(r.z) ? 1 : -1) * lane.off;
-  const err = wrapAngle(Math.atan2(tx - r.x, look) - r.heading);
+  if (lane) {
+    if (b.lane !== lane) {
+      const u = r.x - center(r.z);
+      b.lane = lane;
+      b.laneU = lane.opts.reduce((p, q) => (Math.abs(q - u) < Math.abs(p - u) ? q : p));
+    }
+    tx = center(r.z + look) + b.laneU;
+  }
+  // Steer round the nearest obstacle on the line we're about to take.
+  let aimD = look;
+  const dodge = botDodge(r, tx, look);
+  if (dodge) { tx = dodge.x; aimD = dodge.d; }
+  const err = wrapAngle(Math.atan2(tx - r.x, aimD) - r.heading);
   if (err > 0.04) inp.left = true;
   else if (err < -0.04) inp.right = true;
 

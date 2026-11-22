@@ -12,13 +12,39 @@ The game opens on a title screen: your rider, in your outfit for this visit, han
 
 ## Courses
 
-Pick a course on the main menu. Picking one builds it straight away behind the menu, and the game remembers your choice. All three are the same length with the same par time, but each has its own bends, kicker layout, obstacles and scenery.
+Pick a course on the main menu. Picking one builds it straight away behind the menu, and the game remembers your choice. All five are the same length with the same par time, but each has its own bends, kicker layout, obstacles and scenery.
 
 | Course | What it's like |
 | ------ | -------------- |
 | **Snowy Peak** | A snowy, overcast day on the mountain. Snow falls around you, powder blows across the slope, fog hides the far end of the run, and the banks are lined with snowy pines. |
 | **Neon Nights** | A snowy street run through a city at night. Towers full of lit windows climb the banks on both sides, with neon signs facing the run and a skyline of blinking rooftop lights beyond. Street lamps along the edges throw pools of warm light on the snow, and hitting one wipes you out. The banks have small pines wrapped in coloured lights, and a light snow falls under a starry sky and a low moon. |
 | **Lakeside Valley** | A clear, sunny spring day. Green grass shows through the snow on the banks, which are lined with pines and leafy trees. Ahead, the run looks down over a green valley with fields, rolling hills and a lake, with a lakeside village and snow-capped mountains beyond. |
+| **Frozen Gorge** | A technical, route-heavy run through a rocky gorge at dusk, under an orange sky. See below. |
+| **Glacier Bowl** | A huge open bowl above the treeline on a bright, clear day, more than twice as wide as the other courses. See below. |
+
+### Frozen Gorge
+
+A hand-built course that keeps asking you to pick a line:
+
+- **Tight turns** at the top that straighten out as the gorge opens up.
+- **Raised ledges** along one side of the run. Ride the ramp up to stay high, then drop off the end back onto the run, or stay low beside the rock wall.
+- **Bridges over ravines.** Stay on the bridge to keep your speed. Miss it and you drop into the ravine and have to ride out up the far side, slowly.
+- **An ice cave** cut through a block of rock on one side, with ice slabs overhead and icicles hanging down. The open side has moguls instead.
+- **A gap jump**: a kicker that launches you across a ravine, or a narrow bridge round the side.
+- **The narrows**, where rock walls close in from both sides.
+- **A log cabin built across the run** near the finish. Ride straight through the doorway, or go round either side.
+
+### Glacier Bowl
+
+A freeride course with no single right line:
+
+- A **small drop** off the start, then a **crevasse** to jump.
+- **Huge cliff drops** staggered across the bowl, on the left, right and middle, up to 18 m high. Each has a long shelf leading up to it, so you reach the edge at speed.
+- **Stone pillars** standing all over the bowl to weave between.
+- **Tree glades**, **moguls** and **rollers**.
+- An **ice half-pipe** down the right side for part of the way. Carve up its walls to launch.
+
+Walls and roofs are solid on both courses. Riding into a rock face or the side of a ledge pushes you along it, and you wipe out if you hit it hard. You can't fly up through the cave's ceiling or the cabin's roof.
 
 ### Terrain features
 
@@ -112,4 +138,4 @@ High scores are stored only in this browser, so they don't follow you to other b
 
 ## Saved settings
 
-Your high scores, best scores, chosen course, the sound, music and announcer settings and your multiplayer name are kept in the browser's `localStorage` under the keys `powderrun-scores`, `powderrun-best` (Snowy Peak), `powderrun-best-city`, `powderrun-best-valley`, `powderrun-level`, `powderrun-muted`, `powderrun-music`, `powderrun-voice` and `powderrun-name`.
+Your high scores, best scores, chosen course, the sound, music and announcer settings and your multiplayer name are kept in the browser's `localStorage` under the keys `powderrun-scores`, `powderrun-best` (Snowy Peak), `powderrun-best-city`, `powderrun-best-valley`, `powderrun-best-gorge`, `powderrun-best-bowl`, `powderrun-level`, `powderrun-muted`, `powderrun-music`, `powderrun-voice` and `powderrun-name`.
