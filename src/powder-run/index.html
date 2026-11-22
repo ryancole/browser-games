@@ -1936,14 +1936,21 @@ function buildRiderModel(look, g) {
   const jacket = look.jacket;
   const flaps = [];
 
-  // Board, bindings and boots stay planted; the legs above them crouch.
-  part(box(0.5, 0.06, 1.7, 0, 0.03), mat(g.board, "shiny"), pose);
-  part(box(0.14, 0.062, 1.5, 0, 0.032), mat(g.stripe, "shiny"), pose);
-  for (const z of [0.28, -0.28]) {
-    part(box(0.34, 0.06, 0.26, 0, 0.09, z), mat(g.binding), pose);
-    part(box(0.3, 0.2, 0.2, 0.02, 0.17, z), mat(g.boots), pose);
-    part(box(0.31, 0.05, 0.22, 0.02, 0.22, z), mat(g.binding), pose); // strap over the boot
-  }
+  // Board, bindings and boots stay planted; the legs above them crouch. In a
+  // crash the board comes off and the boots go with the legs (see the ragdoll).
+  const board = new THREE.Group();
+  pose.add(board);
+  part(box(0.5, 0.06, 1.7, 0, 0.03), mat(g.board, "shiny"), board);
+  part(box(0.14, 0.062, 1.5, 0, 0.032), mat(g.stripe, "shiny"), board);
+  const boots = [0.28, -0.28].map((z) => {
+    part(box(0.34, 0.06, 0.26, 0, 0.09, z), mat(g.binding), board);
+    const b = new THREE.Group();
+    b.position.z = z;
+    board.add(b);
+    part(box(0.3, 0.2, 0.2, 0.02, 0.17), mat(g.boots), b);
+    part(box(0.31, 0.05, 0.22, 0.02, 0.22), mat(g.binding), b); // strap over the boot
+    return b;
+  });
   const legW = g.baggy ? 0.28 : 0.22;
   const legs = [0.28, -0.28].map((z) => {
     const leg = new THREE.Group();
@@ -2007,7 +2014,7 @@ function buildRiderModel(look, g) {
     return a;
   });
 
-  return { root, pose, upper, torso, legs, arms, flaps };
+  return { root, pose, upper, torso, legs, arms, flaps, board, boots };
 }
 
 // Point each flap along the air rushing past (the weather's wind minus the
@@ -2091,8 +2098,9 @@ function emitSpray(r, rate, dt) {
   while (sprayAcc >= 1) {
     sprayAcc -= 1;
     const i = sprayNext; sprayNext = (sprayNext + 1) % SPRAY_N;
-    tailLocal.set((rand() - 0.5) * 0.5, 0.08, -0.75 + rand() * 0.6);
-    r.model.root.localToWorld(tailLocal);
+    // A crashed rider sprays snow from wherever their body is sliding.
+    if (r.rag) tailLocal.set(r.x + (rand() - 0.5) * 0.9, r.y + 0.1, r.z + (rand() - 0.5) * 0.9);
+    else r.model.root.localToWorld(tailLocal.set((rand() - 0.5) * 0.5, 0.08, -0.75 + rand() * 0.6));
     sprayPos[i * 3] = tailLocal.x; sprayPos[i * 3 + 1] = tailLocal.y; sprayPos[i * 3 + 2] = tailLocal.z;
     sprayVel[i * 3] = r.vx * 0.3 + (rand() - 0.5) * 4;
     sprayVel[i * 3 + 1] = 1.5 + rand() * 3;
@@ -2111,6 +2119,19 @@ function updateSpray(dt) {
     sprayPos[i * 3 + 2] += sprayVel[i * 3 + 2] * dt;
   }
   sprayGeo.attributes.position.needsUpdate = true;
+}
+// A burst of loose snow, like it knocked off a branch.
+function snowPuff(x, y, z, count, spread) {
+  for (let k = 0; k < count; k++) {
+    const i = sprayNext; sprayNext = (sprayNext + 1) % SPRAY_N;
+    sprayPos[i * 3] = x + (rand() - 0.5) * spread;
+    sprayPos[i * 3 + 1] = y + rand() * spread * 0.5;
+    sprayPos[i * 3 + 2] = z + (rand() - 0.5) * spread;
+    sprayVel[i * 3] = (rand() - 0.5) * 3;
+    sprayVel[i * 3 + 1] = rand() * 2;
+    sprayVel[i * 3 + 2] = (rand() - 0.5) * 3;
+    sprayLife[i] = 0.6 + rand() * 0.6;
+  }
 }
 function clearSpray() { sprayLife.fill(0); sprayPos.fill(-9999); }
 
@@ -2366,6 +2387,7 @@ const sfx = {
   land: () => blip([[130, 0.09]], { type: "triangle", gain: 0.2, slide: true }),
   trick: () => blip([[660, 0.06], [880, 0.06], [1320, 0.14]], { gain: 0.06 }),
   crash: () => blip([[240, 0.45]], { type: "sawtooth", gain: 0.14, slide: true }),
+  thud: () => blip([[110, 0.14]], { type: "triangle", gain: 0.22, slide: true }),
   finish: () => blip([[523, 0.12], [659, 0.12], [784, 0.12], [1047, 0.4]], { type: "triangle", gain: 0.2 }),
 };
 function updateAudio(speed, slip) {
@@ -2989,6 +3011,7 @@ function removeRider(id) {
 }
 
 function resetRider(r) {
+  endRag(r);
   Object.assign(r, {
     x: center(0) + r.lane, z: 0, y: 0, vx: 0, vy: 0, vz: 0,
     heading: 0, spin: 0, flip: 0, flipYaw: 0, sw: false, takeoffSw: false,
@@ -3047,8 +3070,11 @@ function followNet(r, dt) {
   r.flip = wrapAngle(r.flip + wrapAngle(n.fl - r.flip) * ka);
   r.flipYaw = n.fy;
   r.grounded = !!n.g; r.grabbing = !!n.gr; r.charge = n.ch; r.slip = n.sl;
+  const wasCrashed = r.crashT > 0;
   r.crashT = n.c;
   r.crashSpin = r.crashT > 0 ? r.crashSpin + 9 * dt : 0;
+  if (!wasCrashed && r.crashT > 0) startRag(r, n.vx, n.vy, n.vz);
+  else if (wasCrashed && r.crashT <= 0) endRag(r);
   r.inp = { left: !!(n.k & 1), right: !!(n.k & 2), tuck: !!(n.k & 4), brake: !!(n.k & 8), grab: r.grabbing, jump: false };
 }
 
@@ -3112,14 +3138,15 @@ function ollie(r, late) {
 
 function crash(r, reason) {
   if (r.crashT > 0) return;
-  r.crashT = 1.6;
+  r.crashT = CRASH_T;
   r.crashSpin = 0;
   r.grabbing = false; r.spin = 0; r.flip = 0; r.charge = 0;
-  r.vx *= 0.35; r.vz *= 0.35;
+  startRag(r, r.vx, r.vy, r.vz);
   if (r.isPlayer) { sfx.crash(); showPopup(reason, "WIPEOUT", true); announceWipeout(); }
 }
 
 function recover(r) {
+  endRag(r);
   const s = Math.hypot(r.vx, r.vz);
   r.heading = s > 3 ? Math.atan2(r.vx, r.vz) : 0;
   r.sw = false; r.crashSpin = 0;
@@ -3360,12 +3387,300 @@ function handleJump(r, inp, h) {
   r.jumpPrev = held;
 }
 
+// ---------------------------------------------------------------------------
+// Crash ragdoll. When you wipe out your body goes limp: it becomes a handful
+// of points (hips, shoulders, head, hands, feet) joined by sticks, thrown down
+// the hill with the speed you had, sliding on the snow and bouncing off trees,
+// posts, walls and the nets. The board comes off and slides away on its own,
+// and when you get up you're standing on it again.
+// You and the bots are moved by your ragdoll for the whole crash. A rider from
+// another browser gets a ragdoll of its own here, nudged toward where that
+// browser says they are.
+// ---------------------------------------------------------------------------
+const CRASH_T = 1.9;          // seconds on the ground before you get up
+const RAG_MU = 0.55;         // how much the snow drags on a sliding body...
+const BOARD_MU = 0.06;        // ...and on a board with nobody on it
+const ARM_LEN = 0.55;
+const BOARD_LEN = 1.7;
+const RAG_POINTS = [
+  // `at` is where the point sits in the upper body's frame (x forward, y up, z to the rider's left).
+  { at: [0, 0, 0.28], r: 0.17, m: 3 },     // 0 hip (left)
+  { at: [0, 0, -0.28], r: 0.17, m: 3 },    // 1 hip (right)
+  { at: [0, 0.56, 0.34], r: 0.15, m: 3 },  // 2 shoulder
+  { at: [0, 0.56, -0.34], r: 0.15, m: 3 }, // 3 shoulder
+  { at: [0, 0.82, 0], r: 0.2, m: 2 },      // 4 head
+  { r: 0.08, m: 1 },                       // 5 hand
+  { r: 0.08, m: 1 },                       // 6 hand
+  { r: 0.12, m: 1.2 },                     // 7 foot
+  { r: 0.12, m: 1.2 },                     // 8 foot
+];
+// Sticks: [a, b, length, minOnly]. A plain stick holds its length; a minOnly
+// one just stops the points getting closer than that, as a rough joint limit.
+const RAG_STICKS = (() => {
+  const s = [];
+  for (let a = 0; a < 5; a++) for (let b = a + 1; b < 5; b++) {
+    const [p, q] = [RAG_POINTS[a].at, RAG_POINTS[b].at];
+    s.push([a, b, Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]), false]);
+  }
+  s.push([2, 5, ARM_LEN, false], [3, 6, ARM_LEN, false], [0, 7, LEG_H, false], [1, 8, LEG_H, false]);
+  s.push([2, 7, 0.7, true], [3, 8, 0.7, true], [4, 7, 0.85, true], [4, 8, 0.85, true],
+    [7, 8, 0.25, true], [4, 5, 0.28, true], [4, 6, 0.28, true]);
+  return s;
+})();
+
+const vA = new THREE.Vector3(), vB = new THREE.Vector3(), vC = new THREE.Vector3(), vD = new THREE.Vector3();
+const vSide = new THREE.Vector3(), vY = new THREE.Vector3(), qTmp = new THREE.Quaternion();
+
+function startRag(r, vx, vy, vz) {
+  const m = r.model;
+  m.root.updateMatrixWorld(true);
+  const n = RAG_POINTS.length;
+  const p = new Float64Array(n * 3), q = new Float64Array(n * 3);
+  const put = (arr, i, v) => { arr[i * 3] = v.x; arr[i * 3 + 1] = v.y; arr[i * 3 + 2] = v.z; };
+  // The model was last drawn where the rider was at the start of this frame; physics may have moved them on since.
+  const d = r.drawnAt || [r.x, r.y, r.z];
+  vD.set(r.x - d[0], r.y - d[1], r.z - d[2]);
+  for (let i = 0; i < 5; i++) put(p, i, m.upper.localToWorld(vA.fromArray(RAG_POINTS[i].at)).add(vD));
+  for (let k = 0; k < 2; k++) {
+    put(p, 5 + k, m.arms[k].localToWorld(vA.set(0, -ARM_LEN, 0)).add(vD));
+    put(p, 7 + k, m.legs[k].localToWorld(vA.set(0, 0, 0)).add(vD));
+  }
+  // Throw the body: the feet catch and the top half pitches on down the hill, with a twist to one side.
+  const s = Math.hypot(vx, vz), fx = s > 0.5 ? vx / s : 0, fz = s > 0.5 ? vz / s : 1;
+  const pitch = Math.min(s * 0.18, 5), side = (Math.random() - 0.5) * 4;
+  for (let i = 0; i < n; i++) {
+    const top = i >= 2 && i <= 6 ? 1 : 0, foot = i >= 7 ? 1 : 0;
+    const wx = vx * 0.85 + fx * (pitch * top - pitch * 0.5 * foot) + fz * side * top;
+    const wy = Math.max(vy, 0) * 0.5 + 1.5 * top + 0.5;
+    const wz = vz * 0.85 + fz * (pitch * top - pitch * 0.5 * foot) - fx * side * top;
+    for (const [k, w] of [[0, wx], [1, wy], [2, wz]]) q[i * 3 + k] = p[i * 3 + k] - w * STEP;
+  }
+  // The board flies off spinning end over end, and slides away once it lands.
+  const bp = new Float64Array(6), bq = new Float64Array(6);
+  put(bp, 0, m.pose.localToWorld(vA.set(0, 0.05, BOARD_LEN / 2)).add(vD));
+  put(bp, 1, m.pose.localToWorld(vA.set(0, 0.05, -BOARD_LEN / 2)).add(vD));
+  const bs = (Math.random() - 0.5) * 4;
+  for (let i = 0; i < 2; i++) {
+    bq[i * 3] = bp[i * 3] - (vx + fz * bs) * STEP;
+    bq[i * 3 + 1] = bp[i * 3 + 1] - (Math.max(vy, 0) + 2.5) * STEP;
+    bq[i * 3 + 2] = bp[i * 3 + 2] - (vz - fx * bs) * STEP;
+  }
+  const up = new THREE.Vector3(0, 1, 0).applyQuaternion(m.board.getWorldQuaternion(qTmp));
+  // The boots stay on the feet.
+  m.boots.forEach((b, k) => { m.legs[k].add(b); b.position.set(0, -LEG_BASE, 0); b.quaternion.identity(); });
+  r.rag = {
+    p, q, acc: 0, hitT: 0, loud: r.isPlayer,
+    board: { p: bp, q: bq, up, spin: (Math.random() < 0.5 ? -1 : 1) * (6 + Math.random() * 8), touch: 0 },
+  };
+}
+
+function endRag(r) {
+  if (!r.rag) return;
+  r.rag = null;
+  const m = r.model;
+  m.boots.forEach((b, k) => { m.board.add(b); b.position.set(0, 0, k ? -0.28 : 0.28); b.quaternion.identity(); });
+  m.board.position.set(0, 0, 0); m.board.quaternion.identity();
+  m.legs.forEach((l, k) => { l.position.set(0, LEG_BASE, k ? -0.28 : 0.28); l.quaternion.identity(); });
+  m.upper.position.set(0, 0, 0); m.upper.quaternion.identity();
+  r.snapPose = true;
+  snowPuff(r.x, r.y + 0.3, r.z, 30, 1.2);
+}
+
+// Verlet: each point's speed is how far it moved last step.
+function ragIntegrate(p, q, n, h) {
+  const damp = 1 - 0.05 * h;
+  for (let o = 0; o < n * 3; o += 3) {
+    for (let k = 0; k < 3; k++) {
+      const v = (p[o + k] - q[o + k]) * damp;
+      q[o + k] = p[o + k];
+      p[o + k] += v;
+    }
+    p[o + 1] -= G_AIR * h * h;
+  }
+}
+
+function ragStick(p, a, b, len, minOnly, ma, mb) {
+  const ao = a * 3, bo = b * 3;
+  const dx = p[bo] - p[ao], dy = p[bo + 1] - p[ao + 1], dz = p[bo + 2] - p[ao + 2];
+  const d = Math.hypot(dx, dy, dz) || 1e-6;
+  if (minOnly && d >= len) return;
+  const diff = (d - len) / d, ka = mb / (ma + mb), kb = ma / (ma + mb);
+  p[ao] += dx * diff * ka; p[ao + 1] += dy * diff * ka; p[ao + 2] += dz * diff * ka;
+  p[bo] -= dx * diff * kb; p[bo + 1] -= dy * diff * kb; p[bo + 2] -= dz * diff * kb;
+}
+
+// Keep point i out of the snow, the nets, walls and obstacles, with friction
+// and a little bounce. Returns true if it's touching the snow.
+function ragCollide(p, q, i, rad, mu, h, rag) {
+  const o = i * 3;
+  let x = p[o], y = p[o + 1], z = p[o + 2];
+  let vx = (x - q[o]) / h, vy = (y - q[o + 1]) / h, vz = (z - q[o + 2]) / h;
+  let touch = false;
+  const c = center(z), lim = FENCE_D - 0.3, u = x - c;
+  if (Math.abs(u) > lim) {
+    x = c + Math.sign(u) * lim;
+    if (vx * Math.sign(u) > 0) { vx *= -0.3; vz *= 0.9; }
+  }
+  const key = Math.floor(z / BUCKET);
+  for (let k = key - 1; k <= key + 1; k++) {
+    const list = obstacles.get(k);
+    if (!list) continue;
+    for (const t of list) {
+      const dx = x - t.x, dz = z - t.z, R = t.r + rad;
+      if (dx * dx + dz * dz >= R * R || y - rad > t.y + t.h || y + rad < t.y + (t.lo || 0)) continue;
+      const d = Math.hypot(dx, dz) || 1, nx = dx / d, nz = dz / d;
+      x = t.x + nx * R; z = t.z + nz * R;
+      const vn = vx * nx + vz * nz;
+      if (vn < 0) {
+        vx -= 1.35 * vn * nx; vz -= 1.35 * vn * nz;
+        vx *= 0.8; vz *= 0.8;
+        if (rag && vn < -4) ragKnock(rag, t, x, y, z);
+      }
+    }
+  }
+  let g = terrainH(x, z);
+  if (y - rad < g) {
+    if (g - y > 1.2) {
+      // Deep inside a steep face: it's a wall, so back out the way we came.
+      x = q[o]; z = q[o + 2]; vx *= -0.3; vz *= -0.3;
+      g = terrainH(x, z);
+      if (y - rad < g) y = g + rad;
+    } else {
+      const [gx, gz] = grad(x, z), L = Math.hypot(gx, 1, gz);
+      const nx = -gx / L, ny = 1 / L, nz = -gz / L;
+      y = g + rad;
+      const vn = vx * nx + vy * ny + vz * nz;
+      if (vn < 0) {
+        const tx = vx - vn * nx, ty = vy - vn * ny, tz = vz - vn * nz;
+        const ts = Math.hypot(tx, ty, tz);
+        const f = ts > 0 ? Math.max(0, ts + mu * 1.2 * vn) / ts : 0;
+        vx = tx * f - 0.15 * vn * nx; vy = ty * f - 0.15 * vn * ny; vz = tz * f - 0.15 * vn * nz;
+      }
+      touch = true;
+    }
+  }
+  p[o] = x; p[o + 1] = y; p[o + 2] = z;
+  q[o] = x - vx * h; q[o + 1] = y - vy * h; q[o + 2] = z - vz * h;
+  return touch;
+}
+
+// Slamming into something knocks the snow off it.
+function ragKnock(rag, t, x, y, z) {
+  if (rag.hitT > 0) return;
+  rag.hitT = 0.3;
+  snowPuff(t.x, t.y + Math.min(t.h, 6) * 0.7, t.z, 40, Math.max(1, t.r * 2));
+  snowPuff(x, y, z, 15, 0.5);
+  if (rag.loud) sfx.thud();
+}
+
+function stepRag(rag, h) {
+  const { p, q } = rag, n = RAG_POINTS.length;
+  ragIntegrate(p, q, n, h);
+  for (let it = 0; it < 4; it++) {
+    for (const [a, b, len, minOnly] of RAG_STICKS) ragStick(p, a, b, len, minOnly, RAG_POINTS[a].m, RAG_POINTS[b].m);
+  }
+  for (let i = 0; i < n; i++) ragCollide(p, q, i, RAG_POINTS[i].r, RAG_MU, h, rag);
+  rag.hitT -= h;
+
+  const b = rag.board;
+  ragIntegrate(b.p, b.q, 2, h);
+  ragStick(b.p, 0, 1, BOARD_LEN, false, 1, 1);
+  const t0 = ragCollide(b.p, b.q, 0, 0.05, BOARD_MU, h, null);
+  const t1 = ragCollide(b.p, b.q, 1, 0.05, BOARD_MU, h, null);
+  ragStick(b.p, 0, 1, BOARD_LEN, false, 1, 1);
+  // Which way up the board is: spinning in the air, settling flat (either side up) on the snow.
+  vA.set(b.p[0] - b.p[3], b.p[1] - b.p[4], b.p[2] - b.p[5]).normalize();
+  if (t0 || t1) {
+    const [gx, gz] = grad((b.p[0] + b.p[3]) / 2, (b.p[2] + b.p[5]) / 2);
+    vB.set(-gx, 1, -gz).normalize();
+    if (b.up.dot(vB) < 0) vB.negate();
+    b.up.lerp(vB, 1 - Math.exp(-25 * h));
+    b.spin *= Math.exp(-6 * h);
+  } else b.up.applyAxisAngle(vA, b.spin * h);
+  b.up.addScaledVector(vA, -b.up.dot(vA)).normalize();
+}
+
+// You and the bots go where your ragdoll goes.
+function syncFromRag(r) {
+  const { p, q } = r.rag;
+  const x = (p[0] + p[3]) / 2, y = (p[1] + p[4]) / 2, z = (p[2] + p[5]) / 2;
+  let vx = 0, vy = 0, vz = 0;
+  for (let o = 0; o < 15; o += 3) { vx += p[o] - q[o]; vy += p[o + 1] - q[o + 1]; vz += p[o + 2] - q[o + 2]; }
+  const g = terrainH(x, z);
+  r.x = x; r.z = z;
+  r.grounded = y - g < 0.6;
+  r.y = r.grounded ? g : y - 0.4;
+  r.vx = vx / (5 * STEP); r.vy = vy / (5 * STEP); r.vz = vz / (5 * STEP);
+  r.groundVy = 0;
+  r.slip = Math.hypot(r.vx, r.vz);
+}
+
+// Another browser's rider: run the ragdoll here, nudged toward where they really are.
+function driveRemoteRag(r, dt) {
+  const rag = r.rag;
+  rag.acc = Math.min(rag.acc + dt, STEP * 12);
+  while (rag.acc >= STEP) { rag.acc -= STEP; stepRag(rag, STEP); }
+  const { p, q } = rag;
+  const k = 1 - Math.exp(-4 * dt);
+  const dx = (r.x - (p[0] + p[3]) / 2) * k, dz = (r.z - (p[2] + p[5]) / 2) * k;
+  for (let o = 0; o < p.length; o += 3) { p[o] += dx; q[o] += dx; p[o + 2] += dz; q[o + 2] += dz; }
+}
+
+// Pose the model from the ragdoll. The root sits at the world origin, so the
+// pose group's space is world space.
+const mBasis = new THREE.Matrix4(), qLimb = new THREE.Quaternion(), qUpper = new THREE.Quaternion();
+const bX = new THREE.Vector3(), bZ = new THREE.Vector3();
+// A rotation whose local y is `y` (a unit vector) and whose local z is as close to `zHint` as it can be.
+function basisQuat(out, y, zHint) {
+  bZ.copy(zHint).addScaledVector(y, -zHint.dot(y));
+  if (bZ.lengthSq() < 1e-8) bZ.set(y.y, y.z, y.x).addScaledVector(y, -y.dot(bZ));
+  bZ.normalize();
+  bX.crossVectors(y, bZ);
+  return out.setFromRotationMatrix(mBasis.makeBasis(bX, y, bZ));
+}
+const ragPt = (p, i, v) => v.set(p[i * 3], p[i * 3 + 1], p[i * 3 + 2]);
+
+function poseRag(r) {
+  const m = r.model, { p } = r.rag;
+  m.root.position.set(0, 0, 0); m.root.quaternion.identity();
+  m.pose.rotation.set(0, 0, 0);
+  const hip = ragPt(p, 0, vA).add(ragPt(p, 1, vB)).multiplyScalar(0.5);
+  vSide.copy(ragPt(p, 0, vB)).sub(ragPt(p, 1, vC));
+  const sh = ragPt(p, 2, vC).add(ragPt(p, 3, vD)).multiplyScalar(0.5);
+  vSide.add(ragPt(p, 2, vD)).sub(ragPt(p, 3, vB));
+  vY.copy(sh).sub(hip).normalize();
+  basisQuat(qUpper, vY, vSide);
+  m.upper.position.copy(hip);
+  m.upper.quaternion.copy(qUpper);
+  for (let k = 0; k < 2; k++) {
+    // Arms hang along their local -y, legs stand along their local +y.
+    vY.copy(ragPt(p, 2 + k, vB)).sub(ragPt(p, 5 + k, vC)).normalize();
+    basisQuat(qLimb, vY, vSide);
+    m.arms[k].quaternion.copy(qUpper).invert().multiply(qLimb);
+    const foot = ragPt(p, 7 + k, vB);
+    vY.copy(ragPt(p, k, vC)).sub(foot).normalize();
+    m.legs[k].position.copy(foot);
+    m.legs[k].quaternion.copy(basisQuat(qLimb, vY, vSide));
+    m.legs[k].scale.y = 1;
+  }
+  const b = r.rag.board;
+  vA.set(b.p[0] - b.p[3], b.p[1] - b.p[4], b.p[2] - b.p[5]).normalize();
+  basisQuat(qLimb, b.up, vA);
+  m.board.quaternion.copy(qLimb);
+  m.board.position.set((b.p[0] + b.p[3]) / 2, (b.p[1] + b.p[4]) / 2, (b.p[2] + b.p[5]) / 2).addScaledVector(b.up, -0.05);
+}
+
 function stepRider(r, h, inp) {
   r.inp = inp;
   handleJump(r, inp, h);
-  if (r.grounded) groundStep(r, h, inp); else airStep(r, h, inp);
-  checkObstacles(r);
-  checkFence(r);
+  if (r.rag) {
+    stepRag(r.rag, h);
+    syncFromRag(r);
+  } else {
+    if (r.grounded) groundStep(r, h, inp); else airStep(r, h, inp);
+    checkObstacles(r);
+    checkFence(r);
+  }
   if (r.crashT > 0) {
     r.crashT -= h;
     r.crashSpin += h * 9;
@@ -3534,7 +3849,7 @@ function update(dt) {
       raceTime += STEP;
       for (const r of riders) if (!r.remote) stepRider(r, STEP, r.bot ? botControls(r, STEP) : keysIn);
     }
-    for (const r of riders) if (r.remote) followNet(r, dt);
+    for (const r of riders) if (r.remote) { followNet(r, dt); if (r.rag) driveRemoteRag(r, dt); }
     netTick(dt);
     if (me.finished && !resultsShown && raceTime - me.finishTime > 1.6) showResults();
     for (const r of riders) {
@@ -3564,7 +3879,15 @@ const qf = new THREE.Quaternion(), flipAxis = new THREE.Vector3();
 
 function updateRider(r, dt) {
   const m = r.model, inp = r.inp;
+  if (r.rag) {
+    poseRag(r);
+    if (r.tag) r.tag.position.set(r.x, r.y + 2.5, r.z);
+    updateGear(r, dt);
+    updateTrail(r);
+    return;
+  }
   m.root.position.set(r.x, r.y, r.z);
+  (r.drawnAt ??= [0, 0, 0]).splice(0, 3, r.x, r.y, r.z);
   if (r.grounded) {
     const [gx, gz] = grad(r.x, r.z);
     vN.set(-gx, 1, -gz).normalize();
@@ -3584,7 +3907,9 @@ function updateRider(r, dt) {
     m.root.position.z -= FLIP_PIVOT * fs * c;
     m.root.position.y += FLIP_PIVOT * (1 - fc);
   }
-  m.root.quaternion.slerp(qa, 1 - Math.exp(-(r.grounded ? 14 : 40) * dt));
+  // Straight after getting up from a crash, stand up at once rather than swinging up from the ragdoll's frame.
+  m.root.quaternion.slerp(qa, r.snapPose ? 1 : 1 - Math.exp(-(r.grounded ? 14 : 40) * dt));
+  r.snapPose = false;
   if (r.tag) r.tag.position.set(r.x, r.y + 2.5, r.z);
 
   const ctl = canControl(r);

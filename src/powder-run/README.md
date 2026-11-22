@@ -71,6 +71,7 @@ Any of them can give you air. Pop an ollie at the top of a bump for more height.
 - In the air, steer to spin, hold tuck to front flip or brake to back flip, and hold grab to grab the board. Hold tuck or brake as you start a grab for a Tail or Nose grab.
 - Spins and flips combine, so you can throw a backflip with a 360 in it.
 - Let go of the grab and line your board up with the direction you're travelling before you touch down. Landing sideways, upside down, part way through a flip or while still grabbing is a wipeout. Landing backwards counts, and you ride switch until your next trick.
+- When you wipe out you go limp: your body becomes a ragdoll that tumbles and slides down the hill with the speed you had, bouncing off trees, posts, walls and the nets and knocking the snow off whatever it hits. Your board comes off and slides away on its own. After a couple of seconds you get up, back on your board, wherever your body came to rest.
 
 ## Race screen
 
