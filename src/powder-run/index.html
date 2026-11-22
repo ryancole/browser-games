@@ -2578,7 +2578,45 @@ function noiseHit(t, type, freq, gain, dur) {
   src.connect(f).connect(g).connect(musicGain);
   src.start(t, Math.random() * 1.5, dur + 0.02);
 }
+// An 808: a long sine bass that thumps in from above the note and can slide from another note.
+function bass808(note, t, dur, gain = 0.32, from = null) {
+  const o = ac.createOscillator(), g = ac.createGain(), sh = ac.createWaveShaper();
+  sh.curve = distCurve(3);
+  o.type = "sine";
+  o.frequency.setValueAtTime(midi(from ?? note) * 1.6, t);
+  o.frequency.exponentialRampToValueAtTime(midi(from ?? note), t + 0.04);
+  if (from != null) o.frequency.exponentialRampToValueAtTime(midi(note), t + 0.14);
+  g.gain.setValueAtTime(gain, t);
+  g.gain.setTargetAtTime(gain * 0.7, t + 0.05, 0.3);
+  g.gain.setTargetAtTime(0, t + dur, 0.05);
+  o.connect(sh).connect(g).connect(musicGain);
+  o.start(t); o.stop(t + dur + 0.3);
+}
+
+// A reese: detuned saws growling through a lowpass that opens and closes, over a sine sub.
+function reese(note, t, dur, gain = 0.07) {
+  const g = ac.createGain(), f = ac.createBiquadFilter();
+  f.type = "lowpass"; f.Q.value = 3;
+  f.frequency.setValueAtTime(220, t);
+  f.frequency.linearRampToValueAtTime(700, t + dur * 0.5);
+  f.frequency.linearRampToValueAtTime(260, t + dur);
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(gain, t + 0.01);
+  g.gain.setValueAtTime(gain, t + dur - 0.04);
+  g.gain.linearRampToValueAtTime(0, t + dur);
+  f.connect(g).connect(musicFilter);
+  for (const cents of [-14, 14]) {
+    const o = ac.createOscillator();
+    o.type = "sawtooth"; o.frequency.value = midi(note); o.detune.value = cents;
+    o.connect(f);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+  tone("sine", midi(note - 12), t, dur, gain * 2.6, 200);
+}
+
 const snare = (t, gain, dur = 0.16) => { noiseHit(t, "bandpass", 1800, gain, dur); tom(t, 220, gain * 0.5); };
+// A clap: three quick bursts of noise and a short tail.
+const clap = (t, gain) => { for (const d of [0, 0.011, 0.023]) noiseHit(t + d, "bandpass", 1300, gain, d === 0.023 ? 0.18 : 0.02); };
 const hat = (t, gain, dur = 0.045) => noiseHit(t, "highpass", 7500, gain, dur);
 const cymbal = (t, gain = 0.12) => noiseHit(t, "highpass", 5000, gain, 1.4);
 const ride = (t, gain = 0.04) => noiseHit(t, "bandpass", 6500, gain, 0.22);
@@ -2623,9 +2661,10 @@ const SONGS = {
     },
   },
 
-  // Snowy Peak: the original synth loop. Dm Bb F C | Gm Bb F A.
+  // Snowy Peak: melodic house in D minor. Dm Bb F C | Gm Bb F A. Four-on-the-floor
+  // kick, claps, open hats and a bass on the offbeats, under pads and an arpeggio.
   peak: {
-    bpm: 122, bars: 8,
+    bpm: 124, bars: 8,
     chords: [
       { bass: 38, pad: [62, 65, 69] }, { bass: 34, pad: [62, 65, 70] }, { bass: 41, pad: [60, 65, 69] }, { bass: 36, pad: [60, 64, 67] },
       { bass: 43, pad: [62, 67, 70] }, { bass: 34, pad: [62, 65, 70] }, { bass: 41, pad: [60, 65, 69] }, { bass: 33, pad: [61, 64, 69] },
@@ -2635,44 +2674,53 @@ const SONGS = {
       if (s === 0) for (const n of ch.pad) pad(midi(n), t, six * 16);
       const tones = [...ch.pad, ch.pad[0] + 12, ch.pad[1] + 12];
       if (s % 2 === 0 || lvl === 2) tone("square", midi(tones[[0, 1, 2, 3, 4, 3, 2, 1][s % 8]] + 12), t, 0.16, s % 2 ? 0.018 : 0.028, 2000);
-      if ([0, 3, 6, 8, 11, 14].includes(s)) tone("sawtooth", midi(ch.bass + (s === 14 ? 12 : 0)), t, six * 1.7, 0.12, 420);
+      // The bass sits on the offbeats, house style; at the lighter level it just marks the bar.
+      if (s % 4 === 2 || (lvl < 2 && s === 0)) tone("sawtooth", midi(ch.bass), t, six * 1.5, 0.13, 480);
       if (lvl < 2) return;
       if (s % 4 === 0) kick(t);
-      if (s === 4 || s === 12) snare(t, 0.22);
+      if (s === 4 || s === 12) clap(t, 0.16);
       else if (bar === 7 && s > 12) snare(t, 0.08 + 0.04 * (s - 12));
-      hat(t, s % 4 === 2 ? 0.07 : 0.025);
+      hat(t, s % 4 === 2 ? 0.06 : 0.018, s % 4 === 2 ? 0.14 : 0.04);
+      if (s === 0 && bar % 4 === 0) cymbal(t, 0.07);
     },
   },
 
-  // Neon Nights: night-drive synthwave in A minor. Pulsing octave bass, a
-  // sparkling arpeggio, big gated snares and a lead hook in the second half.
+  // Neon Nights: dark trap in A minor at 140 BPM, felt in half time. Am F Dm E.
+  // Sliding 808s, a clap on beat three, rolling hi-hats and a bell melody.
   city: {
-    bpm: 104, bars: 8,
-    roots: [45, 41, 36, 43, 45, 41, 36, 40],
-    minor: [true, false, false, false, true, false, false, false],
-    lead: [
-      72, 0, 0, 71, 72, 0, 76, 0,
-      77, 0, 0, 76, 72, 0, 69, 0,
-      67, 0, 0, 69, 72, 0, 76, 0,
-      75, 0, 0, 76, 71, 0, 68, 0,
+    bpm: 140, bars: 8,
+    roots: [45, 45, 41, 41, 38, 38, 40, 40],
+    minor: [true, true, false, false, true, true, false, false],
+    bells: [
+      76, 0, 72, 0, 69, 0, 72, 76,
+      0, 0, 74, 72, 71, 0, 69, 0,
+      77, 0, 72, 0, 69, 0, 72, 77,
+      0, 0, 76, 74, 72, 0, 0, 0,
+      74, 0, 77, 0, 81, 0, 77, 74,
+      0, 0, 77, 76, 74, 0, 72, 0,
+      71, 0, 68, 0, 64, 0, 68, 71,
+      0, 0, 74, 72, 71, 0, 68, 0,
     ],
     play(bar, s, t, lvl, six) {
-      const root = this.roots[bar], ch = triad(root + 12, this.minor[bar]);
-      if (s === 0) for (const n of ch) pad(midi(n + 12), t, six * 16, 0.014, 1600);
-      if (s % 2 === 0) tone("sawtooth", midi(root - 12 + (s % 4 === 2 ? 12 : 0)), t, six * 1.6, 0.1, 650);
-      const arp = [...ch, ch[0] + 12, ch[1] + 12, ch[2] + 12];
-      tone("square", midi(arp[[0, 1, 2, 3, 4, 5, 4, 3][s % 8]] + 12), t, 0.12, s % 4 === 0 ? 0.022 : 0.014, 2600);
-      if (lvl < 2) return;
-      if (bar >= 4 && s % 2 === 0) { const n = this.lead[(bar - 4) * 8 + s / 2]; if (n) lead(n, t, six * 3.6, 0.028, 2200); }
-      if (s === 0 || s === 8) kick(t, 0.45);
-      if (s === 4 || s === 12) snare(t, 0.24, 0.38);
-      if (s % 4 === 2) hat(t, 0.06);
-      if (s === 0 && bar % 4 === 0) cymbal(t, 0.08);
+      const root = this.roots[bar];
+      if (s === 0 && bar % 2 === 0) for (const n of triad(root + 12, this.minor[bar])) pad(midi(n), t, six * 32, 0.011, 1000);
+      if (s % 2 === 0) { const n = this.bells[bar * 8 + s / 2]; if (n) bell(n + 12, t, 0.7, 0.028); }
+      const b = root - 12;
+      if (lvl < 2) { if (s === 0) bass808(b, t, six * 12, 0.2); return; }
+      // 808 and kick together: on the one, a dotted hit, and a slide down from the octave.
+      if (s === 0) { kick(t, 0.35); bass808(b, t, six * 5.5); }
+      if (s === 6) { kick(t, 0.3); bass808(b, t, six * 3.5); }
+      if (s === 11) { kick(t, 0.3); bass808(b, t, six * 4.5, 0.32, b + 12); }
+      if (s === 8) { clap(t, 0.2); snare(t, 0.1); }
+      // Hats on the eighths, rolling into sixteenths and thirty-seconds at the end of every other bar.
+      const roll = bar % 2 === 1 && s >= 12;
+      if (s % 2 === 0 || roll) hat(t, s % 4 === 0 ? 0.04 : 0.028);
+      if (roll && s >= 14) hat(t + six / 2, 0.022);
     },
   },
 
-  // Lakeside Valley: sunny indie-folk in G major. Strummed plucks, a bouncy
-  // root-and-fifth bass, a glockenspiel tune and a shaker.
+  // Lakeside Valley: sunny, laid-back indie in G major for cruising. Strummed
+  // plucks, a bouncy root-and-fifth bass, a glockenspiel tune and a shaker.
   valley: {
     bpm: 132, bars: 8,
     roots: [43, 38, 40, 36, 43, 38, 36, 38],
@@ -2703,10 +2751,10 @@ const SONGS = {
     },
   },
 
-  // Frozen Gorge: dark and driving in D minor. A pulsing sixteenth-note bass,
-  // a cold pad, sparse bells and tom-heavy drums.
+  // Frozen Gorge: dark drum & bass in D minor at 174 BPM. A growling reese bass,
+  // a two-step breakbeat with ghost snares, a cold pad and sparse bells.
   gorge: {
-    bpm: 140, bars: 8,
+    bpm: 174, bars: 8,
     roots: [38, 38, 34, 33, 38, 38, 43, 33],
     minor: [true, true, false, false, true, true, true, false],
     bells: [
@@ -2722,12 +2770,14 @@ const SONGS = {
     play(bar, s, t, lvl, six) {
       const root = this.roots[bar];
       if (s === 0) for (const n of triad(root + 24, this.minor[bar])) pad(midi(n), t, six * 16, 0.012, 900);
-      tone("sawtooth", midi(root - 12), t, six * 0.9, s % 4 === 0 ? 0.11 : 0.07, 360);
+      if (s === 0 || s === 8) reese(root, t, six * 7.8, lvl < 2 ? 0.045 : 0.07);
       if (s % 2 === 0) { const n = this.bells[bar * 8 + s / 2]; if (n) bell(n, t, 1.6, 0.03); }
       if (lvl < 2) return;
-      if (s === 0 || s === 6 || s === 10) kick(t, 0.42);
-      if (s === 4 || s === 12) snare(t, 0.2);
-      hat(t, s % 4 === 2 ? 0.035 : 0.014);
+      if (s === 0 || s === 10) kick(t, 0.42);
+      if (s === 4 || s === 12) snare(t, 0.24);
+      else if (s === 7 || s === 15) snare(t, 0.05, 0.06); // ghost notes
+      hat(t, s % 4 === 2 ? 0.04 : 0.014);
+      if (s % 4 === 2) ride(t, 0.025);
       if (bar === 7 && s >= 8 && s % 2 === 0) tom(t, [180, 150, 120, 95][(s - 8) / 2], 0.32);
     },
   },

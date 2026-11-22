@@ -99,13 +99,15 @@ Every song is an original eight-bar loop, played live by a small sequencer in th
 | Where | Style |
 | ----- | ----- |
 | **Title screen and menus** | Fast skate punk in E minor at 182 BPM: a palm-muted verse riff, then a chorus with a polka beat and a lead guitar line. |
-| **Snowy Peak** | The original synth loop at 122 BPM: pads, an arpeggio, a sawtooth bass and a steady beat. |
-| **Neon Nights** | Night-drive synthwave in A minor at 104 BPM: a pulsing octave bass, a sparkling arpeggio, big snares and a lead hook. |
-| **Lakeside Valley** | Sunny indie folk in G major at 132 BPM: strummed plucks, a bouncy bass, a glockenspiel tune and a shaker. |
-| **Frozen Gorge** | Dark and driving in D minor at 140 BPM: a pulsing sixteenth-note bass, a cold pad, sparse bells and tom-heavy drums. |
+| **Snowy Peak** | Melodic house in D minor at 124 BPM: a four-on-the-floor kick, claps, open hats and an offbeat bass under pads and an arpeggio. |
+| **Neon Nights** | Dark trap in A minor at 140 BPM, felt in half time: sliding 808s, a clap on beat three, rolling hi-hats and a bell melody. |
+| **Lakeside Valley** | Sunny, laid-back indie in G major at 132 BPM for cruising: strummed plucks, a bouncy bass, a glockenspiel tune and a shaker. |
+| **Frozen Gorge** | Dark drum & bass in D minor at 174 BPM: a growling reese bass, a two-step breakbeat with ghost snares, a cold pad and sparse bells. |
 | **Glacier Bowl** | Big, open anthem rock in D major at 150 BPM: ringing power chords, a soaring lead and crashing drums. |
 
-On a course, the countdown and the results screen get a lighter mix, and the drums come in once the race starts. The music sounds muffled when you're slow and gets brighter the faster you go. The menu theme always plays at full brightness. Sound starts on your first click or key press, because browsers block it until then.
+The styles follow what snowboarders tend to ride to: punk and rock, electronic (house and drum & bass), hip-hop and trap, and laid-back indie for cruising.
+
+On a course, the countdown and the results screen get a lighter mix, and the drums come in once the race starts. The music sounds muffled when you're slow and gets brighter the faster you go. The menu theme always plays at full brightness. Browsers block sound until your first click or key press, so on the title screen the first press starts the music and the next one goes to the menu.
 
 ## Announcer
 
