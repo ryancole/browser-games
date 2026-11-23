@@ -1,6 +1,13 @@
 # Browser Games
 
-A collection of small games for the browser. Each game is a self-contained folder under `src/` with no build step. Most have no dependencies at all; Powder Run loads Three.js from a CDN.
+A collection of small games for the browser. Each game is a self-contained folder under `src/` that runs as-is: open its `index.html`, no build needed. Most have no dependencies at all; Powder Run loads Three.js from a CDN.
+
+When the site is published to GitHub Pages, each page is minified first to make it smaller to download. To build the minified copy locally, into `dist/`:
+
+```
+npm install
+npm run build
+```
 
 Play them at https://rycole.com/browser-games/.
 

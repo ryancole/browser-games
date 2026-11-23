@@ -1,2 +1,6 @@
 # Local Claude Code settings (preview server config for this machine)
 .claude/
+
+# Build output and its tools
+node_modules/
+dist/
