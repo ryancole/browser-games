@@ -340,6 +340,44 @@
   @keyframes blink { 50% { opacity: 0.25; } }
   .tap-only { display: none; }
 
+  /* Boot screen, up until the first frame is drawn (three.js comes from a CDN, so a
+     first visit can take a moment). The spinners turn on the compositor, so they keep
+     going while a course is being built and the page is otherwise frozen. */
+  #boot {
+    position: fixed; inset: 0; z-index: 50;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.6rem;
+    background: radial-gradient(ellipse at 50% 35%, #1d3b73 0%, #0d1a36 55%, #070c18 100%);
+    transition: opacity 0.4s ease;
+  }
+  #boot.done { opacity: 0; pointer-events: none; }
+  #boot .logo {
+    font-size: clamp(2.6rem, 9vw, 5.5rem); font-weight: 900; font-style: italic; line-height: 0.9; text-align: center;
+    transform: skewX(-10deg);
+    background: linear-gradient(180deg, #ffffff 0%, #dff1ff 38%, #6fb6ff 52%, #1d4fb0 78%, #0d2a6b 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    -webkit-text-stroke: 2px #0b1a3d;
+  }
+  #boot .msg { font-size: 0.85rem; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase; color: #cfe2ff; text-align: center; padding: 0 16px; }
+  #boot.failed .msg { letter-spacing: 0.04em; text-transform: none; font-size: 1rem; max-width: 26rem; line-height: 1.5; }
+  #boot.failed .spin { display: none; }
+  .spin {
+    width: 2.2rem; height: 2.2rem; border-radius: 50%;
+    border: 4px solid rgba(207, 226, 255, 0.2); border-top-color: #ff7a2f;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  /* Shown while a course is built (it freezes the page for a moment). */
+  #loading {
+    position: fixed; left: 50%; bottom: 12%; z-index: 40; transform: translateX(-50%);
+    display: none; align-items: center; gap: 0.7rem;
+    padding: 0.5rem 1.2rem 0.5rem 0.8rem; border-radius: 999px;
+    background: rgba(12, 16, 26, 0.78); color: #e8eefc;
+    font-size: 0.8rem; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase;
+    pointer-events: none;
+  }
+  #loading.show { display: flex; }
+  #loading .spin { width: 1.1rem; height: 1.1rem; border-width: 3px; }
+
   #touch { display: none; }
   @media (pointer: coarse) {
     #touch {
@@ -380,6 +418,25 @@
 </head>
 <body>
 <canvas id="game"></canvas>
+<div id="boot">
+  <div class="logo">POWDER<br>RUN</div>
+  <div class="spin"></div>
+  <div class="msg" id="boot-msg">Loading</div>
+</div>
+<div id="loading"><div class="spin"></div>Loading course</div>
+<script>
+  // If the game's script (or three.js from the CDN) can't load, say so instead of spinning forever.
+  (() => {
+    const fail = () => {
+      const b = document.getElementById("boot");
+      if (!b || b.classList.contains("done")) return;
+      b.classList.add("failed");
+      document.getElementById("boot-msg").textContent = "Couldn't load the game. Check your connection and reload the page.";
+    };
+    window.addEventListener("error", (e) => { if (e.target instanceof HTMLScriptElement) fail(); }, true);
+    setTimeout(fail, 30000);
+  })();
+</script>
 
 <!-- Race HUD: time and trick points top left, speed top right, course map and place bottom right. -->
 <div id="hud" class="race-hud">
@@ -3072,8 +3129,29 @@ function disposeGroup(group) {
 }
 
 // Build a level, replacing the current one. Riders are moved back to the start.
+// Building a course freezes the page for a moment (up to a second or two on a
+// phone), so loadLevel puts up "Loading course" first, lets it be drawn, then
+// builds, and calls `then` once it's done. A later load, or a direct setLevel,
+// cancels one that hasn't started yet.
+let levelLoad = 0, loadingId = null;
+function loadLevel(id, then) {
+  if (!LEVELS[id]) id = "peak";
+  if (id === levelId) { levelLoad++; loadingId = null; $("loading").classList.remove("show"); then?.(); return; }
+  const token = ++levelLoad;
+  loadingId = id;
+  $("loading").classList.add("show");
+  // The first frame draws the indicator; the build runs just before the next.
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (token !== levelLoad) return;
+    setLevel(id);
+    then?.();
+  }));
+}
+
 function setLevel(id) {
   if (!LEVELS[id]) id = "peak";
+  levelLoad++; loadingId = null;
+  $("loading").classList.remove("show");
   if (id === levelId) return;
   levelId = id; level = LEVELS[id];
   store.set("powderrun-level", id);
@@ -4361,7 +4439,8 @@ function leaveGround(r, y, vy) {
   r.called = { spin: 0, flip: 0, grab: false, any: false }; // what's been called out on this jump so far
   // Players' held inputs are latched (see airStep). Bots plan their tricks, so they aren't.
   const i = r.inp || NO_INPUT;
-  r.latch = r.isPlayer ? { left: i.left, right: i.right, tuck: i.tuck, brake: i.brake } : null;
+  // Steering isn't latched: a turn you're holding as you leave the ground spins you straight away.
+  r.latch = r.isPlayer ? { tuck: i.tuck, brake: i.brake } : null;
   // Tuck or brake already held stays "carried" until let go (see airStep), even after an ollie.
   r.carry = r.isPlayer ? { tuck: i.tuck, brake: i.brake } : null;
   // Flips turn about the axis across the direction of travel at takeoff, so
@@ -4489,9 +4568,10 @@ function airStep(r, h, inp) {
     if (yPrev <= top + 0.05 && r.y > top) { r.y = top; r.vy = Math.min(r.vy, 0); }
   }
   if (canControl(r)) {
-    // Leaving the ground off a bump or drop without an ollie, a turn or tuck you
+    // Leaving the ground off a bump or drop without an ollie, a tuck or brake you
     // were already holding doesn't count until you let go and press it again,
-    // so riding through moguls or off a cliff doesn't throw you into a spin or flip.
+    // so riding through moguls or off a cliff doesn't throw you into a flip.
+    // A held turn does count, so you can carve into a spin off a kicker.
     const L = r.latch;
     if (L) for (const k in L) if (!inp[k]) L[k] = false;
     const held = (k) => inp[k] && !(L && L[k]);
@@ -5860,7 +5940,7 @@ function courseScreen({ head, go, back, note = "" }) {
       $("m-desc").textContent = LEVELS[id].blurb + (note ? ` ${note}` : "");
       // Build the course behind the menu once the choice settles.
       clearTimeout(coursePreview);
-      coursePreview = setTimeout(() => setLevel(id), 280);
+      coursePreview = setTimeout(() => loadLevel(id), 280);
     },
     nav(dx) {
       const i = Math.max(0, Math.min(LEVEL_IDS.length - 1, screen.sel + dx));
@@ -5868,7 +5948,7 @@ function courseScreen({ head, go, back, note = "" }) {
       screen.select(i);
       return true;
     },
-    go() { clearTimeout(coursePreview); setLevel(LEVEL_IDS[screen.sel]); go(); },
+    go() { clearTimeout(coursePreview); loadLevel(LEVEL_IDS[screen.sel], go); },
     back,
   };
   openMenu(screen, {
@@ -6018,10 +6098,9 @@ function showLobby() {
     ? `<button class="m-arrow chrome" id="${id}-">◀</button><span class="m-val chrome lav">${value}</span><button class="m-arrow chrome" id="${id}+">▶</button>`
     : `<span class="m-val chrome lav">${value}</span>`;
   const changeCourse = (d) => {
-    const i = (LEVEL_IDS.indexOf(levelId) + d + LEVEL_IDS.length) % LEVEL_IDS.length;
-    setLevel(LEVEL_IDS[i]);
-    broadcastLobby();
-    showLobby();
+    // Step on from a course still loading, so quick presses each move one along.
+    const i = (LEVEL_IDS.indexOf(loadingId ?? levelId) + d + LEVEL_IDS.length) % LEVEL_IDS.length;
+    loadLevel(LEVEL_IDS[i], () => { broadcastLobby(); showLobby(); });
   };
   const screen = {
     kind: "lobby",
@@ -6305,7 +6384,8 @@ function onClientData(m) {
     net.bots = Number.isInteger(m.bots) ? m.bots : 0;
     net.racing = !!m.racing;
     // Show the host's course behind the lobby, but never rebuild it under a race.
-    if (state === "menu" && !resultsShown && LEVELS[m.level]) setLevel(m.level);
+    // (A race start builds its course straight away, which cancels a load still waiting here.)
+    if (state === "menu" && !resultsShown && LEVELS[m.level]) loadLevel(m.level);
     // Remove riders whose players have left.
     for (const r of [...riders]) if (r.remote && r.bot == null && !r.id.startsWith("bot") && !net.players.some((p) => p.id === r.id)) removeRider(r.id);
     refreshLobby();
@@ -6530,6 +6610,7 @@ snapCamera();
 // Invite links go straight to the join screen with the lobby code filled in.
 if (inviteCode) showJoin(); else showTitle();
 let last = performance.now();
+let boot = $("boot");
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
@@ -6542,6 +6623,8 @@ function frame(now) {
     update(dt);
     renderer.render(scene, camera);
   }
+  // The first frame is drawn: fade the boot screen out.
+  if (boot) { const b = boot; boot = null; b.classList.add("done"); setTimeout(() => b.remove(), 500); }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
