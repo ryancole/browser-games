@@ -890,16 +890,29 @@ const FENCE_H = 1.6;
 const FENCE_Z0 = -30;
 const centerSlope = (z) => center(z + 0.5) - center(z - 0.5);
 
+// The marker poles down each side of the run are hinged at the snow like race
+// gates: ride into one and it's knocked over the way you were going, then
+// springs back upright with a wobble. Each is placed every POLE_GAP from
+// POLE_Z0, one per side, so a rider only ever needs checking against two.
+const POLE_Z0 = 20, POLE_GAP = 25, POLE_H = 1.8;
+const POLE_HIT_R = 0.45;  // how close a rider's middle has to come to knock one
+const POLE_K = 70, POLE_DAMP = 3.2, POLE_MAX = 1.25; // spring stiffness, damping, furthest it bends (rad)
+const sidePoles = { list: [], mesh: null };
+
 function buildCourseFurniture({ poles: poleColors, lipMat, net: netColor, post = 0x2a2f3a, banners }) {
   const poles = [];
-  for (let z = 20; z < COURSE_LEN; z += 25) {
+  for (let z = POLE_Z0; z < COURSE_LEN; z += POLE_GAP) {
     for (const side of [-1, 1]) {
       const x = center(z) + side * (HALF_W + widen(z) + 0.6);
-      poles.push({ x, z, y: terrainH(x, z), side });
+      // tx, tz: how far the top is tipped, as an angle toward +x and +z; vx, vz how fast.
+      poles.push({ x, z, y: terrainH(x, z), side, tx: 0, tz: 0, vx: 0, vz: 0, live: false, cool: 0 });
     }
   }
-  instanced(new THREE.CylinderGeometry(0.07, 0.07, 1.8, 6), poles, (p, o, c) => {
-    o.position.set(p.x, p.y + 0.9, p.z);
+  // The pole's origin is at its foot, so it tips about the snow.
+  const poleGeo = new THREE.CylinderGeometry(0.07, 0.07, POLE_H, 6).translate(0, POLE_H / 2, 0);
+  sidePoles.list = poles;
+  sidePoles.mesh = instanced(poleGeo, poles, (p, o, c) => {
+    o.position.set(p.x, p.y, p.z);
     c.set(p.side < 0 ? poleColors[0] : poleColors[1]);
   });
   instanced(new THREE.BoxGeometry(KICK_HALF * 2, 0.25, 0.5), kickers.filter((k) => !k.kind), (k, o) => {
@@ -945,6 +958,50 @@ function buildCourseFurniture({ poles: poleColors, lipMat, net: netColor, post =
 
   addBanner(4, "START", banners[0]);
   addBanner(COURSE_LEN, "FINISH", banners[1]);
+}
+
+const poleAxis = new THREE.Vector3(), poleQ = new THREE.Quaternion(), poleM = new THREE.Matrix4();
+const poleP = new THREE.Vector3(), POLE_S = new THREE.Vector3(1, 1, 1);
+function updatePoles(dt) {
+  const { list, mesh } = sidePoles;
+  if (!mesh) return;
+  // Knock over any pole a rider runs into.
+  for (const r of riders) {
+    const i = Math.round((r.z - POLE_Z0) / POLE_GAP);
+    for (const p of [list[i * 2], list[i * 2 + 1]]) {
+      if (!p || p.cool > 0) continue;
+      const dx = r.x - p.x, dz = r.z - p.z;
+      if (dx * dx + dz * dz > POLE_HIT_R * POLE_HIT_R || r.y > p.y + POLE_H) continue;
+      const sp = Math.hypot(r.vx, r.vz);
+      if (sp < 1) continue;
+      // Shoved the way the rider is going, harder the faster they're going.
+      const kick = Math.min(sp, 30) * 0.45;
+      p.vx += (r.vx / sp) * kick; p.vz += (r.vz / sp) * kick;
+      p.live = true; p.cool = 0.3;
+      if (r.isPlayer) sfx.pole();
+    }
+  }
+  // Spring each knocked pole back upright.
+  let moved = false;
+  for (let i = 0; i < list.length; i++) {
+    const p = list[i];
+    if (p.cool > 0) p.cool -= dt;
+    if (!p.live) continue;
+    const h = Math.min(dt, 1 / 30);
+    p.vx += (-POLE_K * p.tx - POLE_DAMP * p.vx) * h;
+    p.vz += (-POLE_K * p.tz - POLE_DAMP * p.vz) * h;
+    p.tx += p.vx * h; p.tz += p.vz * h;
+    const a = Math.hypot(p.tx, p.tz);
+    if (a > POLE_MAX) { p.tx *= POLE_MAX / a; p.tz *= POLE_MAX / a; p.vx *= -0.3; p.vz *= -0.3; }
+    if (a < 0.002 && Math.hypot(p.vx, p.vz) < 0.02) { p.tx = p.tz = p.vx = p.vz = 0; p.live = false; }
+    // Tipping the top toward (tx, tz) turns it about up × that direction.
+    const ang = Math.hypot(p.tx, p.tz);
+    if (ang > 0) poleQ.setFromAxisAngle(poleAxis.set(p.tz / ang, 0, -p.tx / ang), ang);
+    else poleQ.identity();
+    mesh.setMatrixAt(i, poleM.compose(poleP.set(p.x, p.y, p.z), poleQ, POLE_S));
+    moved = true;
+  }
+  if (moved) mesh.instanceMatrix.needsUpdate = true;
 }
 
 function addBanner(z, text, bg) {
@@ -4053,6 +4110,7 @@ const sfx = {
   trick: () => blip([[660, 0.06], [880, 0.06], [1320, 0.14]], { gain: 0.06 }),
   crash: () => blip([[240, 0.45]], { type: "sawtooth", gain: 0.14, slide: true }),
   thud: () => blip([[110, 0.14]], { type: "triangle", gain: 0.22, slide: true }),
+  pole: () => blip([[520, 0.06]], { type: "triangle", gain: 0.1, slide: true }),
   finish: () => blip([[523, 0.12], [659, 0.12], [784, 0.12], [1047, 0.4]], { type: "triangle", gain: 0.2 }),
   menu: () => blip([[1180, 0.035]], { type: "square", gain: 0.035 }),
 };
@@ -5446,6 +5504,7 @@ function update(dt) {
     emitRiderSpray(dt);
   }
   for (const r of riders) updateRider(r, dt);
+  updatePoles(dt);
   flushTrails();
   updateSpray(dt);
   if (menuCam) updateAttractCamera(dt); else updateCamera(dt);
