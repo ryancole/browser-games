@@ -48,7 +48,7 @@ A freeride course with no single right line. It is three times as long as the ot
 - An **ice half-pipe** down one side for part of the way. Carve up its walls to launch.
 - **A fork** near the end of each stretch: a long rib of boulders splits the bowl in two. One side drops off the 18 m cliff; the other has a kicker and moguls.
 
-Walls and roofs are solid on both courses. Riding into a rock face or the side of a ledge pushes you along it, and you wipe out if you hit it hard. You can't fly up through the cave's ceiling or the cabin's roof.
+Walls and roofs are solid on both courses. Riding into a rock face or the side of a ledge pushes you along it, and you wipe out if you hit it hard. You can't fly up through the cave's ceiling or the cabin's roof. The ice slabs over the ice cave and the ice tunnel are solid from above too: land on top and you can ride along them, but they're slippery. Your edges hardly bite on ice, so when you turn you keep sliding the way you were going, and braking barely slows you.
 
 ### Terrain features
 
@@ -65,7 +65,7 @@ Between the built kickers, every course has natural and built terrain to ride an
 | **Tree islands** | A raised island of trees down the middle that splits the run into two lines, with moguls on one side and logs or barriers on the other. | All courses (trees in planters in the city) |
 | **Forks** | A long ridge rises out of the middle of the run and splits it in two, with the banks pushed out so each route is close to full width. The routes ride differently, then join up again before the finish. The ridge is steep, and the trees or boulders along its top are solid. | Lakeside Valley (a forested ridge: a jump line on one side, moguls and logs on the other), Frozen Gorge and Glacier Bowl (see above) |
 
-Any of them can give you air. Pop an ollie at the top of a bump for more height. If you leave the ground off a bump or drop without an ollie, a turn or tuck you were already holding doesn't spin or flip you until you let go and press it again, so you can ride through moguls or off a cliff holding a tuck. After an ollie, everything you hold counts straight away, as before.
+Any of them can give you air. Pop an ollie at the top of a bump for more height. If you leave the ground off a bump or drop without an ollie, a turn or tuck you were already holding doesn't spin or flip you until you let go and press it again, so you can ride through moguls or off a cliff holding a tuck. After an ollie, a turn you were holding counts straight away. A tuck or brake you were holding eases in instead: nothing for the first quarter of a second, then building up to a full-speed flip, so riding along tucked and popping a small ollie doesn't tip you onto your nose. Let go and press it again for a flip at full speed. Landing a little nose-down is also more forgiving than landing tail-down, as long as you weren't partway through a flip.
 
 ## How to play
 

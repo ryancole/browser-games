@@ -460,6 +460,9 @@ const SPIN_POINTS = [0, 100, 250, 450, 700, 1000, 1400, 1800];
 const FLIP_RATE = 6.0;     // rad/s flip rate in the air
 const FLIP_POINTS = [0, 600, 1500, 2800, 4500];
 const FLIP_LAND_TOL = 0.95; // rad of leftover flip rotation you can still ride away from
+const FLIP_NOSE_TOL = 1.35; // ...or tipped forward, when you weren't going for a flip
+const FLIP_EASE0 = 0.25;    // s: a tuck or brake held since before an ollie doesn't flip you
+const FLIP_EASE = 0.4;      // ...until this long, then eases up to full speed over this long
 const SPIN_LAND_TOL = 0.95; // rad the board can point off your direction of travel and still land
 const FLIP_PIVOT = 0.9;     // flips rotate about the rider's middle, not their feet
 const WALL_STEP = 0.6;      // m the ground can rise in one physics step before it counts as a wall
@@ -542,6 +545,27 @@ const lanes = [];
 // Roofs over caves and cabins: { z0, z1, u0, u1, clear }, where `clear` is how
 // high your feet can go above the floor underneath.
 const ceilings = [];
+
+// Ice roofs over caves are solid from above: land on one and you ride it, and
+// it's slippery. The roof under (x, z), if any.
+function roofAt(x, z) {
+  for (const c of ceilings) {
+    if (c.top == null || z < c.z0 || z > c.z1) continue;
+    const u = x - center(z);
+    if (u >= c.r0 && u <= c.r1) return c;
+  }
+  return null;
+}
+// The roof follows the cave floor along its middle, so its slope is the floor's there.
+const roofTop = (c, z) => terrainH(center(z) + c.uc, z) + c.top;
+// What's under feet at height y at (x, z): [height, roof]. A roof counts if
+// you're on it or above it; from inside the cave it's the floor.
+function surfaceAt(x, z, y) {
+  const c = roofAt(x, z);
+  if (c) { const t = roofTop(c, z); if (y >= t - 0.6) return [t, c]; }
+  return [terrainH(x, z), null];
+}
+const surfaceGrad = (x, z, roof) => (roof ? grad(center(z) + roof.uc, z) : grad(x, z));
 
 // Forks: stretches where a ridge rises out of the middle of the run and splits
 // it into two routes that join up again further down. The banks are pushed out
@@ -1430,7 +1454,12 @@ function fMass(z0, len, ua, ub, H, { channel = null, roof = false } = {}) {
     },
   });
   if (!roof) return;
-  ceilings.push({ z0, z1, u0: channel.u - channel.w / 2, u1: channel.u + channel.w / 2, clear: H - 2.4 });
+  // The ice slabs on top are solid from above too (see roofAt): `top` is their
+  // surface above the floor, across [r0, r1].
+  ceilings.push({
+    z0, z1, u0: channel.u - channel.w / 2, u1: channel.u + channel.w / 2, clear: H - 2.4,
+    top: H, uc: channel.u, r0: channel.u - channel.w / 2 - 1.2, r1: channel.u + channel.w / 2 + 1.2,
+  });
   return () => {
     // Slabs of ice over the channel, icicles hanging from them, and a cold glow inside.
     const mat = iceMat(), icicles = [], glow = [];
@@ -3257,7 +3286,7 @@ function resetRider(r) {
   Object.assign(r, {
     x: center(0) + r.lane, z: 0, y: 0, vx: 0, vy: 0, vz: 0,
     heading: 0, spin: 0, flip: 0, flipYaw: 0, sw: false, takeoffSw: false,
-    grounded: true, groundVy: 0, airTime: 0, slip: 0,
+    grounded: true, roof: null, groundVy: 0, airTime: 0, slip: 0,
     charge: 0, popped: false, jumpPrev: false, jumpT: 0, lungeCool: 0, lungeT: 0, grabbing: false, grabTime: 0, grabName: "",
     crashT: 0, crashSpin: 0, lean: 0, crouch: 0,
     trickScore: 0, finished: false, finishTime: 0, inp: NO_INPUT, net: null, netRaw: null,
@@ -3301,11 +3330,11 @@ function followNet(r, dt) {
   if (!n) return;
   const t = Math.min(0.25, (performance.now() - n.at) / 1000);
   const tx = n.x + n.vx * t, tz = n.z + n.vz * t;
-  const ty = n.g ? terrainH(tx, tz) : n.y + n.vy * t - 0.5 * G_AIR * t * t;
+  const ty = n.g ? surfaceAt(tx, tz, n.y)[0] : n.y + n.vy * t - 0.5 * G_AIR * t * t;
   const k = 1 - Math.exp(-12 * dt), ka = 1 - Math.exp(-20 * dt);
   if (Math.hypot(tx - r.x, ty - r.y, tz - r.z) > 8) { r.x = tx; r.y = ty; r.z = tz; }
   else { r.x += (tx - r.x) * k; r.y += (ty - r.y) * k; r.z += (tz - r.z) * k; }
-  if (n.g) r.y = terrainH(r.x, r.z);
+  if (n.g) r.y = surfaceAt(r.x, r.z, n.y)[0];
   r.vx = n.vx; r.vy = n.vy; r.vz = n.vz;
   r.heading = wrapAngle(r.heading + wrapAngle(n.yaw - r.heading) * ka);
   r.spin = 0; r.sw = false;
@@ -3358,6 +3387,7 @@ const canControl = (r) => (state === "run" || attract) && r.crashT <= 0 && !r.fi
 
 function leaveGround(r, y, vy) {
   r.grounded = false;
+  r.roof = null;
   r.y = y; r.vy = vy;
   r.airTime = 0; r.spin = 0; r.flip = 0; r.grabTime = 0; r.grabbing = false; r.popped = false;
   r.takeoffSw = r.sw;
@@ -3365,6 +3395,8 @@ function leaveGround(r, y, vy) {
   // Players' held inputs are latched (see airStep). Bots plan their tricks, so they aren't.
   const i = r.inp || NO_INPUT;
   r.latch = r.isPlayer ? { left: i.left, right: i.right, tuck: i.tuck, brake: i.brake } : null;
+  // Tuck or brake already held stays "carried" until let go (see airStep), even after an ollie.
+  r.carry = r.isPlayer ? { tuck: i.tuck, brake: i.brake } : null;
   // Flips turn about the axis across the direction of travel at takeoff, so
   // "forward" always means toward where you're headed, whichever way you've spun.
   r.flipYaw = Math.hypot(r.vx, r.vz) > 1 ? Math.atan2(r.vx, r.vz) : r.heading;
@@ -3397,7 +3429,7 @@ function recover(r) {
 
 function groundStep(r, h, inp) {
   const ctl = canControl(r);
-  const [gx, gz] = grad(r.x, r.z);
+  const [gx, gz] = surfaceGrad(r.x, r.z, r.roof);
   const inv = 1 / (1 + gx * gx + gz * gz);
   r.vx += -G_GROUND * gx * inv * h;
   r.vz += -G_GROUND * gz * inv * h;
@@ -3413,16 +3445,19 @@ function groundStep(r, h, inp) {
   let vs = r.vx * sx + r.vz * sz;
   r.slip = Math.abs(vs);
 
-  // Edges bite: sideways speed bleeds off, and most of it is redirected forward when carving.
-  const grip = r.crashT > 0 ? 1.5 : brake ? 3 : 7;
+  // Edges bite: sideways speed bleeds off, and most of it is redirected forward
+  // when carving. On ice they hardly bite, so you turn but keep sliding the way
+  // you were going, and braking does little.
+  const ice = !!r.roof;
+  const grip = r.crashT > 0 ? 1.5 : ice ? (brake ? 0.9 : 0.5) : brake ? 3 : 7;
   const keep = Math.exp(-grip * h);
   const lost = Math.abs(vs) * (1 - keep);
   vs *= keep;
-  if (r.crashT <= 0) vf += Math.sign(vf || 1) * lost * (brake ? 0.1 : 0.55);
+  if (r.crashT <= 0) vf += Math.sign(vf || 1) * lost * (brake ? 0.1 : ice ? 0.3 : 0.55);
 
   const kAir = tuck ? 0.0045 : 0.0085;
-  vf -= (0.03 * vf + kAir * vf * Math.abs(vf)) * h;
-  if (brake) vf *= Math.exp(-1.2 * h);
+  vf -= ((ice ? 0.008 : 0.03) * vf + kAir * vf * Math.abs(vf)) * h;
+  if (brake) vf *= Math.exp(-(ice ? 0.3 : 1.2) * h);
   if (r.crashT > 0) vf *= Math.exp(-1.8 * h);
   if (r.finished) { vf *= Math.exp(-1.4 * h); vs *= Math.exp(-3 * h); }
 
@@ -3430,7 +3465,7 @@ function groundStep(r, h, inp) {
   r.vz = vf * fz + vs * sz;
 
   const nx = r.x + r.vx * h, nz = r.z + r.vz * h;
-  const ground = terrainH(nx, nz);
+  const [ground, roof] = surfaceAt(nx, nz, r.y);
   // Ground that rises too steeply to ride (a rock face, a cliff from below, the
   // side of a ledge) is a wall: stay put and bounce or slide along it.
   if (ground - r.y > WALL_STEP) return hitWall(r, nx, nz);
@@ -3442,7 +3477,7 @@ function groundStep(r, h, inp) {
   } else {
     // Keep speed along the surface constant when the slope changes, so riding
     // up a steep bank slows you down instead of handing out free speed.
-    const [gx2, gz2] = grad(nx, nz);
+    const [gx2, gz2] = surfaceGrad(nx, nz, roof);
     const sp = Math.hypot(r.vx, r.vz) || 1;
     const mOld = (gx * r.vx + gz * r.vz) / sp, mNew = (gx2 * r.vx + gz2 * r.vz) / sp;
     let scale = Math.sqrt((1 + mOld * mOld) / (1 + mNew * mNew));
@@ -3455,10 +3490,12 @@ function groundStep(r, h, inp) {
     // Capped so a sudden position change (bouncing off a tree) can't launch us.
     r.groundVy = Math.min((ground - r.y) / h, Math.max(mOld, mNew) * sp + 2);
     r.y = ground;
+    r.roof = roof;
   }
 }
 
 function airStep(r, h, inp) {
+  const yPrev = r.y;
   r.vy -= G_AIR * h;
   const drag = Math.exp(-0.05 * h);
   r.vx *= drag; r.vz *= drag;
@@ -3474,7 +3511,7 @@ function airStep(r, h, inp) {
     const u = r.x - center(r.z);
     if (u < c.u0 || u > c.u1) continue;
     const top = terrainH(r.x, r.z) + c.clear;
-    if (r.y > top && r.y < top + 3) { r.y = top; r.vy = Math.min(r.vy, 0); }
+    if (yPrev <= top + 0.05 && r.y > top) { r.y = top; r.vy = Math.min(r.vy, 0); }
   }
   if (canControl(r)) {
     // Leaving the ground off a bump or drop without an ollie, a turn or tuck you
@@ -3485,8 +3522,15 @@ function airStep(r, h, inp) {
     const held = (k) => inp[k] && !(L && L[k]);
     const steer = (held("right") ? 1 : 0) - (held("left") ? 1 : 0);
     const pitch = (held("tuck") ? 1 : 0) - (held("brake") ? 1 : 0);
+    // A tuck or brake you were holding as you ollied (riding along tucked, say)
+    // eases in instead of flipping you at once, so a little pop doesn't tip you
+    // onto your nose. Let go and press it again for a full-speed flip.
+    const C = r.carry;
+    if (C) { if (!inp.tuck) C.tuck = false; if (!inp.brake) C.brake = false; }
+    const carried = C && ((pitch > 0 && C.tuck) || (pitch < 0 && C.brake));
+    const ease = carried ? Math.min(1, Math.max(0, (r.airTime - FLIP_EASE0) / FLIP_EASE)) : 1;
     r.spin -= steer * SPIN_RATE * h;
-    r.flip += pitch * FLIP_RATE * h;
+    r.flip += pitch * FLIP_RATE * ease * h;
     if (inp.grab) {
       if (!r.grabbing) {
         r.grabbing = true;
@@ -3496,8 +3540,8 @@ function airStep(r, h, inp) {
     } else r.grabbing = false;
     if (r.isPlayer) callTricksInAir(r);
   }
-  const ground = terrainH(r.x, r.z);
-  if (r.y <= ground) land(r, ground);
+  const [ground, roof] = surfaceAt(r.x, r.z, yPrev);
+  if (r.y <= ground) { r.roof = roof; land(r, ground); }
 }
 
 // Push back off a wall at (nx, nz): the part of your speed heading into it is
@@ -3517,7 +3561,7 @@ function land(r, ground) {
   // Judge the landing against the direction you were flying, before a sloping
   // landing (like the side of a bank) deflects you.
   const phiAir = Math.atan2(r.vx, r.vz);
-  const [gx, gz] = grad(r.x, r.z);
+  const [gx, gz] = surfaceGrad(r.x, r.z, r.roof);
   const len = Math.hypot(gx, 1, gz);
   const nx = -gx / len, ny = 1 / len, nz = -gz / len;
   const vn = r.vx * nx + r.vy * ny + r.vz * nz;
@@ -3537,7 +3581,10 @@ function land(r, ground) {
   const spin = r.spin, flip = r.flip;
   const flipLeft = wrapAngle(flip);
   r.spin = 0; r.flip = 0;
-  if (Math.abs(flipLeft) > FLIP_LAND_TOL) {
+  // Landing a little nose-down is easier to ride out than tail-down, as long as
+  // you weren't partway through a flip.
+  const nose = flipLeft > 0 && Math.abs(flip) < Math.PI;
+  if (Math.abs(flipLeft) > (nose ? FLIP_NOSE_TOL : FLIP_LAND_TOL)) {
     if (Math.abs(flipLeft) > 2.2) return crash(r, "Landed on your head!");
     return crash(r, Math.abs(flip) < Math.PI * 2 - FLIP_LAND_TOL ? "Under-rotated!" : "Over-rotated!");
   }
@@ -3626,7 +3673,7 @@ function checkFence(r) {
     // Turn the rider to follow the net, so it guides you rather than wiping you out on landing.
     if (Math.hypot(r.vx, r.vz) > 2) r.heading = Math.atan2(r.vx, r.vz);
   }
-  const ground = terrainH(r.x, r.z);
+  const ground = surfaceAt(r.x, r.z, r.y)[0];
   r.y = r.grounded ? ground : Math.max(r.y, ground);
 }
 
@@ -3838,15 +3885,16 @@ function ragCollide(p, q, i, rad, mu, h, rag) {
       }
     }
   }
-  let g = terrainH(x, z);
+  // An ice roof holds up a body that's on top of it (judged from last step's height).
+  let [g, roof] = surfaceAt(x, z, q[o + 1] - rad);
   if (y - rad < g) {
-    if (g - y > 1.2) {
+    if (!roof && g - y > 1.2) {
       // Deep inside a steep face: it's a wall, so back out the way we came.
       x = q[o]; z = q[o + 2]; vx *= -0.3; vz *= -0.3;
       g = terrainH(x, z);
       if (y - rad < g) y = g + rad;
     } else {
-      const [gx, gz] = grad(x, z), L = Math.hypot(gx, 1, gz);
+      const [gx, gz] = surfaceGrad(x, z, roof), L = Math.hypot(gx, 1, gz);
       const nx = -gx / L, ny = 1 / L, nz = -gz / L;
       y = g + rad;
       const vn = vx * nx + vy * ny + vz * nz;
@@ -3906,9 +3954,10 @@ function syncFromRag(r) {
   const x = (p[0] + p[3]) / 2, y = (p[1] + p[4]) / 2, z = (p[2] + p[5]) / 2;
   let vx = 0, vy = 0, vz = 0;
   for (let o = 0; o < 15; o += 3) { vx += p[o] - q[o]; vy += p[o + 1] - q[o + 1]; vz += p[o + 2] - q[o + 2]; }
-  const g = terrainH(x, z);
+  const [g, roof] = surfaceAt(x, z, y - 0.6);
   r.x = x; r.z = z;
   r.grounded = y - g < 0.6;
+  r.roof = r.grounded ? roof : null;
   r.y = r.grounded ? g : y - 0.4;
   r.vx = vx / (5 * STEP); r.vy = vy / (5 * STEP); r.vz = vz / (5 * STEP);
   r.groundVy = 0;
@@ -4237,7 +4286,7 @@ function updateRider(r, dt) {
   m.root.position.set(r.x, r.y, r.z);
   (r.drawnAt ??= [0, 0, 0]).splice(0, 3, r.x, r.y, r.z);
   if (r.grounded) {
-    const [gx, gz] = grad(r.x, r.z);
+    const [gx, gz] = surfaceGrad(r.x, r.z, r.roof);
     vN.set(-gx, 1, -gz).normalize();
   } else vN.copy(UP);
   qa.setFromUnitVectors(UP, vN);
