@@ -14,7 +14,7 @@ The menus are full-screen, with big chrome lettering over the course. Behind the
 
 ## Courses
 
-Pick a course when you start a single-player race or host a lobby. Picking one builds it straight away behind the menu, and the game remembers your choice. There are seven. Frozen Gorge, Glacier Bowl and Lava Rush are three times as long as the short courses and Everest is twice as long, and every course has its own bends, kicker layout, obstacles and scenery.
+Pick a course when you start a single-player race or host a lobby. Picking one builds it straight away behind the menu, and the game remembers your choice. There are eight. Frozen Gorge, Glacier Bowl, Lava Rush and Sea of Tranquility are three times as long as the short courses and Everest is twice as long, and every course has its own bends, kicker layout, obstacles and scenery.
 
 | Course | What it's like |
 | ------ | -------------- |
@@ -25,6 +25,7 @@ Pick a course when you start a single-player race or host a lobby. Picking one b
 | **Glacier Bowl** | A huge open bowl above the treeline on a bright, clear day, more than twice as wide as the other courses. See below. |
 | **Lava Rush** | No snow at all: you surf a river of molten lava down a black basalt valley, with an erupting volcano ahead and a giant ledge near the end. See below. |
 | **Everest** | Straight down the side of the world's highest mountain: one long, relentlessly steep face high above the clouds. See below. |
+| **Sea of Tranquility** | Snowboarding the Moon, at a sixth of the gravity. See below. |
 
 ### Frozen Gorge
 
@@ -62,6 +63,10 @@ Near the end, the whole valley drops away: a sheer rock face 350 m high runs rig
 
 Snowboarding the side of Everest. The whole course is one long, steep face, about twice as steep as the other courses, so you reach well over 100 km/h without even tucking. The banks barely rise either side, so it's an open mountain face rather than a valley, and the camera stays closer to level so you can see the face drop away ahead. The run is wind-packed snow with patches of blue ice. The banks are snow and grey rock, crossed by a band of yellowish rock like Everest's own Yellow Band. Up here the sky is a deep blue, a sea of cloud lies far below with the rest of the Himalaya poking up through it, two neighbouring giants tower on either side, and strings of prayer flags are slung high across the run. Mountain goats stand about in ones, twos and threes on the slopes just past the nets, and partway down a rope team of five climbers is working its way up the face beside the run, roped together, ice axes out. Two goats have wandered right onto the run: they're solid, so ride into one and you wipe out. At the bottom you finish in base camp, with dome tents in every colour, crates and fuel barrels either side of the last stretch and round the flat runout, under more prayer flags. The tents, crates and barrels inside the nets are solid too. Spindrift blows across the slope and a little snow falls. The course has rollers, cliff drops off rock bands, rock kickers and moguls, and no trees. Its par time is 80 seconds.
 
+### Sea of Tranquility
+
+Snowboarding the Moon. Gravity is a sixth of the usual, so you float: a plain ollie keeps you in the air for three seconds or more, kickers and crater rims throw you sky-high, and there's time for big spins and flips. There's no air either, so nothing slows you down but the ground: you keep building speed down the hill, and the dust your board throws up flies off and arcs slowly back down. The run is grey regolith pocked with craters. Small ones mark the ground everywhere, and bigger ones sit on the run itself, a raised rim round a bowl, so ride over a rim at speed and it launches you. There's no snow, no wind and no weather, just a black sky full of stars with Earth hanging in it, slowly turning. A gold lunar lander stands beside the start with the American flag planted next to it, Apollo-style on a pole with a crossbar along the top, and an Apollo-style lunar rover with gold fenders, two seats and an umbrella-like antenna dish is parked just down the hill. Two astronauts wave you off. It's three times as long as the short courses, with a par time of 190 seconds. Keep an eye out partway down: one little green alien stands beside the run in front of its flying saucer, waving at you as you go past.
+
 ### Terrain features
 
 Between the built kickers, every course has natural and built terrain to ride and launch off. Each course mixes these differently:
@@ -75,6 +80,7 @@ Between the built kickers, every course has natural and built terrain to ride an
 | **Rooftop jumps** | A building half-buried in snow: ride the snow ramp up onto the roof and jump off the far end. The walls are solid, so don't ride into the side. | A ski patrol hut on Snowy Peak, a parked bus in the city, a log cabin in the valley |
 | **Rock kickers** | A snowdrift banked against rocks: a natural kicker with no built lip. The boulders either side are solid. | Snowy Peak, Lakeside Valley, Lava Rush, Everest |
 | **Tree islands** | A raised island of trees down the middle that splits the run into two lines, with moguls on one side and logs or barriers on the other. | All courses (trees in planters in the city) |
+| **Craters** | A raised rim round a bowl. Ride over the rim at speed and it throws you into the air; drop into the bowl and you ride out the far side. | Sea of Tranquility |
 | **Forks** | A long ridge rises out of the middle of the run and splits it in two, with the banks pushed out so each route is close to full width. The routes ride differently, then join up again before the finish. The ridge is steep, and the trees or boulders along its top are solid. | Lakeside Valley (a forested ridge: a jump line on one side, moguls and logs on the other), Frozen Gorge and Glacier Bowl (see above) |
 
 Any of them can give you air. Pop an ollie at the top of a bump for more height. If you leave the ground off a bump or drop without an ollie, a turn or tuck you were already holding doesn't spin or flip you until you let go and press it again, so you can ride through moguls or off a cliff holding a tuck. After an ollie, a turn you were holding counts straight away. A tuck or brake you were holding eases in instead: nothing for the first quarter of a second, then building up to a full-speed flip, so riding along tucked and popping a small ollie doesn't tip you onto your nose. Let go and press it again for a flip at full speed. Landing a little nose-down is also more forgiving than landing tail-down, as long as you weren't partway through a flip.
@@ -131,6 +137,7 @@ The music is real songs, played from the artists' official YouTube videos so the
 | **Glacier Bowl** | Foo Fighters – Everlong | [youtube.com/watch?v=eBG7P-K-r1Y](https://www.youtube.com/watch?v=eBG7P-K-r1Y) |
 | **Lava Rush** | The Prodigy – Firestarter | [youtube.com/watch?v=wmin5WkOuPw](https://www.youtube.com/watch?v=wmin5WkOuPw) |
 | **Everest** | CAKE – The Distance | [youtube.com/watch?v=F_HoMkkRHv8](https://www.youtube.com/watch?v=F_HoMkkRHv8) |
+| **Sea of Tranquility** | Kid Cudi – Man On The Moon (The Anthem) | [youtube.com/watch?v=CCPbYJvtywI](https://www.youtube.com/watch?v=CCPbYJvtywI) |
 
 If a place has no song, it's silent apart from the sound effects.
 
@@ -171,7 +178,7 @@ How it works:
 | Flip               | 600 for one, 1500 for a double, 2800 for a triple, 4500 for a quad |
 | Combo              | ×1.5 for two of flip, spin and grab; ×2 for all three |
 | Taking off switch  | ×1.25                                     |
-| Time bonus         | 50 per second under par: 70 seconds, 210 on Frozen Gorge, Glacier Bowl and Lava Rush, or 80 on Everest |
+| Time bonus         | 50 per second under par: 70 seconds, 210 on Frozen Gorge, Glacier Bowl and Lava Rush, 190 on Sea of Tranquility, or 80 on Everest |
 
 ## Controls
 

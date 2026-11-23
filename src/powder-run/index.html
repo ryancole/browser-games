@@ -435,7 +435,7 @@
     <div class="ribbon">SNOWBOARDING</div>
   </div>
   <div class="press"><span class="keys-only">Press any key</span><span class="tap-only">Tap the screen</span></div>
-  <div class="foot">Seven courses · Spins, flips and grabs · Race bots or friends</div>
+  <div class="foot">Eight courses · Spins, flips and grabs · Race bots or friends</div>
 </div>
 
 <script type="module">
@@ -445,7 +445,7 @@ import * as THREE from "three";
 // Course definition. Downhill is +Z. The terrain is a pure function of (x, z),
 // which both the mesh and the physics sample, so they always agree.
 // ---------------------------------------------------------------------------
-const SECTION_LEN = 1400;  // metres in one section of a course; most levels are one section
+const SECTION_LEN = 1400;  // metres in one section of a course (a level's `sections` sets how many)
 let COURSE_LEN = SECTION_LEN; // metres from start to the finish line (set per level)
 const RUNOUT = 180;        // flat-ish area past the finish
 let HALF_W = 18;           // half-width of the groomed run (set per level)
@@ -453,8 +453,11 @@ let SLOPE = 0.3;           // average fall-line gradient (set per level)
 let BANK = 1;              // how steeply the banks rise either side of the run (set per level)
 const PAR_TIME = 70;       // seconds per section; finishing faster earns a time bonus
 
-const G_GROUND = 22;       // gravity used for sliding along the slope
-const G_AIR = 28;          // gravity in the air (a little floaty-but-snappy)
+// Gravity and air drag are set per level (the Moon has a sixth of the gravity and no air).
+let GRAV = 1;              // gravity, as a share of the usual
+let AIR = 1;               // air drag, as a share of the usual
+let G_GROUND = 22;         // gravity used for sliding along the slope
+let G_AIR = 28;            // gravity in the air (a little floaty-but-snappy)
 const TURN_RATE = 2.0;     // rad/s carve rate
 const SPIN_RATE = 6.8;     // rad/s spin rate in the air
 const SPIN_POINTS = [0, 100, 250, 450, 700, 1000, 1400, 1800];
@@ -1354,7 +1357,27 @@ function fMegaDrop(zE, D) {
   });
 }
 
+// Craters scattered across the run: a raised rim round a bowl. Hit a rim at
+// speed and it throws you into the air.
+function fCraters(z0, z1, rnd) {
+  const n = Math.max(1, Math.round((z1 - z0) / 32));
+  for (let i = 0; i < n; i++) {
+    const R = 4 + rnd() * 5, zc = z0 + R + ((i + 0.5) / n) * Math.max(0, z1 - z0 - 2 * R), uc = (rnd() - 0.5) * (HALF_W * 2 - 2 * R);
+    const D = R * 0.3, rim = R * 0.14;
+    const prof = (u, z) => {
+      const r = Math.hypot(u - uc, z - zc) / R;
+      if (r >= 1.45) return 0;
+      return r < 1 ? rim * smooth(r) - D * (1 - r * r) : rim * (1 - smooth((r - 1) / 0.45));
+    };
+    features.push({
+      z0: zc - R * 1.45, z1: zc + R * 1.45, h: prof,
+      color: (u, z) => { const r = Math.hypot(u - uc, z - zc) / R; return r > 0.85 && r < 1.15 ? [0.5, 0.5, 0.51] : r < 0.85 ? [0.24, 0.24, 0.25] : null; },
+    });
+  }
+}
+
 const FEATURES = {
+  crater: (a, b, rnd) => fCraters(a, Math.min(b, a + 90), rnd),
   moguls: (a, b) => fMoguls(a, Math.min(b, a + 55)),
   rollers: (a, b) => fRollers(a, Math.min(b, a + 50)),
   cliff: fCliff,
@@ -2183,6 +2206,210 @@ function buildEverest(rnd) {
   peakRing(rnd, { n: 2, r0: 620, r1: 700, h0: 1000, h1: 1100, base: -1150, colors: [0x5f6e88, 0x6a7a94], cap: 0xf6f9fd, spread: 1.2, offset: -2.1 });
 }
 
+// --- Sea of Tranquility: snowboarding the Moon ------------------------------------
+// Grey regolith pocked with craters, under a black sky with Earth hanging in
+// it. Gravity is a sixth of the usual and there's no air, so everything floats.
+const hash2 = (a, b) => { const v = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return v - Math.floor(v); };
+function moonGround(x, z, d, n) {
+  // A crater in some 28 m cells: darker inside, a lighter rim.
+  const C = 28, cx = Math.floor(x / C), cz = Math.floor(z / C);
+  let shade = 0;
+  for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+    const a = cx + i, b = cz + j;
+    if (hash2(a, b) > 0.55) continue;
+    const ox = (a + 0.2 + hash2(b, a) * 0.6) * C, oz = (b + 0.2 + hash2(a + 7, b) * 0.6) * C, R = 3 + hash2(a, b + 3) * 9;
+    const r = Math.hypot(x - ox, z - oz) / R;
+    if (r < 0.85) shade = Math.min(shade, -0.08);
+    else if (r < 1.15) shade = Math.max(shade, 0.12);
+  }
+  const base = d < HALF_W ? 0.36 : 0.3;
+  return [base + shade + n, base + shade + n, base + 0.01 + shade + n];
+}
+
+// An astronaut in a white suit with a gold visor and a pack on their back, waving.
+const ASTRONAUT = [
+  { geo: blk(0.2, 0.16, 0.32), color: 0xb8b8bc, at: [0.13, 0.08, 0.03] },
+  { geo: blk(0.2, 0.16, 0.32), color: 0xb8b8bc, at: [-0.13, 0.08, 0.03] },
+  { geo: blk(0.22, 0.75, 0.24), color: 0xeeeeee, at: [0.13, 0.52, 0] },
+  { geo: blk(0.22, 0.75, 0.24), color: 0xeeeeee, at: [-0.13, 0.52, 0] },
+  { geo: blk(0.56, 0.68, 0.38), color: 0xf2f2f2, at: [0, 1.22, 0] },
+  { geo: blk(0.5, 0.62, 0.3), color: 0xd8d8dc, at: [0, 1.26, -0.32] }, // pack
+  { geo: blk(0.17, 0.62, 0.17), color: 0xeeeeee, at: [0.38, 1.18, 0] },
+  { geo: blk(0.17, 0.62, 0.17), color: 0xeeeeee, at: [-0.45, 1.6, 0.02], rot: [0, 0, 2.6] }, // waving arm
+  { geo: new THREE.SphereGeometry(0.3, 10, 8), color: 0xf4f4f4, at: [0, 1.8, 0.02] },
+  { geo: blk(0.36, 0.22, 0.1), color: 0xd8a32a, at: [0, 1.82, 0.27] }, // visor
+];
+
+function buildMoon(rnd) {
+  const rocks = [];
+  scatter(rnd, { step: 6, chance: 0.4, dMin: HALF_W + 4, dSpread: 30 }, (t) => rocks.push({ ...t, s: 0.6 + t.s * 1.4, y: t.y - 0.4 }));
+  addRocks(rocks);
+
+  // A lunar lander and a rover parked beside the start, and two astronauts waving you off.
+  const side = (z, u) => { const x = center(z) + u; return [x, terrainH(x, z), z]; };
+  const gold = new THREE.MeshStandardMaterial({ color: 0xd8a83a, metalness: 0.6, roughness: 0.35, flatShading: true });
+  const grey = new THREE.MeshStandardMaterial({ color: 0x9a9aa2, roughness: 0.6, flatShading: true });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x2a2a30, roughness: 0.7 });
+  const put = (g, geo, m, x, y, z) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.castShadow = true; g.add(o); return o; };
+  const lander = new THREE.Group();
+  put(lander, new THREE.CylinderGeometry(1.9, 1.9, 1.6, 8), gold, 0, 2.1, 0);
+  put(lander, new THREE.BoxGeometry(2.4, 1.8, 2.2), grey, 0, 3.8, 0);
+  put(lander, new THREE.ConeGeometry(0.6, 0.8, 8), dark, 0, 1.0, 0);
+  put(lander, new THREE.CylinderGeometry(0.05, 0.05, 1.2, 4), dark, 0.6, 5.3, 0);
+  put(lander, new THREE.SphereGeometry(0.45, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2), grey, 0.6, 5.9, 0).rotation.x = Math.PI;
+  for (let k = 0; k < 4; k++) {
+    const a = k * Math.PI / 2 + Math.PI / 4, lx = Math.sin(a) * 2.6, lz = Math.cos(a) * 2.6;
+    const leg = put(lander, new THREE.CylinderGeometry(0.08, 0.08, 2.6, 5), grey, lx * 0.75, 1.1, lz * 0.75);
+    leg.rotation.set(Math.cos(a) * 0.45, 0, -Math.sin(a) * 0.45);
+    put(lander, new THREE.CylinderGeometry(0.4, 0.45, 0.12, 8), grey, lx, 0.06, lz);
+  }
+  lander.position.set(...side(36, HALF_W + 11));
+  lander.rotation.y = 0.4;
+  levelGroup.add(lander);
+
+  // An Apollo-style lunar rover: an open frame on four big wire wheels with
+  // gold fenders, two seats, a control post, and an umbrella-like antenna dish.
+  const rover = new THREE.Group();
+  const silver = new THREE.MeshStandardMaterial({ color: 0xc8ccd2, metalness: 0.5, roughness: 0.4, flatShading: true });
+  const seatMat = new THREE.MeshStandardMaterial({ color: 0x7f93a8, roughness: 0.8 });
+  const white = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.6, side: THREE.DoubleSide });
+  put(rover, new THREE.BoxGeometry(1.9, 0.14, 3.1), silver, 0, 0.62, 0);
+  for (const [x, z] of [[1.08, 1.15], [-1.08, 1.15], [1.08, -1.15], [-1.08, -1.15]]) {
+    put(rover, new THREE.CylinderGeometry(0.42, 0.42, 0.26, 14), dark, x, 0.42, z).rotation.z = Math.PI / 2;
+    put(rover, new THREE.CylinderGeometry(0.2, 0.2, 0.28, 8), silver, x, 0.42, z).rotation.z = Math.PI / 2; // hub
+    const fender = put(rover, new THREE.CylinderGeometry(0.52, 0.52, 0.34, 12, 1, true, 0, Math.PI), gold, x, 0.46, z);
+    fender.rotation.set(0, 0, Math.PI / 2);
+  }
+  for (const x of [0.45, -0.45]) {
+    put(rover, new THREE.BoxGeometry(0.62, 0.08, 0.6), seatMat, x, 0.82, -0.1);
+    put(rover, new THREE.BoxGeometry(0.62, 0.6, 0.08), seatMat, x, 1.1, -0.42);
+  }
+  put(rover, new THREE.CylinderGeometry(0.05, 0.05, 0.8, 5), dark, 0, 1.05, 0.55); // control post
+  put(rover, new THREE.BoxGeometry(0.5, 0.3, 0.15), silver, 0, 1.45, 0.55);
+  put(rover, new THREE.BoxGeometry(1.4, 0.35, 0.5), gold, 0, 0.82, 1.25); // front pallet
+  put(rover, new THREE.CylinderGeometry(0.035, 0.035, 1.6, 4), dark, -0.55, 1.6, 1.25); // antenna mast
+  const dish = put(rover, new THREE.ConeGeometry(0.55, 0.25, 16, 1, true), white, -0.55, 2.45, 1.25);
+  dish.rotation.x = Math.PI * 0.8;
+  put(rover, new THREE.BoxGeometry(0.22, 0.18, 0.3), dark, 0.55, 1.75, 1.35); // camera
+  put(rover, new THREE.CylinderGeometry(0.03, 0.03, 0.8, 4), dark, 0.55, 1.3, 1.35);
+  rover.position.set(...side(92, -(HALF_W + 10)));
+  rover.rotation.y = -0.35;
+  rover.scale.setScalar(1.35);
+  levelGroup.add(rover);
+
+  // The American flag beside the lander, on a pole with a crossbar along the
+  // top to hold it out, as the Apollo crews planted theirs, a little crumpled.
+  const flagTex = canvasTexture(380, 200, (g) => {
+    for (let i = 0; i < 13; i++) { g.fillStyle = i % 2 ? "#ffffff" : "#b22234"; g.fillRect(0, (i * 200) / 13, 380, 200 / 13 + 1); }
+    g.fillStyle = "#3c3b6e"; g.fillRect(0, 0, 152, (7 * 200) / 13);
+    g.fillStyle = "#ffffff";
+    for (let row = 0; row < 9; row++) {
+      for (let col = 0; col < (row % 2 ? 5 : 6); col++) {
+        const x = 12.7 + col * 25.3 + (row % 2 ? 12.65 : 0), y = 10.8 + row * 10.8;
+        g.beginPath();
+        for (let k = 0; k < 10; k++) { const r = k % 2 ? 2.2 : 5.2, a = (k * Math.PI) / 5 - Math.PI / 2; g.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); }
+        g.fill();
+      }
+    }
+  });
+  const flag = new THREE.Group();
+  put(flag, new THREE.CylinderGeometry(0.04, 0.04, 3.4, 6), silver, 0, 1.7, 0);
+  put(flag, new THREE.CylinderGeometry(0.025, 0.025, 2.0, 5), silver, 1.0, 3.3, 0).rotation.z = Math.PI / 2;
+  const cloth = new THREE.PlaneGeometry(1.9, 1.0, 16, 6);
+  const cp = cloth.attributes.position;
+  for (let i = 0; i < cp.count; i++) cp.setZ(i, Math.sin(cp.getX(i) * 7) * 0.04 + Math.sin(cp.getY(i) * 9 + cp.getX(i) * 3) * 0.03);
+  cloth.computeVertexNormals();
+  put(flag, cloth, new THREE.MeshStandardMaterial({ map: flagTex, roughness: 0.8, side: THREE.DoubleSide }), 1.0, 2.78, 0);
+  flag.position.set(...side(20, HALF_W + 8));
+  flag.rotation.y = -Math.PI / 2 + 0.3; // facing the run
+  flag.scale.setScalar(1.3);
+  levelGroup.add(flag);
+  addFigures(ASTRONAUT, [[26, HALF_W + 8, -1.9], [44, -(HALF_W + 8), 1.6]].map(([z, u, yaw]) => { const [x, y] = side(z, u); return { x, y, z, yaw, s: 1.1 }; }));
+
+  // Black sky full of stars, and Earth.
+  skyDome(0x000000, 0x07070b, 0x000000);
+  const stars = [];
+  for (let i = 0; i < 1400; i++) {
+    const a = rnd() * Math.PI * 2, el = 0.02 + rnd() ** 0.8 * 1.5;
+    stars.push(Math.cos(el) * Math.sin(a) * 1400, Math.sin(el) * 1400, Math.cos(el) * Math.cos(a) * 1400);
+  }
+  const starPts = new THREE.Points(new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(stars, 3)),
+    new THREE.PointsMaterial({ size: 1.6, sizeAttenuation: false, color: 0xffffff, fog: false, depthWrite: false }));
+  starPts.renderOrder = -19;
+  backdrop.add(starPts);
+  const earthTex = canvasTexture(512, 256, (g) => {
+    g.fillStyle = "#1f5fb8"; g.fillRect(0, 0, 512, 256);
+    for (let i = 0; i < 22; i++) { // continents
+      g.fillStyle = rnd() < 0.5 ? "#3f8a3a" : "#9a8a4a";
+      g.beginPath(); g.ellipse(rnd() * 512, 40 + rnd() * 176, 20 + rnd() * 50, 12 + rnd() * 30, rnd() * 3, 0, Math.PI * 2); g.fill();
+    }
+    g.fillStyle = "rgba(255,255,255,0.75)";
+    for (let i = 0; i < 70; i++) { g.beginPath(); g.ellipse(rnd() * 512, rnd() * 256, 10 + rnd() * 40, 3 + rnd() * 8, rnd() * 0.6, 0, Math.PI * 2); g.fill(); } // clouds
+    g.fillRect(0, 0, 512, 14); g.fillRect(0, 242, 512, 14); // ice caps
+  });
+  const earth = new THREE.Mesh(new THREE.SphereGeometry(70, 32, 20), new THREE.MeshLambertMaterial({ map: earthTex, fog: false, emissive: 0x0a1a33 }));
+  earth.position.set(-230, 175, 960);
+  earth.rotation.set(0.3, 1.2, 0.2);
+  earth.renderOrder = -6;
+  backdrop.add(earth);
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture("rgba(120,170,255,0.5)", "rgba(80,140,255,0)"), fog: false, depthWrite: false, blending: THREE.AdditiveBlending }));
+  halo.position.copy(earth.position); halo.scale.setScalar(200); halo.renderOrder = -7;
+  backdrop.add(halo);
+  // One alien, a little green one, partway down beside the run, waving at you
+  // from in front of its flying saucer.
+  const alien = new THREE.Group(), saucer = new THREE.Group();
+  const green = new THREE.MeshStandardMaterial({ color: 0x6fd66a, emissive: 0x1d5a1a, roughness: 0.5, flatShading: true });
+  const black = new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 0.2, metalness: 0.3 });
+  for (const x of [0.12, -0.12]) put(alien, new THREE.CylinderGeometry(0.06, 0.05, 0.6, 5), green, x, 0.3, 0);
+  put(alien, new THREE.SphereGeometry(0.26, 10, 8), green, 0, 0.78, 0).scale.set(1, 1.35, 0.85);
+  put(alien, new THREE.CylinderGeometry(0.05, 0.05, 0.55, 5), green, 0.32, 0.72, 0).rotation.z = 0.35;
+  const arm = new THREE.Group();
+  arm.position.set(-0.24, 1.0, 0);
+  alien.add(arm);
+  put(arm, new THREE.CylinderGeometry(0.05, 0.05, 0.55, 5), green, 0, 0.26, 0);
+  put(alien, new THREE.CylinderGeometry(0.07, 0.09, 0.18, 6), green, 0, 1.12, 0); // neck
+  put(alien, new THREE.SphereGeometry(0.42, 14, 10), green, 0, 1.55, 0).scale.set(1, 1.18, 0.95);
+  for (const x of [0.17, -0.17]) {
+    const eye = put(alien, new THREE.SphereGeometry(0.13, 10, 8), black, x, 1.52, 0.33);
+    eye.scale.set(1, 0.55, 0.5);
+    eye.rotation.z = x > 0 ? -0.5 : 0.5;
+  }
+  for (const x of [0.12, -0.12]) {
+    put(alien, new THREE.CylinderGeometry(0.015, 0.015, 0.4, 4), green, x * 1.4, 2.1, -0.05).rotation.z = -x * 2.5;
+    put(alien, new THREE.SphereGeometry(0.06, 8, 6), new THREE.MeshBasicMaterial({ color: 0xbfff6a }), x * 2.6, 2.28, -0.05);
+  }
+  const [ax, ay, az] = side(880, -(HALF_W + 9));
+  alien.position.set(ax, ay, az);
+  alien.rotation.y = Math.PI / 2 + 0.2; // facing the run
+  alien.scale.setScalar(1.5);
+  levelGroup.add(alien);
+
+  const hull = new THREE.MeshStandardMaterial({ color: 0xc8ccd8, emissive: 0x2a2e3a, metalness: 0.3, roughness: 0.35, flatShading: true });
+  put(saucer, new THREE.SphereGeometry(1, 24, 10), hull, 0, 0, 0).scale.set(3.4, 0.55, 3.4);
+  put(saucer, new THREE.SphereGeometry(1.15, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x7ff2ff, emissive: 0x1a6a7a, transparent: true, opacity: 0.6, roughness: 0.1 }), 0, 0.35, 0);
+  const lights = [];
+  for (let k = 0; k < 12; k++) {
+    const a = (k / 12) * Math.PI * 2;
+    lights.push(put(saucer, new THREE.SphereGeometry(0.16, 8, 6), new THREE.MeshBasicMaterial({ color: k % 3 ? 0xffd23a : 0xff3a6a }), Math.cos(a) * 3.05, 0, Math.sin(a) * 3.05));
+  }
+  for (let k = 0; k < 3; k++) {
+    const a = (k / 3) * Math.PI * 2 + 0.5;
+    put(saucer, new THREE.CylinderGeometry(0.06, 0.06, 1.8, 5), hull, Math.cos(a) * 1.8, -1.1, Math.sin(a) * 1.8).rotation.set(Math.sin(a) * 0.3, 0, -Math.cos(a) * 0.3);
+  }
+  const sz = 884, sx = center(sz) - (HALF_W + 17), sBase = terrainH(sx, sz) + 2.1;
+  saucer.position.set(sx, sBase, sz);
+  saucer.scale.setScalar(1.2);
+  levelGroup.add(saucer);
+
+  return (t) => {
+    earth.rotation.y = 1.2 + t * 0.01;
+    arm.rotation.z = 0.55 + Math.sin(t * 6) * 0.4; // waving
+    saucer.position.y = sBase + Math.sin(t * 1.3) * 0.25;
+    saucer.rotation.y = t * 0.4;
+    lights.forEach((l, k) => l.scale.setScalar(0.7 + 0.5 * Math.max(0, Math.sin(t * 5 - k * 0.8))));
+  };
+}
+
 // --- Snowy Peak: the original overcast mountain --------------------------------
 function buildPeak(rnd) {
   const trees = [];
@@ -2513,6 +2740,9 @@ function buildValley(rnd) {
   return (t) => { glintMat.opacity = 0.55 + 0.45 * Math.sin(t * 2.3); };
 }
 
+// The courses. New courses should be three sections long (sections: 3, 4200 m),
+// like Frozen Gorge, Glacier Bowl, Lava Rush and Sea of Tranquility; the
+// shorter ones are older.
 const LEVELS = {
   peak: {
     name: "Snowy Peak", blurb: "An overcast day high on a snowy mountain.",
@@ -2609,6 +2839,20 @@ const LEVELS = {
     snow: 0.35, puffs: 1.4, kickerColor: [0.5, 0.72, 1.0],
     furniture: { poles: [0x111111, 0xffd23a], lip: 0xff8a2a, net: "#ff7a1a", post: 0x2a2f3a, banners: ["#111111", "#2a5bd7"] },
   },
+  moon: {
+    name: "Sea of Tranquility", blurb: "Snowboard the Moon at a sixth of the gravity: huge, floaty airs over a cratered grey plain under a black sky, with Earth hanging overhead.",
+    seed: 1969, build: buildMoon, ground: moonGround, gravity: 1 / 6, airDrag: 0, slope: 0.45, bank: 0.6, halfW: 22, sections: 3, par: 190,
+    track: { artist: "Kid Cudi", title: "Man On The Moon (The Anthem)", video: "CCPbYJvtywI" },
+    course: { a1: 12, p1: 190, o1: 0.8, a2: 6, p2: 70, o2: 2, bump: 0.5 },
+    kickers: { start: 170, offsets: [0, -6, 6, -3, 3], gaps: [160, 190, 220] },
+    terrain: {
+      list: ["crater", "rollers", "crater", "rock", "crater", "moguls", "crater", "cliff", "crater", "rollers", "crater", "rock"],
+      drop: 5, face: "rock", logs: "barrier", pines: [[0x555555], 0x777777],
+    },
+    sky: 0x000000, fog: [0x000000, 500, 1600], hemi: [0x8890a0, 0x202024, 0.35], sun: [0xffffff, 2.8], riderLight: 0,
+    snow: 0, puffs: 0, spray: 0xa8a8a8, kickerColor: [0.33, 0.35, 0.4],
+    furniture: { poles: [0xffffff, 0xff3a2a], lip: 0xffd23a, net: "#d0d0d0", post: 0x444444, banners: ["#1a1a2a", "#3a6dff"] },
+  },
 };
 const LEVEL_IDS = Object.keys(LEVELS);
 
@@ -2637,6 +2881,10 @@ function setLevel(id) {
   forks.length = 0;
   HALF_W = level.halfW ?? 18;
   SLOPE = level.slope ?? 0.3;
+  GRAV = level.gravity ?? 1;
+  AIR = level.airDrag ?? 1;
+  G_GROUND = 22 * GRAV;
+  G_AIR = 28 * GRAV;
   BANK = level.bank ?? 1;
   FENCE_D = HALF_W + 7;
   Object.assign(course, { tight: null }, level.course);
@@ -3229,14 +3477,15 @@ function landingPuff(r, airTime) {
 }
 
 function updateSpray(dt) {
-  const drag = Math.exp(-1.6 * dt);
+  // With no air (on the Moon) thrown dust keeps going and arcs slowly back down.
+  const drag = Math.exp(-1.6 * AIR * dt), fall = (AIR ? 6.5 : 28) * GRAV;
   for (let i = 0; i < SPRAY_N; i++) {
     if (sprayLife[i] <= 0) continue;
     sprayLife[i] -= dt;
     if (sprayLife[i] <= 0) { sprayPos[i * 3 + 1] = -9999; sprayAlpha[i] = 0; continue; }
     // Powder hangs in the air: air drag slows it, and gravity pulls it down gently.
     sprayVel[i * 3] *= drag; sprayVel[i * 3 + 2] *= drag;
-    sprayVel[i * 3 + 1] = sprayVel[i * 3 + 1] * drag - 6.5 * dt;
+    sprayVel[i * 3 + 1] = sprayVel[i * 3 + 1] * drag - fall * dt;
     sprayPos[i * 3] += sprayVel[i * 3] * dt;
     sprayPos[i * 3 + 1] += sprayVel[i * 3 + 1] * dt;
     sprayPos[i * 3 + 2] += sprayVel[i * 3 + 2] * dt;
@@ -3953,7 +4202,7 @@ function groundStep(r, h, inp) {
   vs *= keep;
   if (r.crashT <= 0) vf += Math.sign(vf || 1) * lost * (brake ? 0.1 : ice ? 0.3 : 0.55);
 
-  const kAir = tuck ? 0.0045 : 0.0085;
+  const kAir = (tuck ? 0.0045 : 0.0085) * AIR;
   vf -= ((ice ? 0.008 : 0.03) * vf + kAir * vf * Math.abs(vf)) * h;
   if (brake) vf *= Math.exp(-(ice ? 0.3 : 1.2) * h);
   if (r.crashT > 0) vf *= Math.exp(-1.8 * h);
@@ -3995,7 +4244,7 @@ function groundStep(r, h, inp) {
 function airStep(r, h, inp) {
   const yPrev = r.y;
   r.vy -= G_AIR * h;
-  const drag = Math.exp(-0.05 * h);
+  const drag = Math.exp(-0.05 * AIR * h);
   r.vx *= drag; r.vz *= drag;
   const nx = r.x + r.vx * h, nz = r.z + r.vz * h;
   // Flying into a face well above your feet is a wall, not a landing.
