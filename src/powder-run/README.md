@@ -14,7 +14,7 @@ The menus are full-screen, with big chrome lettering over the course. Behind the
 
 ## Courses
 
-Pick a course when you start a single-player race or host a lobby. Picking one builds it straight away behind the menu, and the game remembers your choice. There are eight, all the same length (4.2 km), and every course has its own bends, kicker layout, obstacles and scenery. No stretch of a course repeats another: the hand-built courses are built stretch by stretch, and on the rest the kickers and features are laid out at random from the course's seed, so they're the same every time you ride it but never repeat down the hill.
+Pick a course when you start a single-player race or host a lobby. Picking one builds it straight away behind the menu, and the game remembers your choice. There are nine, all the same length (4.2 km), and every course has its own bends, kicker layout, obstacles and scenery. No stretch of a course repeats another: the hand-built courses are built stretch by stretch, and on the rest the kickers and features are laid out at random from the course's seed, so they're the same every time you ride it but never repeat down the hill.
 
 | Course | What it's like |
 | ------ | -------------- |
@@ -26,6 +26,7 @@ Pick a course when you start a single-player race or host a lobby. Picking one b
 | **Lava Rush** | No snow at all: you surf a river of molten lava down a black basalt valley, with an erupting volcano ahead and a giant ledge near the end. See below. |
 | **Everest** | Straight down the side of the world's highest mountain: one long, relentlessly steep face high above the clouds. See below. |
 | **Sea of Tranquility** | Snowboarding the Moon, at a sixth of the gravity. See below. |
+| **Summit Highway** | A snowed-in highway over a mountain pass, with tunnels, medians, slip roads and road works. See below. |
 
 ### Frozen Gorge
 
@@ -66,6 +67,17 @@ Snowboarding the side of Everest. The whole course is one long, steep face, abou
 ### Sea of Tranquility
 
 Snowboarding the Moon. Gravity is a sixth of the usual, so you float: a plain ollie keeps you in the air for three seconds or more, kickers and crater rims throw you sky-high, and there's time for big spins and flips. There's no air either, so nothing slows you down but the ground: you keep building speed down the hill, and the dust your board throws up flies off and arcs slowly back down. The run is grey regolith pocked with craters. Small ones mark the ground everywhere, and bigger ones sit on the run itself, a raised rim round a bowl, so ride over a rim at speed and it launches you. There's no snow, no wind and no weather, just a black sky full of stars with Earth hanging in it, slowly turning. A gold lunar lander stands beside the start with the American flag planted next to it, Apollo-style on a pole with a crossbar along the top, and an Apollo-style lunar rover with gold fenders, two seats and an umbrella-like antenna dish is parked just down the hill. Two astronauts wave you off. Its par time is 190 seconds. Keep an eye out partway down: one little green alien stands beside the run in front of its flying saucer, waving at you as you go past.
+
+### Summit Highway
+
+Snowboarding a divided highway over a mountain pass after the snow plows gave up. Three lanes run each way, snowed over, with slushy wheel ruts down each lane and the lane lines showing through in places. The road is smoother than a ski run, the banks are plowed snow and rock cuttings lined with pines, and snow poles mark the shoulders. Signs line the road (speed limits, chain-up areas, falling rock), cars sit buried in snow on the shoulders, and the pass's peaks rise all around. A light snow falls. It's built by hand in three different stretches, with plowed snow piles out in the lanes to jump. Along the way:
+
+- **Twin-bore tunnels**: three of them, one per stretch, each with a bore for each carriageway, lit inside, under a mountain with a concrete portal and the tunnel's name over each end. You can't jump through the roof.
+- **Medians**: a concrete barrier down the middle (clear it with a jump or hit it) or a snow bank with reflector posts that you can ride over.
+- **Slip roads** that split off from the highway behind a guardrail, climb onto an embankment or dip into a cutting, then come back down and join the highway again. Take one or stay on.
+- **Road works**: lanes closed off by a line of cones, tapering in and out, with a truck parked inside flashing its arrow board. The trucks are solid, but the **cones** aren't: ride into one and it goes flying, tumbling and bouncing down the road, without slowing you down. Near the top of the last stretch, cones that have been knocked all over the road.
+- **Overpasses** carrying side roads over the highway, on piers at the shoulders and in the middle, and **sign gantries** over the lanes pointing to the exits.
+- **A snow shed**: a concrete roof over the road against the cliffs, open on the valley side between pillars.
 
 ### Terrain features
 
@@ -140,6 +152,7 @@ The music is real songs, played from the artists' official YouTube videos so the
 | **Lava Rush** | The Prodigy – Firestarter | [youtube.com/watch?v=wmin5WkOuPw](https://www.youtube.com/watch?v=wmin5WkOuPw) |
 | **Everest** | CAKE – The Distance | [youtube.com/watch?v=F_HoMkkRHv8](https://www.youtube.com/watch?v=F_HoMkkRHv8) |
 | **Sea of Tranquility** | Kid Cudi – Man On The Moon (The Anthem) | [youtube.com/watch?v=CCPbYJvtywI](https://www.youtube.com/watch?v=CCPbYJvtywI) |
+| **Summit Highway** | Fleetwood Mac – Gypsy | [youtube.com/watch?v=mwgg1Pu6cNg](https://www.youtube.com/watch?v=mwgg1Pu6cNg) |
 
 If a place has no song, it's silent apart from the sound effects.
 
@@ -243,7 +256,7 @@ A grind scores 150 plus 250 a second (up to four seconds), times the trick's mul
 | Ground tricks      | See [Tricks](#tricks)                     |
 | Rail and box tricks | See [Tricks](#tricks)                    |
 | Taking off switch  | ×1.25                                     |
-| Time bonus         | 50 per second under par: 70 seconds, 210 on Frozen Gorge, Glacier Bowl and Lava Rush, 190 on Sea of Tranquility, or 80 on Everest |
+| Time bonus         | 50 per second under par: 210 seconds, 190 on Sea of Tranquility, or 120 on Everest |
 
 ## Controls
 
