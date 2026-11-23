@@ -3137,10 +3137,12 @@ function fShed(z0, len, side) {
   };
 }
 
-// A bridge carrying a side road over the highway, on piers at the shoulders and in the middle.
+// A bridge carrying a side road over the highway, on piers at the shoulders and
+// in the middle. Its deck is solid: fly high enough to land on it and you ride
+// across it (it's snow, not ice), and fly into its side and you hit it.
 function fOverpass(z, name) {
-  const D = 10, CLEAR = 6;
-  ceilings.push({ z0: z - 0.5, z1: z + D + 0.5, u0: -HALF_W - 6, u1: HALF_W + 6, clear: CLEAR });
+  const D = 10, CLEAR = 6, TOP = CLEAR + 3.22, W = HALF_W + 6;
+  ceilings.push({ z0: z, z1: z + D, u0: -W, u1: W, clear: CLEAR, top: TOP, uc: 0, r0: -W, r1: W, grip: true, face: true });
   for (const u of [-HALF_W - 1.2, 0, HALF_W + 1.2]) {
     for (const dz of [2, D - 2]) {
       const x = center(z + dz) + u;
@@ -3149,20 +3151,29 @@ function fOverpass(z, name) {
   }
   return () => {
     const zc = z + D / 2, x = center(zc), y = terrainH(x, zc), yaw = Math.atan(centerSlope(zc));
+    const floor = (zz) => terrainH(center(zz), zz); // the deck follows the road's slope, as the roof does
     const g = new THREE.Group();
     g.position.set(x, y, zc); g.rotation.y = yaw;
     levelGroup.add(g);
-    const add = (geo, mat, px, py, pz) => { const m = new THREE.Mesh(geo, mat); m.position.set(px, py, pz); m.castShadow = m.receiveShadow = true; g.add(m); return m; };
-    const conc = concreteMat(), W = HALF_W * 2 + 60;
-    add(new THREE.BoxGeometry(W, 1.3, D), conc, 0, CLEAR + 2.35, 0);
-    add(new THREE.BoxGeometry(W, 0.25, D), new THREE.MeshStandardMaterial({ color: 0xf2f6fb, roughness: 0.9 }), 0, CLEAR + 3.1, 0);
-    for (const s of [-1, 1]) add(new THREE.BoxGeometry(W, 0.9, 0.3), conc, 0, CLEAR + 3.4, s * (D / 2 - 0.15));
-    for (const u of [-HALF_W - 1.2, 0, HALF_W + 1.2]) {
-      for (const dz of [2, D - 2]) add(new THREE.BoxGeometry(u ? 1.6 : 1.1, CLEAR + 2, 1.1), conc, u, (CLEAR + 1.7) / 2, dz - D / 2);
-    }
+    const deck = new THREE.Group();
+    deck.rotation.x = Math.atan2(floor(z) - floor(z + D), D);
+    g.add(deck);
+    const add = (geo, mat, px, py, pz, to = g) => { const m = new THREE.Mesh(geo, mat); m.position.set(px, py, pz); m.castShadow = m.receiveShadow = true; to.add(m); return m; };
+    const conc = concreteMat(), WD = HALF_W * 2 + 60;
+    add(new THREE.BoxGeometry(WD, 1.3, D), conc, 0, CLEAR + 2.35, 0, deck);
+    add(new THREE.BoxGeometry(WD, 0.25, D), new THREE.MeshStandardMaterial({ color: 0xf2f6fb, roughness: 0.9 }), 0, CLEAR + 3.1, 0, deck);
+    // Low curbs along its edges, so you can ride off either side.
+    for (const s of [-1, 1]) add(new THREE.BoxGeometry(WD, 0.3, 0.3), conc, 0, CLEAR + 3.35, s * (D / 2 - 0.15), deck);
     const sign = new THREE.Mesh(new THREE.PlaneGeometry(9, 1.1), signMat([name], { w: 1024, h: 128 }));
     sign.position.set(0, CLEAR + 2.3, -D / 2 - 0.02); sign.rotation.y = Math.PI;
-    g.add(sign);
+    deck.add(sign);
+    // Upright piers, each reaching up into the sloping deck above it.
+    for (const u of [-HALF_W - 1.2, 0, HALF_W + 1.2]) {
+      for (const dz of [2, D - 2]) {
+        const up = floor(z + dz) - y;
+        add(new THREE.BoxGeometry(u ? 1.6 : 1.1, CLEAR + 2.6, 1.1), conc, u, up + (CLEAR + 1.6) / 2, dz - D / 2);
+      }
+    }
   };
 }
 
@@ -5312,7 +5323,7 @@ function groundStep(r, h, inp) {
   // Edges bite: sideways speed bleeds off, and most of it is redirected forward
   // when carving. On ice they hardly bite, so you turn but keep sliding the way
   // you were going, and braking does little.
-  const ice = !!r.roof;
+  const ice = !!r.roof && !r.roof.grip;
   const grip = r.crashT > 0 ? 1.5 : ice ? (brake ? 0.9 : 0.5) : brake ? 3 : 7;
   const keep = Math.exp(-grip * h);
   const lost = Math.abs(vs) * (1 - keep);
@@ -5359,7 +5370,7 @@ function groundStep(r, h, inp) {
 }
 
 function airStep(r, h, inp) {
-  const yPrev = r.y;
+  const yPrev = r.y, zPrev = r.z;
   r.vy -= G_AIR * h;
   const drag = Math.exp(-0.05 * AIR * h);
   r.vx *= drag; r.vz *= drag;
@@ -5376,6 +5387,16 @@ function airStep(r, h, inp) {
     if (u < c.u0 || u > c.u1) continue;
     const top = terrainH(r.x, r.z) + c.clear;
     if (yPrev <= top + 0.05 && r.y > top) { r.y = top; r.vy = Math.min(r.vy, 0); }
+    // A bridge deck has sides too: flying into it between its underside and its
+    // top is hitting it. Just short of the top, you get up onto it.
+    else if (c.face && (zPrev < c.z0 || zPrev > c.z1) && r.y > top && r.y < roofTop(c, r.z) - 0.6) {
+      if (r.y > roofTop(c, r.z) - 1.4) { r.y = roofTop(c, r.z); r.vy = Math.max(r.vy, 0); }
+      else {
+        r.z = zPrev < c.z0 ? c.z0 - 0.05 : c.z1 + 0.05;
+        r.vz = -r.vz * 0.2;
+        if (!r.finished) crash(r, "Hit the bridge!");
+      }
+    }
   }
   if (canControl(r)) {
     // Leaving the ground off a bump or drop without an ollie, a tuck or brake you

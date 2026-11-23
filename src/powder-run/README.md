@@ -76,7 +76,7 @@ Snowboarding a divided highway over a mountain pass after the snow plows gave up
 - **Medians**: a concrete barrier down the middle (clear it with a jump or hit it) or a snow bank with reflector posts that you can ride over.
 - **Slip roads** that split off from the highway behind a guardrail, climb onto an embankment or dip into a cutting, then come back down and join the highway again. Take one or stay on.
 - **Road works**: lanes closed off by a line of cones, tapering in and out, with a truck parked inside flashing its arrow board. The trucks are solid, but the **cones** aren't: ride into one and it goes flying, tumbling and bouncing down the road, without slowing you down. Near the top of the last stretch, cones that have been knocked all over the road.
-- **Overpasses** carrying side roads over the highway, on piers at the shoulders and in the middle, and **sign gantries** over the lanes pointing to the exits.
+- **Overpasses** carrying side roads over the highway, on piers at the shoulders and in the middle. Their decks are solid: jump high enough and you can land on one and ride across it, but fly into the side of it and you wipe out. There are also **sign gantries** over the lanes pointing to the exits.
 - **A snow shed**: a concrete roof over the road against the cliffs, open on the valley side between pillars.
 
 ### Terrain features
