@@ -80,6 +80,7 @@ Between the built kickers, every course has natural and built terrain to ride an
 | **Rooftop jumps** | A building half-buried in snow: ride the snow ramp up onto the roof and jump off the far end. The walls are solid, so don't ride into the side. | A ski patrol hut on Snowy Peak, a parked bus in the city, a log cabin in the valley |
 | **Rock kickers** | A snowdrift banked against rocks: a natural kicker with no built lip. The boulders either side are solid. | Snowy Peak, Lakeside Valley, Lava Rush, Everest |
 | **Tree islands** | A raised island of trees down the middle that splits the run into two lines, with moguls on one side and logs or barriers on the other. | All courses (trees in planters in the city) |
+| **Rails and boxes** | A metal rail or a box with a yellow top, set off to one side of the run with a snow ramp up to it. Ride up the ramp or drop on from the air to grind it (see [Tricks](#tricks)). | All courses |
 | **Craters** | A raised rim round a bowl. Ride over the rim at speed and it throws you into the air; drop into the bowl and you ride out the far side. | Sea of Tranquility |
 | **Forks** | A long ridge rises out of the middle of the run and splits it in two, with the banks pushed out so each route is close to full width. The routes ride differently, then join up again before the finish. The ridge is steep, and the trees or boulders along its top are solid. | Lakeside Valley (a forested ridge: a jump line on one side, moguls and logs on the other), Frozen Gorge and Glacier Bowl (see above) |
 
@@ -92,9 +93,10 @@ Any of them can give you air. Pop an ollie at the top of a bump for more height.
 - Tuck to go faster. Brake to skid and turn more sharply.
 - Each kicker has a bright lip (orange on most courses, neon pink in the city). Hold jump on the approach to charge an ollie and release it at the lip to get more air. You can also release just after leaving the lip.
 - A quick tap of jump is a lunge instead: a push forward that gets you moving again if you stall on a rise. It gives you most when you are slow and only a nudge at speed. Only holding jump makes you leave the ground, so a stray tap never throws you into the air.
-- In the air, steer to spin, hold tuck to front flip or brake to back flip, and hold grab to grab the board. Hold tuck or brake as you start a grab for a Tail or Nose grab.
-- Spins and flips combine, so you can throw a backflip with a 360 in it.
-- Each part of a trick is added to a list below your rider the moment you complete it in the air: every half turn of spin (180, 360, 540...), every full flip, and a grab once you've held it long enough. Above the list is what the trick is worth if you land it now, so you can see what you stand to lose. Land it and the list turns green with your points; wipe out and it turns red and is struck out.
+- In the air, steer to spin, hold tuck to front flip or brake to back flip, and hold grab to grab the board. Which grab you do depends on the direction you hold as you start it, and on holding jump as well (see [Tricks](#tricks)).
+- Spins and flips combine into off-axis inverts with their own names: a backflip with a backside spin is a Cork, with a frontside spin a Rodeo, and so on.
+- On the ground, hold grab with ↑ or ↓ to press the nose or tail into the snow, and steer while pressing to butter the board round. Hold grab while carving to drag a hand in the snow.
+- Your trick builds up in a list as you complete each part in the air. It starts in the middle under your rider, and as soon as a second part comes in it slides off to the right, just far enough to clear your rider. It keeps one line for each kind of trick, counting up in place: the spin line goes 180, 360, 540..., the flip line goes Backflip, Double Backflip..., and a grab line appears once you've held a grab long enough. The line that just changed is highlighted. Above the list is what the trick is worth if you land it now, so you can see what you stand to lose. Land it and the list turns green with your points; wipe out and it turns red and is struck out.
 - Let go of the grab and line your board up with the direction you're travelling before you touch down. Landing sideways, upside down, part way through a flip or while still grabbing is a wipeout. Landing backwards counts, and you ride switch until your next trick.
 - When you wipe out you go limp: your body becomes a ragdoll that tumbles and slides down the hill with the speed you had, bouncing off trees, posts, walls and the nets and knocking the snow off whatever it hits. Your board comes off and slides away on its own. After a couple of seconds you get up, back on your board, wherever your body came to rest.
 
@@ -168,15 +170,78 @@ How it works:
 - Some strict networks (some workplaces and mobile carriers) block direct connections. Those players see "Couldn't connect to the lobby" after 15 seconds. Fixing that would need a relay (TURN) server.
 - A browser tab in the background slows or pauses its own game, so keep the game tab in front while racing.
 
+## Tricks
+
+Every trick from the usual list of snowboard trick names that fits a ride down a hill is in, including the rail and box tricks, except a handful that need something the game doesn't have: one-footed tricks, handplants, a stationary tail block and lip slides on a half-pipe's edge. Harder tricks are worth more.
+
+**Grabs.** Hold a direction as you press grab to pick the grab, and hold jump too for the two-handed and harder ones. Hold some for a second and they turn into their tweaked version. The multiplier is the grab's difficulty, which scales its points.
+
+| Hold | Grab | Held 1 s | With jump | With jump, held 1 s |
+| ---- | ---- | -------- | --------- | ------------------- |
+| nothing | Indy Grab ×1 | Tindy ×0.85 | Truck Driver ×1.4 | |
+| ↑ | Tail Grab ×1 | Tailfish ×0.85 | Cannonball ×1.3 | |
+| ↓ | Nose Grab ×1 | | Rocket Air ×1.4 | Cross Rocket ×1.7 |
+| ← | Method ×1.3 | | Double Stiffy ×1.6 | |
+| → | Mute Grab ×1 | Slob ×1.4 | Japan ×1.5 | |
+| ↑ ← | Stalefish ×1.3 | | Canadian Bacon ×1.6 | |
+| ↑ → | Roastbeef ×1.5 | | Nuclear ×1.6 | |
+| ↓ ← | Crail ×1.3 | | Seatbelt ×1.4 | |
+| ↓ → | Melon ×1.1 | | Chicken Salad ×1.6 | |
+
+Tindy and Tailfish are the sloppy versions of an Indy and a Tail grab, so they're worth a little less.
+
+**Spins** are named by direction and degrees, Frontside or Backside 180 up to 2160. Taken off switch, a frontside spin is a Cab (a Half Cab for a 180) and a backside one a Switch Backside. Off a half-pipe wall, spinning back toward the wall you left is an Alley-oop (×1.2).
+
+**Flips** are Frontflips and Backflips, doubled, tripled and beyond. A single frontflip popped off the nose (hold ↑ as you pop) is a Tamedog, and a single backflip popped off the tail (hold ↓) is a Wildcat (both ×1.2).
+
+**Inverts.** A flip and a spin together make an off-axis invert, named for which way each goes and scored higher for being harder:
+
+| Flip | Spin | Trick | Multiplier |
+| ---- | ---- | ----- | ---------- |
+| Back | Frontside | Rodeo (a Rodeo 540 with one flip is a McTwist, ×1.4) | ×1.15 |
+| Back | Backside | Cork (Double Cork 1080, Quad Cork 1980...) | ×1.2 |
+| Front | Backside | Misty | ×1.25 |
+| Front | Frontside | Underflip (a single one with a 360 is a Miller Flip, ×1.3) | ×1.35 |
+
+**Other air tricks.** Twist the board crosswise and back again before you land for a Shifty. A plain ollie earns a little, and a Nollie (popped off the nose) a bit more; switch, it's a Switch Ollie. A long jump with no tricks is Big Air.
+
+**Ground tricks**, all holding grab:
+
+| Trick | How | Points |
+| ----- | --- | ------ |
+| Nose Press / Tail Press | Grab with ↑ / ↓, held at least 0.6 s | 150 plus up to 300 for holding it |
+| Tripod | A tail press held for 2 s | 500 |
+| Nose Roll / Tail Roll | Butter half way round on the nose / tail (steer while pressing); you ride away switch | 450 |
+| Butter 360, 540... | Butter a whole turn or more | 300 plus 250 per half turn |
+| Hand Drag | Grab while carving, at least 0.5 s | 100 plus up to 300 |
+
+**Rail and box tricks.** Every course has a few rails and boxes, set off to one side of the run with a little snow ramp leading up to each. Ride up the ramp lined up with it, or drop onto it from the air, and you lock on and grind: you slide down it, picking up speed, and can't steer off. Ride off the end or pop off with jump. Land on one sideways and you're straight into a boardslide or lipslide. What you hold while you grind picks the trick, and the one you hold longest is what you're scored for:
+
+| Hold | Trick | Multiplier |
+| ---- | ----- | ---------- |
+| nothing | 50-50 | ×1 |
+| ↑ | Nose Press | ×1.3 |
+| ↓ | Tail Press | ×1.25 |
+| ← | Boardslide | ×1.4 |
+| → | Lipslide | ×1.5 |
+| ↓ and ← or → | Bluntslide | ×1.8 |
+
+A grind scores 150 plus 250 a second (up to four seconds), times the trick's multiplier, and rails are worth ×1.2 more than boxes. Just tap a rail with the nose (↑) or tail (↓) and pop straight off for a Nose Bonk (250) or Tail Bonk (200).
+
 ## Scoring
 
 | Trick              | Points                                    |
 | ------------------ | ----------------------------------------- |
-| Spin               | 100 for a 180, 250 for a 360, then more for each extra half turn |
-| Grab               | 100 plus up to 600 for holding it longer  |
+| Spin               | 100 for a 180, 250 for a 360, then more for each extra half turn, up to 5,300 for a 2160 |
+| Invert             | The spin and flip points times the invert's multiplier (see [Tricks](#tricks)) |
+| Grab               | 100 plus up to 600 for holding it longer, times the grab's difficulty |
+| Shifty             | 150                                       |
+| Ollie / Nollie     | 50 / 75, only when it's the whole trick   |
 | Air time           | 60 per second of air                      |
-| Flip               | 600 for one, 1500 for a double, 2800 for a triple, 4500 for a quad |
-| Combo              | ×1.5 for two of flip, spin and grab; ×2 for all three |
+| Flip               | 600 for one, 1500 for a double, 2800 for a triple, 4500 for a quad, then 6500 and 9000 |
+| Combo              | ×1.5 for two of flip, spin, grab and shifty; ×2 for three or more |
+| Ground tricks      | See [Tricks](#tricks)                     |
+| Rail and box tricks | See [Tricks](#tricks)                    |
 | Taking off switch  | ×1.25                                     |
 | Time bonus         | 50 per second under par: 70 seconds, 210 on Frozen Gorge, Glacier Bowl and Lava Rush, 190 on Sea of Tranquility, or 80 on Everest |
 
@@ -189,7 +254,10 @@ How it works:
 | Brake / back flip in air | `↓` or `S`                     | BRAKE       |
 | Tap to lunge forward     | `Space` or `K`                 | JUMP        |
 | Hold & release to jump   | `Space` or `K`                 | JUMP        |
-| Grab                     | `J`, `X` or `Shift`            | GRAB        |
+| Grab (hold a direction to pick which; add jump for two-handed) | `J`, `X` or `Shift` | GRAB |
+| Nose / tail press, butter (on the ground) | Grab + `↑` / `↓`, then steer | GRAB + TUCK / BRAKE |
+| Hand drag (on the ground) | Grab while carving        | GRAB + ◀ ▶ |
+| On a rail or box: press / boardslide / lipslide / bluntslide | `↑` `↓` / `←` / `→` / `↓` with `←` or `→` | TUCK BRAKE / ◀ / ▶ / BRAKE with ◀ or ▶ |
 | Start / ride again       | `Enter`                        | Start button |
 | Restart (host only in a lobby) | `R`                      | Restart button |
 | Toggle sound             | `M`                            | Sound button |

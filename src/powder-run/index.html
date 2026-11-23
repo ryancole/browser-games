@@ -99,27 +99,36 @@
     color: #fff; text-shadow: 0 2px 10px rgba(0, 0, 0, 0.55);
     opacity: 0; transition: opacity 0.25s; pointer-events: none;
   }
-  /* The trick you're throwing: every part you've completed on this jump, newest
-     at the bottom, under the points you'd get for landing it now. */
+  /* The trick you're throwing: the points you'd get for landing it now, over
+     one line per kind of trick (switch, flip, spin, grab), each counting up in
+     place, with the line that just changed highlighted. It starts in the middle
+     under your rider, then once a second callout comes in it slides off to the
+     right, just far enough to clear your rider. */
   #air {
-    left: 0; right: 0; bottom: 17%;
+    left: 50%; bottom: 17%;
     flex-direction: column; align-items: center;
-    opacity: 0; transition: opacity 0.3s;
+    opacity: 0; transform: translateX(-50%);
+    transition: opacity 0.3s, transform 0.45s cubic-bezier(0.2, 0.8, 0.3, 1), bottom 0.45s cubic-bezier(0.2, 0.8, 0.3, 1);
   }
   body.racing #air { display: flex; }
   #air.show { opacity: 1; }
+  #air.side { transform: translateX(clamp(3.5rem, 8vw, 7rem)); bottom: 34%; align-items: flex-start; }
   #air .band {
     clip-path: none; padding: 0.05rem 2.2rem 0.1rem;
     background: linear-gradient(90deg, rgba(18, 22, 32, 0) 0%, rgba(18, 22, 32, 0.65) 22%, rgba(18, 22, 32, 0.65) 78%, rgba(18, 22, 32, 0) 100%);
   }
-  #air ol { list-style: none; margin: 0.3rem 0 0; padding: 0; display: flex; flex-direction: column; align-items: center; }
+  #air.side .band { padding-left: 0.6rem; background: linear-gradient(90deg, rgba(18, 22, 32, 0.65) 0%, rgba(18, 22, 32, 0.65) 70%, rgba(18, 22, 32, 0) 100%); }
+  #air .band .val { font-size: clamp(1.1rem, 3vw, 1.6rem); }
+  #air ol { list-style: none; margin: 0.25rem 0 0; padding: 0; display: flex; flex-direction: column; align-items: center; }
+  #air.side ol { align-items: flex-start; margin-left: 0.6rem; }
   #air li {
-    font-weight: 900; font-size: clamp(0.95rem, 2.6vw, 1.45rem); line-height: 1.15;
+    font-weight: 900; font-size: clamp(0.8rem, 2vw, 1.15rem); line-height: 1.2;
     letter-spacing: 0.06em; text-transform: uppercase; color: #f4f6fa; opacity: 0.85;
     text-shadow: 2px 2px 0 #1a1d26, -1px -1px 0 #1a1d26, 1px -1px 0 #1a1d26, -1px 1px 0 #1a1d26;
+    transform-origin: left center;
   }
-  #air li:last-child { color: #ffd84f; opacity: 1; animation: air-pop 0.25s ease-out; }
-  @keyframes air-pop { from { transform: scale(1.4); } }
+  #air li.latest { color: #ffd84f; opacity: 1; animation: air-pop 0.25s ease-out; }
+  @keyframes air-pop { from { transform: scale(1.3); } }
   #air.landed .val, #air.landed li { color: #7fe0a8; }
   #air.lost .val, #air.lost li { color: #ff6b6b; text-decoration: line-through; }
   #popup .pts { display: block; font-size: 0.75em; color: #ffd84f; }
@@ -460,9 +469,9 @@ let G_GROUND = 22;         // gravity used for sliding along the slope
 let G_AIR = 28;            // gravity in the air (a little floaty-but-snappy)
 const TURN_RATE = 2.0;     // rad/s carve rate
 const SPIN_RATE = 6.8;     // rad/s spin rate in the air
-const SPIN_POINTS = [0, 100, 250, 450, 700, 1000, 1400, 1800];
+const SPIN_POINTS = [0, 100, 250, 450, 700, 1000, 1400, 1800, 2300, 2900, 3600, 4400, 5300];
 const FLIP_RATE = 6.0;     // rad/s flip rate in the air
-const FLIP_POINTS = [0, 600, 1500, 2800, 4500];
+const FLIP_POINTS = [0, 600, 1500, 2800, 4500, 6500, 9000];
 const FLIP_LAND_TOL = 0.95; // rad of leftover flip rotation you can still ride away from
 const FLIP_NOSE_TOL = 1.35; // ...or tipped forward, when you weren't going for a flip
 const FLIP_EASE0 = 0.25;    // s: a tuck or brake held since before an ollie doesn't flip you
@@ -1345,6 +1354,195 @@ function fFork(z0, len, { w, widen = 0, H = 6, pines = false, rocks = false }, r
   return { mid, visual };
 }
 
+// Rails and boxes: a few on every course, set off to one side of the run with a
+// little snow ramp leading up onto each, so you can take them or ride past.
+// Each is a straight bar from a to b (top surface), `w` either side of which
+// your board can catch it. Ride up the ramp or drop onto one from the air,
+// lined up with it, and you lock on and grind (see railStep).
+const rails = [];
+const railSlots = []; // spots kept clear for rails on courses laid out between the kickers: where each should end
+const RAIL_RAMP = 7;
+function placeRails(rnd) {
+  let side = rnd() < 0.5 ? -1 : 1, kind = "box";
+  const put = (z0, len, u) => {
+    if (!railSpotClear(z0 - RAIL_RAMP - 6, z0 + len + 8, u)) return false;
+    addRail(kind, z0, len, u);
+    side = -side; kind = kind === "rail" ? "box" : "rail";
+    return true;
+  };
+  const size = () => (kind === "rail" ? 18 + rnd() * 6 : 14 + rnd() * 5);
+  // Courses laid out between the kickers keep spots clear for them...
+  for (const end of railSlots) {
+    const len = size();
+    put(end - len, len, side * (4 + rnd() * 4));
+  }
+  railSlots.length = 0;
+  // ...and on hand-built ones, look for open stretches every few hundred metres.
+  if (rails.length) return;
+  for (let z = 240 + rnd() * 80; z < COURSE_LEN - 160; z += 300 + rnd() * 120) {
+    for (let tries = 0; tries < 10; tries++, z += 20) {
+      const len = size();
+      if (put(z, len, side * (4 + rnd() * 4))) break;
+    }
+  }
+}
+// Not on a kicker's ramp (landing on a rail off a kicker is fine), nowhere near
+// forks, caves, half-pipes or other features, and nothing solid along the line.
+function railSpotClear(za, zb, u) {
+  if (za < 40 || zb > COURSE_LEN - 40) return false;
+  if (kickers.some((k) => za < k.z + 8 && zb > k.z - k.len - 3)) return false;
+  if (forks.some((f) => za < f.z1 && zb > f.z0) || ceilings.some((c) => za < c.z1 && zb > c.z0) || pipes.some((q) => za < q.z1 && zb > q.z0)) return false;
+  for (let z = za; z <= zb; z += 2) {
+    for (const du of [-3, 0, 3]) if (Math.abs(featureH(center(z) + u + du, z)) > 0.05) return false;
+  }
+  for (let k = Math.floor(za / BUCKET); k <= Math.floor(zb / BUCKET); k++) {
+    for (const o of obstacles.get(k) || []) if (Math.abs(o.x - center(o.z) - u) < 5) return false;
+  }
+  return true;
+}
+function addRail(kind, z0, len, u) {
+  const isRail = kind === "rail", H = isRail ? 0.9 : 0.6, w = isRail ? 0.45 : 0.75, z1 = z0 + len;
+  const ax = center(z0) + u, bx = center(z1) + u;
+  const a = new THREE.Vector3(ax, terrainH(ax, z0) + H, z0), b = new THREE.Vector3(bx, terrainH(bx, z1) + H, z1);
+  const dir = b.clone().sub(a), L = dir.length();
+  dir.divideScalar(L);
+  const R = { kind, a, b, dir, len: L, w, z0, z1 };
+  rails.push(R);
+  // The ramp up to it: rises over RAIL_RAMP metres to the top of the rail.
+  const rw = w + 0.5;
+  features.push({
+    z0: z0 - RAIL_RAMP, z1: z0 + 0.5,
+    h: (uu, zz) => {
+      const lat = band(uu, u - rw, u + rw, 0.6);
+      if (!lat) return 0;
+      return lat * (zz <= z0 ? H * smooth(Math.max(0, (zz - (z0 - RAIL_RAMP)) / RAIL_RAMP)) : H * (1 - (zz - z0) / 0.5));
+    },
+  });
+  // The rail or box itself, and the posts it stands on.
+  const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir);
+  const mid = a.clone().add(b).multiplyScalar(0.5);
+  const add = (geo, mat, pos) => { const m = new THREE.Mesh(geo, mat); m.position.copy(pos); m.quaternion.copy(q); m.castShadow = true; levelGroup.add(m); return m; };
+  const dark = new THREE.MeshStandardMaterial({ color: 0x2a2d34, roughness: 0.7, flatShading: true });
+  if (isRail) {
+    add(new THREE.CylinderGeometry(0.07, 0.07, L, 10).rotateX(Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0xe4e8ee, emissive: 0x30343c, metalness: 0.25, roughness: 0.35 }), mid);
+    for (let t = 0; t <= 1.001; t += 1 / Math.max(2, Math.round(L / 5))) {
+      const pt = a.clone().lerp(b, t), gy = terrainH(pt.x, pt.z), hgt = pt.y - gy + 0.3;
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, hgt, 6), dark);
+      post.position.set(pt.x, gy - 0.3 + hgt / 2, pt.z);
+      levelGroup.add(post);
+    }
+  } else {
+    add(new THREE.BoxGeometry(w * 1.6, 0.08, L), new THREE.MeshStandardMaterial({ color: 0xf2c12e, roughness: 0.5 }), mid);
+    const body = add(new THREE.BoxGeometry(w * 1.5, H + 0.6, L), dark, mid.clone().add(new THREE.Vector3(0, -(H + 0.6) / 2 - 0.04, 0)));
+    body.receiveShadow = true;
+  }
+  return R;
+}
+
+// The rail under a rider at (x, y, z), if they're on it and lined up with it:
+// { R, s } with s how far along it. `slack` is how far above the top their
+// feet can be and still catch it.
+function railUnder(r, slack) {
+  for (const R of rails) {
+    if (r.z < R.z0 - 1 || r.z > R.z1 + 1) continue;
+    const ox = r.x - R.a.x, oy = r.y - R.a.y, oz = r.z - R.a.z;
+    const s = ox * R.dir.x + oy * R.dir.y + oz * R.dir.z;
+    if (s < 0 || s > R.len - 1) continue;
+    const cx = R.a.x + R.dir.x * s, cy = R.a.y + R.dir.y * s, cz = R.a.z + R.dir.z * s;
+    if (Math.hypot(r.x - cx, r.z - cz) > R.w) continue;
+    if (r.y < cy - 0.35 || r.y > cy + slack) continue;
+    const sp = Math.hypot(r.vx, r.vz), along = (r.vx * R.dir.x + r.vz * R.dir.z) / Math.hypot(R.dir.x, R.dir.z);
+    if (sp < 2 || along < 0.7 * sp) continue;
+    return { R, s, y: cy };
+  }
+  return null;
+}
+
+// Lock on to a rail: from the ground (riding up its ramp) or landing on it from
+// the air, which is judged like any landing, except that landing sideways on it
+// is a boardslide or lipslide rather than a wipeout.
+function lockRail(r, hit) {
+  const R = hit.R;
+  const yaw = Math.atan2(R.dir.x, R.dir.z);
+  let slide = null;
+  if (!r.grounded) {
+    const flipLeft = wrapAngle(r.flip);
+    if (Math.abs(flipLeft) > FLIP_LAND_TOL) return crash(r, "Missed the rail!");
+    if (r.grabbing && r.airTime > 0.3) return crash(r, "Still grabbing!");
+    const rel = wrapAngle(r.heading + (r.sw ? Math.PI : 0) + r.spin - yaw);
+    const q = wrapAngle(rel * 2) / 2; // how far off lined up, either way round
+    if (Math.abs(Math.abs(q) - Math.PI / 2) < 0.6) slide = q > 0 ? "board" : "lip";
+    r.sw = Math.abs(rel) > Math.PI / 2 && !slide;
+    const airTime = r.airTime, spin = r.spin, flip = r.flip, grabTime = r.grabTime, grabName = r.grabName, grabD = r.grabD;
+    r.grabbing = false; r.grabName = ""; r.spin = 0; r.flip = 0;
+    if (airTime > 0.25 && r.isPlayer) sfx.land();
+    scoreTrick(r, airTime, spin, flip, grabTime, grabName, grabD);
+  }
+  if (r.press) endPress(r, true);
+  r.grounded = true; r.roof = null; r.charge = 0;
+  r.heading = yaw;
+  const v = Math.max(3, r.vx * R.dir.x + r.vz * R.dir.z + r.vy * R.dir.y);
+  r.rail = { R, s: hit.s, v, t: 0, modes: {}, slide };
+}
+
+// Grinding: you slide down the rail, speeding up with the slope, and can't
+// steer off it. What you hold picks the grind (see grindMode). Ride off the end
+// or pop off with jump, and it's scored.
+const GRINDS = {
+  fifty: ["50-50", 1], nose: ["Nose Press", 1.3], tail: ["Tail Press", 1.25],
+  board: ["Boardslide", 1.4], lip: ["Lipslide", 1.5], blunt: ["Bluntslide", 1.8],
+};
+function grindMode(r, inp) {
+  const steer = (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
+  if (inp.brake && steer) return "blunt";
+  if (inp.tuck) return "nose";
+  if (inp.brake) return "tail";
+  if (steer < 0) return "board";
+  if (steer > 0) return "lip";
+  return r.rail.slide || "fifty";
+}
+function railStep(r, h, inp) {
+  const G = r.rail, R = G.R;
+  const mode = canControl(r) ? grindMode(r, inp) : "fifty";
+  G.mode = mode;
+  G.modes[mode] = (G.modes[mode] || 0) + h;
+  G.t += h;
+  G.v += -G_GROUND * R.dir.y * h; // downhill along the rail speeds you up
+  G.v *= Math.exp(-(R.kind === "rail" ? 0.12 : 0.25) * h);
+  G.v = Math.max(G.v, 1.5);
+  G.s += G.v * h;
+  r.x = R.a.x + R.dir.x * G.s; r.y = R.a.y + R.dir.y * G.s; r.z = R.a.z + R.dir.z * G.s;
+  r.vx = R.dir.x * G.v; r.vy = R.dir.y * G.v; r.vz = R.dir.z * G.v;
+  r.groundVy = r.vy;
+  r.slip = 0;
+  // Sideways on the rail for a slide; the press tilt is in updateRider.
+  r.spin = mode === "board" ? Math.PI / 2 : mode === "lip" ? -Math.PI / 2 : mode === "blunt" ? Math.PI / 2 : 0;
+  if (G.s >= R.len) leaveGround(r, r.y, r.vy); // off the end
+}
+function endGrind(r, score) {
+  const G = r.rail;
+  r.rail = null;
+  r.spin = 0;
+  r.railCool = 0.4;
+  if (!G || !score || !canControl(r)) return;
+  const R = G.R, popped = r.popOff;
+  let name, pts;
+  if (G.t < 0.4 && popped && (G.mode === "nose" || G.mode === "tail")) {
+    // Tapped it and popped straight off: a bonk.
+    name = G.mode === "nose" ? "Nose Bonk" : "Tail Bonk";
+    pts = G.mode === "nose" ? 250 : 200;
+  } else {
+    if (G.t < 0.3) return;
+    const mode = Object.keys(G.modes).reduce((a, b) => (G.modes[a] >= G.modes[b] ? a : b));
+    const [n, mult] = GRINDS[mode];
+    name = n;
+    pts = Math.round((150 + 250 * Math.min(G.t, 4)) * mult * (R.kind === "rail" ? 1.2 : 1));
+  }
+  if (R.kind === "box" && name !== "Nose Bonk" && name !== "Tail Bonk") name += " (box)";
+  r.trickScore += pts;
+  if (r.isPlayer) { sfx.trick(); showPopup(name, `+${pts}`, false); announceTrick([name.replace(" (box)", "")], pts, false); }
+}
+
 // A giant ledge right across the valley: the ground ends in a sheer rock face
 // D metres high, and the run carries on far below. Ride off it at speed and
 // you're in the air for seconds.
@@ -1416,6 +1614,11 @@ function placeFeatures(cfg, rnd) {
   }
   if (M) for (const g of gaps) {
     if (g[0] < M.z + 160 && g[1] > M.z - 70) { if (g[0] < M.z - 70) g[1] = M.z - 70; else g[0] = Math.max(g[0], M.z + 160); }
+  }
+  // Keep the end of a long enough gap clear for a rail or box every 300 m or so (see placeRails).
+  let lastSlot = 150;
+  for (const g of gaps) {
+    if (g[1] - g[0] > 60 && g[1] - lastSlot > 300) { railSlots.push(g[1] - 6); lastSlot = g[1]; g[1] -= 55; }
   }
   gaps.forEach(([a, b], i) => {
     if (b - a < 24) return;
@@ -1607,8 +1810,10 @@ function fCabinThrough(z, uc) {
 
 // An ice half-pipe running down the run: a flat floor between curved walls you
 // can carve up and launch off.
+const pipes = []; // half-pipes on the course, for naming alley-oops: { z0, z1, uc, flat }
 function fPipe(z0, len, uc, W = 18, wallH = 5) {
   const half = W / 2, flat = 3;
+  pipes.push({ z0, z1: z0 + len, uc, flat });
   const shape = (u) => {
     const du = Math.abs(u - uc);
     if (du <= half) { const t = Math.max(0, (du - flat) / (half - flat)); return wallH * t * t; }
@@ -2136,7 +2341,7 @@ function buildEverest(rnd) {
   const onRun = [];
   for (const [z0, u] of [[640, -7], [2250, 6]]) {
     let z = z0;
-    while (kickers.some((k) => z - k.z > -30 && z - k.z < 80)) z += 10;
+    while (kickers.some((k) => z - k.z > -30 && z - k.z < 80) || rails.some((rl) => z > rl.z0 - 20 && z < rl.z1 + 15)) z += 10;
     const x = center(z) + u, y = terrainH(x, z);
     onRun.push({ x, y, z, yaw: Math.PI + (rnd() - 0.5) * 0.8, s: 1.5 });
     addObstacle({ x, z, y, r: 1.1, h: 2.4, name: "Hit a goat!" });
@@ -2879,6 +3084,9 @@ function setLevel(id) {
   lanes.length = 0;
   ceilings.length = 0;
   forks.length = 0;
+  pipes.length = 0;
+  rails.length = 0;
+  railSlots.length = 0;
   HALF_W = level.halfW ?? 18;
   SLOPE = level.slope ?? 0.3;
   GRAV = level.gravity ?? 1;
@@ -2894,6 +3102,7 @@ function setLevel(id) {
   const frnd = mulberry32(level.seed ^ 0x5bd1e995);
   if (level.layout) runLayout(level.layout, frnd, level.terrain, level.sections);
   else placeFeatures(level.terrain, frnd);
+  placeRails(frnd);
 
   const rnd = mulberry32(level.seed);
   buildTerrain(rnd, level.ground, level.kickerColor);
@@ -3401,6 +3610,7 @@ function clearSheets() {
 // powder off the tail.
 function emitSpray(r, dt) {
   const speed = Math.hypot(r.vx, r.vz);
+  if (r.rail) { r.sheetLast = -1; return; } // no snow off a rail
   if (r.rag) {
     r.sheetLast = -1;
     // A crashed rider sprays snow from wherever their body is sliding.
@@ -3573,7 +3783,7 @@ const trailEdge = (x, z) => [x, terrainH(x, z) + 0.03, z];
 
 function updateTrail(r) {
   const speed = Math.hypot(r.vx, r.vz);
-  if (!r.grounded) { r.trail = null; return; }
+  if (!r.grounded || r.rail) { r.trail = null; return; }
   if (speed < 1) return;
   // The track is as wide as the board looks from the direction you're moving:
   // edge-on when carving, broadside when skidding or crashing.
@@ -3861,7 +4071,10 @@ function pickVoice() {
 if (speech) { pickVoice(); speech.addEventListener?.("voiceschanged", pickVoice); }
 
 // Spins are said the way riders say them.
-const SPIN_WORDS = { 180: "one-eighty", 360: "three-sixty", 540: "five-forty", 720: "seven-twenty", 900: "nine hundred", 1080: "ten-eighty", 1260: "twelve-sixty" };
+const SPIN_WORDS = {
+  180: "one-eighty", 360: "three-sixty", 540: "five-forty", 720: "seven-twenty", 900: "nine hundred", 1080: "ten-eighty",
+  1260: "twelve-sixty", 1440: "fourteen-forty", 1620: "sixteen-twenty", 1800: "eighteen hundred", 1980: "nineteen-eighty", 2160: "twenty-one sixty",
+};
 const pickOne = (list) => list[Math.floor(Math.random() * list.length)];
 
 function say(text, rate = 1.08) {
@@ -3887,7 +4100,7 @@ function announceTrick(parts, pts, calledInAir) {
 
 // In the air, each rotation is called the moment you complete it: "Backflip", "three-sixty", "seven-twenty"...
 function announceInAir(part) {
-  say(part.replace(/^(Frontside|Backside) (\d+)$/, (_, side, n) => SPIN_WORDS[n] || n), 1.2);
+  say(part.replace(/(\d{3,4})$/, (n) => SPIN_WORDS[n] || n), 1.2);
 }
 
 function announceWipeout() {
@@ -4033,7 +4246,7 @@ function resetRider(r) {
   Object.assign(r, {
     x: center(0) + r.lane, z: 0, y: 0, vx: 0, vy: 0, vz: 0,
     heading: 0, spin: 0, flip: 0, flipYaw: 0, sw: false, takeoffSw: false,
-    grounded: true, roof: null, groundVy: 0, airTime: 0, slip: 0,
+    grounded: true, roof: null, rail: null, press: null, groundVy: 0, airTime: 0, slip: 0,
     charge: 0, popped: false, jumpPrev: false, jumpT: 0, lungeCool: 0, lungeT: 0, grabbing: false, grabTime: 0, grabName: "",
     crashT: 0, crashSpin: 0, lean: 0, crouch: 0,
     trickScore: 0, finished: false, finishTime: 0, inp: NO_INPUT, net: null, netRaw: null,
@@ -4133,10 +4346,17 @@ let best = 0;
 const canControl = (r) => (state === "run" || attract) && r.crashT <= 0 && !r.finished;
 
 function leaveGround(r, y, vy) {
+  if (r.press) endPress(r, true); // popping out of a press or butter scores it
+  if (r.rail) endGrind(r, true);   // so does riding or popping off a rail
   r.grounded = false;
   r.roof = null;
   r.y = y; r.vy = vy;
   r.airTime = 0; r.spin = 0; r.flip = 0; r.grabTime = 0; r.grabbing = false; r.popped = false;
+  r.grabName = ""; r.grabD = 1; r.grabTweak = null;
+  r.spinMax = 0; r.popKind = null;
+  // Leaving a half-pipe wall: spinning back toward the wall you left makes it an alley-oop.
+  const u = r.x - center(r.z), pipe = pipes.find((q) => r.z > q.z0 && r.z < q.z1 && Math.abs(u - q.uc) > q.flat + 1);
+  r.oopSide = pipe ? Math.sign(u - pipe.uc) : 0;
   r.takeoffSw = r.sw;
   r.called = { spin: 0, flip: 0, grab: false, any: false }; // what's been called out on this jump so far
   // Players' held inputs are latched (see airStep). Bots plan their tricks, so they aren't.
@@ -4151,9 +4371,13 @@ function leaveGround(r, y, vy) {
 
 function ollie(r, late) {
   const base = late ? r.vy : r.groundVy;
+  r.popOff = true; // tells a grind it ended in a pop (for bonks)
   if (r.grounded) leaveGround(r, r.y + 0.02, base);
+  r.popOff = false;
   r.vy = base + 4 + 4.5 * r.charge;
   r.popped = true;
+  // Leaning on the nose (↑) as you pop is a nollie; on the tail (↓) it's an ollie off the tail.
+  r.popKind = r.inp?.tuck ? "nose" : r.inp?.brake ? "tail" : "ollie";
   r.latch = null; // after an ollie, everything you hold counts straight away
   if (r.isPlayer) sfx.jump();
 }
@@ -4162,7 +4386,7 @@ function crash(r, reason) {
   if (r.crashT > 0) return;
   r.crashT = CRASH_T;
   r.crashSpin = 0;
-  r.grabbing = false; r.spin = 0; r.flip = 0; r.charge = 0;
+  r.grabbing = false; r.spin = 0; r.flip = 0; r.charge = 0; r.press = null; r.rail = null;
   startRag(r, r.vx, r.vy, r.vz);
   if (r.isPlayer) { airTrickEnd("lost"); sfx.crash(); showPopup(reason, "WIPEOUT", true); announceWipeout(); }
 }
@@ -4184,7 +4408,11 @@ function groundStep(r, h, inp) {
   const steer = ctl ? (inp.right ? 1 : 0) - (inp.left ? 1 : 0) : 0;
   const brake = ctl && inp.brake;
   const tuck = ctl && inp.tuck && !brake;
-  r.heading -= steer * TURN_RATE * (brake ? 1.3 : 1) * h;
+  // Holding grab on the ground presses or drags a hand (see groundTrick); in a
+  // press, steering butters the board round instead of turning.
+  const press = ctl ? groundTrick(r, inp, steer, h) : r.press ? endPress(r, false) : null;
+  const butter = press && press.kind !== "drag";
+  r.heading -= (butter ? 0 : steer) * TURN_RATE * (brake ? 1.3 : 1) * h;
 
   const fx = Math.sin(r.heading), fz = Math.cos(r.heading);
   const sx = Math.cos(r.heading), sz = -Math.sin(r.heading);
@@ -4277,13 +4505,16 @@ function airStep(r, h, inp) {
     const carried = C && ((pitch > 0 && C.tuck) || (pitch < 0 && C.brake));
     const ease = carried ? Math.min(1, Math.max(0, (r.airTime - FLIP_EASE0) / FLIP_EASE)) : 1;
     r.spin -= steer * SPIN_RATE * h;
+    r.spinMax = Math.max(r.spinMax, Math.abs(r.spin));
     r.flip += pitch * FLIP_RATE * ease * h;
     if (inp.grab) {
       if (!r.grabbing) {
         r.grabbing = true;
-        if (!r.grabName) r.grabName = inp.tuck ? "Tail" : inp.brake ? "Nose" : steer ? "Method" : "Indy";
+        if (!r.grabName) pickGrab(r, inp, steer);
       }
       r.grabTime += h;
+      // Held long enough, some grabs turn into their tweaked version.
+      if (r.grabTweak && r.grabTime > TWEAK_T) { [r.grabName, r.grabD] = r.grabTweak; r.grabTweak = null; }
     } else r.grabbing = false;
     if (r.isPlayer) callTricksInAir(r);
   }
@@ -4323,7 +4554,7 @@ function land(r, ground) {
   r.charge = 0;
   const airTime = r.airTime;
   const wasGrabbing = r.grabbing;
-  const grabTime = r.grabTime, grabName = r.grabName;
+  const grabTime = r.grabTime, grabName = r.grabName, grabD = r.grabD ?? 1;
   r.grabbing = false; r.grabName = "";
 
   if (!canControl(r)) { r.spin = 0; r.flip = 0; return; }
@@ -4347,13 +4578,74 @@ function land(r, ground) {
   r.heading = phi;
   if (airTime > 0.25) landingPuff(r, airTime);
   if (airTime > 0.25 && r.isPlayer) sfx.land();
-  scoreTrick(r, airTime, spin, flip, grabTime, grabName);
+  scoreTrick(r, airTime, spin, flip, grabTime, grabName, grabD);
 }
 
 const FLIP_COUNT = ["", "", "Double ", "Triple ", "Quad "];
-const flipName = (nFlip, flip) => `${FLIP_COUNT[nFlip] ?? nFlip + "x "}${flip > 0 ? "Frontflip" : "Backflip"}`;
+const flipCount = (nFlip) => FLIP_COUNT[nFlip] ?? nFlip + "x ";
+const flipName = (nFlip, flip) => `${flipCount(nFlip)}${flip > 0 ? "Frontflip" : "Backflip"}`;
 const spinName = (n180, spin) => `${spin > 0 ? "Frontside" : "Backside"} ${n180 * 180}`;
 const GRAB_MIN = 0.12; // seconds a grab has to be held to count
+const TWEAK_T = 1.0;   // seconds a grab has to be held to turn into its tweaked version
+
+// The name of a jump's rotation: spins, flips, and the inverts that combine
+// them. Off-axis inverts are named by which way you flip and spin: back and
+// frontside is a Rodeo, back and backside a Cork, forward and backside a
+// Misty, forward and frontside an Underflip, with a few classics by name
+// (McTwist, Miller Flip). A lone flip popped off the nose (↑) is a Tamedog, off
+// the tail (↓) a Wildcat. Spins taken off switch are Cabs (frontside) or switch
+// backsides. `mult` is how much harder than a plain spin or flip it is, and
+// scales its points. Switch isn't part of the name, except in Cabs (`cab`).
+function moveName(r, nFlip, n180, flip, spin) {
+  const deg = n180 * 180, fs = spin > 0, cnt = flipCount(nFlip);
+  if (nFlip > 0 && n180 > 0) {
+    if (flip < 0 && fs) return nFlip === 1 && n180 === 3 ? { name: "McTwist", mult: 1.4 } : { name: `${cnt}Rodeo ${deg}`, mult: 1.15 };
+    if (flip < 0) return { name: `${cnt}Cork ${deg}`, mult: 1.2 };
+    if (!fs) return { name: `${cnt}Misty ${deg}`, mult: 1.25 };
+    return nFlip === 1 && n180 === 2 ? { name: "Miller Flip", mult: 1.3 } : { name: `${cnt}Underflip ${deg}`, mult: 1.35 };
+  }
+  if (nFlip > 0) {
+    if (nFlip === 1 && flip > 0 && r.popKind === "nose") return { name: "Tamedog", mult: 1.2 };
+    if (nFlip === 1 && flip < 0 && r.popKind === "tail") return { name: "Wildcat", mult: 1.2 };
+    return { name: flipName(nFlip, flip), mult: 1 };
+  }
+  const oop = r.oopSide && Math.sign(spin) === r.oopSide;
+  let name = spinName(n180, spin), cab = false;
+  if (r.takeoffSw && fs) { name = n180 === 1 ? "Half Cab" : `Cab ${deg}`; cab = true; }
+  return { name: (oop ? "Alley-oop " : "") + name, mult: oop ? 1.2 : 1, cab };
+}
+
+// Grabs: which one you do depends on the direction you hold as you start it
+// (↑, ↓, ←, → or a diagonal, or nothing), and on whether you're holding jump as
+// well, which gives the two-handed and harder reaches. Some, held for a second,
+// turn into their tweaked version. The number is the grab's difficulty, which
+// scales its points (Tindy and Tailfish are sloppy versions, so they're worth less).
+const GRABS = {
+  "": { one: ["Indy Grab", 1], tweak: ["Tindy", 0.85], two: ["Truck Driver", 1.4] },
+  u: { one: ["Tail Grab", 1], tweak: ["Tailfish", 0.85], two: ["Cannonball", 1.3] },
+  d: { one: ["Nose Grab", 1], two: ["Rocket Air", 1.4], twoTweak: ["Cross Rocket", 1.7] },
+  l: { one: ["Method", 1.3], two: ["Double Stiffy", 1.6] },
+  r: { one: ["Mute Grab", 1], tweak: ["Slob", 1.4], two: ["Japan", 1.5] },
+  ul: { one: ["Stalefish", 1.3], two: ["Canadian Bacon", 1.6] },
+  ur: { one: ["Roastbeef", 1.5], two: ["Nuclear", 1.6] },
+  dl: { one: ["Crail", 1.3], two: ["Seatbelt", 1.4] },
+  dr: { one: ["Melon", 1.1], two: ["Chicken Salad", 1.6] },
+};
+function pickGrab(r, inp, steer) {
+  let key, two;
+  if (r.isPlayer) {
+    key = (inp.tuck ? "u" : inp.brake ? "d" : "") + (steer < 0 ? "l" : steer > 0 ? "r" : "");
+    two = !!inp.jump;
+  } else {
+    // Bots throw any grab, the better ones the harder two-handed ones more often.
+    const keys = Object.keys(GRABS);
+    key = keys[Math.floor(Math.random() * keys.length)];
+    two = Math.random() < 0.15 + 0.3 * (r.bot?.skill ?? 0.5);
+  }
+  const g = GRABS[key];
+  [r.grabName, r.grabD] = two ? g.two : g.one;
+  r.grabTweak = (two ? g.twoTweak : g.tweak) || null;
+}
 
 // Call out each part of the trick as you complete it in the air: every half
 // turn of spin, every full flip, and a grab once it's held long enough. A
@@ -4364,42 +4656,62 @@ function callTricksInAir(r) {
   const n180 = Math.floor((Math.abs(r.spin) + 0.25) / Math.PI);
   const nFlip = Math.floor((Math.abs(r.flip) + 0.3) / (Math.PI * 2));
   const grab = r.grabTime > GRAB_MIN;
-  let part = null;
-  if (nFlip > c.flip) part = flipName(nFlip, r.flip);
-  else if (n180 > c.spin) part = spinName(n180, r.spin);
-  else if (grab && !c.grab) part = `${r.grabName} Grab`;
-  c.flip = Math.max(c.flip, nFlip); c.spin = Math.max(c.spin, n180); c.grab ||= grab;
-  if (!part) return;
-  c.any = true;
-  airTrickAdd(r, part);
-  announceInAir(part);
+  // The spin and flip share a line, so they merge into one name (a Cork, a Rodeo...).
+  if (nFlip > c.flip || n180 > c.spin) {
+    c.flip = Math.max(c.flip, nFlip); c.spin = Math.max(c.spin, n180);
+    const part = moveName(r, c.flip, c.spin, r.flip, r.spin).name;
+    c.any = true;
+    airTrickAdd(r, part, "move");
+    announceInAir(part);
+  }
+  // A grab gets its own line, which changes if the grab turns into its tweaked version.
+  if (grab && c.grabName !== r.grabName) {
+    c.grab = true; c.grabName = r.grabName;
+    c.any = true;
+    airTrickAdd(r, r.grabName, "grab");
+    announceInAir(r.grabName);
+  }
 }
 
 // Points for a trick: each flip, spin and grab, a bit for air time, more for
 // combining kinds of trick, and more again for taking off switch.
-function trickPoints(nFlip, n180, grabTime, airTime, sw) {
+// `t` is { nFlip, n180, grabTime, grabD, airTime, sw, mult, shifty, pop }: grabD is
+// the grab's difficulty, mult the rotation's (see moveName), pop how you
+// popped if it was a plain ollie.
+function trickPoints(t) {
   let pts = 0;
-  if (nFlip > 0) pts += FLIP_POINTS[Math.min(nFlip, FLIP_POINTS.length - 1)];
-  if (n180 > 0) pts += SPIN_POINTS[Math.min(n180, SPIN_POINTS.length - 1)];
-  if (grabTime > GRAB_MIN) pts += Math.round(100 + 400 * Math.min(grabTime, 1.5));
-  if (airTime > 0.6) pts += Math.round(airTime * 60);
-  const kinds = (nFlip > 0) + (n180 > 0) + (grabTime > GRAB_MIN);
-  if (kinds >= 2) pts = Math.round(pts * (kinds === 3 ? 2 : 1.5));
-  if (sw) pts = Math.round(pts * 1.25);
+  const grab = t.grabTime > GRAB_MIN;
+  if (t.nFlip > 0) pts += FLIP_POINTS[Math.min(t.nFlip, FLIP_POINTS.length - 1)];
+  if (t.n180 > 0) pts += SPIN_POINTS[Math.min(t.n180, SPIN_POINTS.length - 1)];
+  pts = Math.round(pts * (t.mult ?? 1));
+  if (grab) pts += Math.round((100 + 400 * Math.min(t.grabTime, 1.5)) * (t.grabD ?? 1));
+  if (t.shifty) pts += 150;
+  if (t.pop && !pts) pts += t.pop === "nose" ? 75 : 50; // a plain ollie or nollie
+  if (t.airTime > 0.6) pts += Math.round(t.airTime * 60);
+  const kinds = (t.nFlip > 0) + (t.n180 > 0) + grab + !!t.shifty;
+  if (kinds >= 2) pts = Math.round(pts * (kinds >= 3 ? 2 : 1.5));
+  if (t.sw) pts = Math.round(pts * 1.25);
   return pts;
 }
 
-function scoreTrick(r, airTime, spin, flip, grabTime, grabName) {
+function scoreTrick(r, airTime, spin, flip, grabTime, grabName, grabD) {
   const n180 = Math.round(Math.abs(spin) / Math.PI);
   const nFlip = Math.round(Math.abs(flip) / (Math.PI * 2));
+  const grab = grabTime > GRAB_MIN;
+  const move = nFlip > 0 || n180 > 0 ? moveName(r, nFlip, n180, flip, spin) : null;
+  // A Shifty: twist the board crosswise and back again before you land.
+  const shifty = !move && r.spinMax > 0.6;
   const parts = [];
-  if (nFlip > 0) parts.push(flipName(nFlip, flip));
-  if (n180 > 0) parts.push(spinName(n180, spin));
-  if (grabTime > GRAB_MIN) parts.push(`${grabName} Grab`);
-  if (parts.length === 0 && airTime > 0.8) parts.push("Big Air");
+  if (move) parts.push(move.name);
+  if (shifty) parts.push("Shifty");
+  if (grab) parts.push(grabName);
+  // Nothing else: an ollie (or nollie) earns a little, and a long one is Big Air.
+  const pop = !move && !shifty && !grab && r.popped && airTime > 0.3 ? r.popKind : null;
+  if (pop) parts.push(pop === "nose" ? "Nollie" : "Ollie");
+  if (!move && !shifty && !grab && airTime > 0.8) parts.push("Big Air");
   if (parts.length === 0) return;
-  if (r.takeoffSw) parts.unshift("Switch");
-  const pts = trickPoints(nFlip, n180, grabTime, airTime, r.takeoffSw);
+  if (r.takeoffSw && !move?.cab) parts.unshift("Switch");
+  const pts = trickPoints({ nFlip, n180, grabTime, grabD, airTime, sw: r.takeoffSw, mult: move?.mult, shifty, pop });
   r.trickScore += pts;
   if (!r.isPlayer) return;
   sfx.trick();
@@ -4407,6 +4719,43 @@ function scoreTrick(r, airTime, spin, flip, grabTime, grabName) {
   if (r.called?.any) airTrickEnd("landed", pts);
   else showPopup(parts.join(" + "), `+${pts}`, false);
   announceTrick(parts, pts, r.called?.any);
+}
+
+// Tricks on the ground, all done holding grab. Grab with ↑ presses the nose
+// into the snow and with ↓ the tail; steer while pressing to butter the board
+// round. Grab while carving (with neither) drags a hand in the snow. Each
+// scores when you let go: a press held long enough (a tail press held for two
+// seconds is a Tripod), a half turn on the nose or tail (a Nose or Tail Roll),
+// or a whole turn or more (a Butter 360, 540...). Turning an odd number of half
+// turns leaves you riding switch.
+const BUTTER_RATE = Math.PI; // rad/s you turn the board while buttering
+function groundTrick(r, inp, steer, h) {
+  const speed = Math.hypot(r.vx, r.vz);
+  const kind = !inp.grab ? null : inp.tuck ? "nose" : inp.brake ? "tail" : steer && speed > 8 ? "drag" : null;
+  if (r.press && r.press.kind !== kind) endPress(r, true);
+  if (!kind) return null;
+  const p = (r.press ??= { kind, t: 0, rot: 0 });
+  p.t += h;
+  if (kind !== "drag") { p.rot -= steer * BUTTER_RATE * h; r.spin = p.rot; }
+  return p;
+}
+function endPress(r, score) {
+  const p = r.press;
+  r.press = null;
+  if (!p) return null;
+  const n = Math.round(Math.abs(p.rot) / Math.PI);
+  if (p.kind !== "drag") { if (n % 2) r.sw = !r.sw; r.spin = 0; }
+  if (!score || !canControl(r)) return null;
+  let name = null, pts = 0;
+  if (p.kind === "drag") { if (p.t >= 0.5) { name = "Hand Drag"; pts = 100 + Math.round(100 * Math.min(p.t, 3)); } }
+  else if (n >= 2) { name = `Butter ${n * 180}`; pts = 300 + 250 * n; }
+  else if (n === 1) { name = p.kind === "nose" ? "Nose Roll" : "Tail Roll"; pts = 450; }
+  else if (p.kind === "tail" && p.t >= 2) { name = "Tripod"; pts = 500; }
+  else if (p.t >= 0.6) { name = p.kind === "nose" ? "Nose Press" : "Tail Press"; pts = 150 + Math.round(100 * Math.min(p.t, 3)); }
+  if (!name) return null;
+  r.trickScore += pts;
+  if (r.isPlayer) { sfx.trick(); showPopup(name, `+${pts}`, false); announceTrick([name], pts, false); }
+  return null;
 }
 
 // Riding into a net stops you going further out and you slide along it,
@@ -4778,7 +5127,15 @@ function stepRider(r, h, inp) {
     stepRag(r.rag, h);
     syncFromRag(r);
   } else {
-    if (r.grounded) groundStep(r, h, inp); else airStep(r, h, inp);
+    if (r.rail) railStep(r, h, inp);
+    else if (r.grounded) groundStep(r, h, inp); else airStep(r, h, inp);
+    // Riding up a ramp onto a rail, or dropping onto one from the air.
+    // (Not straight after leaving one, so popping off a rail doesn't land you back on it.)
+    r.railCool = Math.max(0, (r.railCool || 0) - h);
+    if (!r.rail && !r.rag && r.crashT <= 0 && !r.railCool) {
+      const hit = railUnder(r, r.grounded ? 0.3 : 0.6);
+      if (hit && (r.grounded || r.vy <= 1)) lockRail(r, hit);
+    }
     checkObstacles(r);
     checkFence(r);
   }
@@ -5075,7 +5432,11 @@ function updateRider(r, dt) {
   else if (!r.grounded) crouchT = 0.3;
   r.crouch += (crouchT - r.crouch) * (1 - Math.exp(-12 * dt));
 
-  m.pose.rotation.set(r.crashT > 0 ? r.crashSpin : 0, 0, r.lean);
+  // In a press the board tips onto its nose or tail (whichever end is leading).
+  const pressKind = r.rail ? { nose: "nose", tail: "tail", blunt: "tail" }[r.rail.mode] : r.press && r.press.kind !== "drag" && r.grounded ? r.press.kind : null;
+  const tipT = pressKind ? (pressKind === "nose" ? 0.24 : -0.24) * (r.sw ? -1 : 1) : 0;
+  r.tip = (r.tip ?? 0) + (tipT - (r.tip ?? 0)) * (1 - Math.exp(-10 * dt));
+  m.pose.rotation.set(r.crashT > 0 ? r.crashSpin : r.tip, 0, r.lean);
   const legScale = 1 - 0.45 * r.crouch;
   m.legs.forEach((l) => (l.scale.y = legScale));
   m.upper.position.y = LEG_BASE + LEG_H * legScale;
@@ -5298,26 +5659,35 @@ function drawMap(place) {
   disc(mapPoint(me.z), 9 * dpr, "#ffb02e", String(place), "#3d2400");
 }
 
-// The in-air trick list (see #air). It builds up while you're in the air, then
-// turns green with your points if you land it, or red and struck out if you crash.
+// The in-air trick list (see #air). It builds up while you're in the air, one
+// line per kind of trick, each updated in place as it grows (a 360 becomes a
+// 540), then turns green with your points if you land it, or red and struck
+// out if you crash.
 const airEl = $("air"), airLbl = $("air-lbl"), airVal = $("air-val"), airList = $("air-list");
-let airLive = false, airTimer = 0;
-function airTrickAdd(r, part) {
+let airLive = false, airTimer = 0, airLines = {}, airCalls = 0;
+function airTrickAdd(r, part, kind) {
   if (!airLive) {
     airLive = true;
     clearTimeout(airTimer);
     airList.replaceChildren();
-    airEl.classList.remove("landed", "lost");
+    airLines = {};
+    airCalls = 0;
+    airEl.classList.remove("landed", "lost", "side");
     airEl.classList.add("show");
     airLbl.textContent = "TRICK";
-    if (r.takeoffSw) airTrickLine("Switch");
+    if (r.takeoffSw) airTrickLine("switch", "Switch");
   }
-  airTrickLine(part);
+  airTrickLine(kind, part);
+  // The second callout on a jump sends the list off to the side of your rider.
+  if (++airCalls >= 2) airEl.classList.add("side");
 }
-function airTrickLine(text) {
-  const li = document.createElement("li");
+function airTrickLine(kind, text) {
+  let li = airLines[kind];
+  if (!li) { li = airLines[kind] = document.createElement("li"); airList.append(li); }
   li.textContent = text;
-  airList.append(li);
+  for (const l of airList.children) l.classList.remove("latest");
+  void li.offsetWidth; // restart the pop
+  li.classList.add("latest");
 }
 function airTrickEnd(outcome, pts) {
   if (!airLive) return;
@@ -5330,7 +5700,7 @@ function airTrickEnd(outcome, pts) {
 function airTrickClear() {
   airLive = false;
   clearTimeout(airTimer);
-  airEl.classList.remove("show", "landed", "lost");
+  airEl.classList.remove("show", "landed", "lost", "side");
 }
 // While you're in the air, the points you'd get for landing right now.
 function updateAirTrick() {
@@ -5338,7 +5708,10 @@ function updateAirTrick() {
   // Touched down without the trick being scored (finishing mid-air, say): it doesn't count.
   if (me.grounded) return airTrickEnd("lost");
   const c = me.called;
-  airVal.textContent = fmt(trickPoints(c.flip, c.spin, c.grab ? me.grabTime : 0, me.airTime, me.takeoffSw));
+  const move = c.flip || c.spin ? moveName(me, c.flip, c.spin, me.flip, me.spin) : null;
+  airVal.textContent = fmt(trickPoints({
+    nFlip: c.flip, n180: c.spin, grabTime: c.grab ? me.grabTime : 0, grabD: me.grabD, airTime: me.airTime, sw: me.takeoffSw, mult: move?.mult,
+  }));
 }
 
 let popupTimer = 0;
@@ -5361,7 +5734,10 @@ const CONTROLS = `
     <tr><td>Brake / skid · back flip in the air</td><td><kbd>↓</kbd> or <kbd>S</kbd></td></tr>
     <tr><td>Tap to lunge forward</td><td><kbd>Space</kbd></td></tr>
     <tr><td>Hold &amp; release to jump</td><td><kbd>Space</kbd></td></tr>
-    <tr><td>Grab (in the air)</td><td><kbd>J</kbd>, <kbd>X</kbd> or <kbd>Shift</kbd></td></tr>
+    <tr><td>Grab (in the air): hold a direction as you grab to pick which, and jump too for the two-handed ones</td><td><kbd>J</kbd>, <kbd>X</kbd> or <kbd>Shift</kbd></td></tr>
+    <tr><td>Nose / tail press (on the ground) · steer to butter</td><td>Grab + <kbd>↑</kbd> / <kbd>↓</kbd></td></tr>
+    <tr><td>Hand drag (on the ground, while carving)</td><td>Grab + <kbd>←</kbd> / <kbd>→</kbd></td></tr>
+    <tr><td>On a rail or box: press · boardslide · lipslide · bluntslide · pop off</td><td><kbd>↑</kbd>/<kbd>↓</kbd> · <kbd>←</kbd> · <kbd>→</kbd> · <kbd>↓</kbd>+<kbd>←</kbd>/<kbd>→</kbd> · <kbd>Space</kbd></td></tr>
     <tr><td>Restart · Sound · Music · Voice</td><td><kbd>R</kbd> · <kbd>M</kbd> · <kbd>N</kbd> · <kbd>V</kbd></td></tr>
   </table>`;
 
