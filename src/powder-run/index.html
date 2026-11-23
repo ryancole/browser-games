@@ -435,7 +435,7 @@
     <div class="ribbon">SNOWBOARDING</div>
   </div>
   <div class="press"><span class="keys-only">Press any key</span><span class="tap-only">Tap the screen</span></div>
-  <div class="foot">Three courses · Spins, flips and grabs · Race bots or friends</div>
+  <div class="foot">Six courses · Spins, flips and grabs · Race bots or friends</div>
 </div>
 
 <script type="module">
@@ -735,7 +735,9 @@ function buildTerrain(rnd, ground, kickerColor) {
   const NZ = Math.round((Z1 - Z0) / DZ);
   const pos = new Float32Array((NX + 1) * (NZ + 1) * 3);
   const col = new Float32Array((NX + 1) * (NZ + 1) * 3);
-  let p = 0;
+  // A ground colour can carry a 4th value: how brightly it glows (molten lava).
+  const glow = new Float32Array((NX + 1) * (NZ + 1));
+  let p = 0, glowing = false;
   for (let j = 0; j <= NZ; j++) {
     const z = Z0 + j * DZ;
     const c = center(z), wz = widen(z);
@@ -751,11 +753,13 @@ function buildTerrain(rnd, ground, kickerColor) {
       const fs = Math.abs(featureH(x, z + 0.5) - featureH(x, z - 0.5)) + Math.abs(featureH(x + 0.5, z) - featureH(x - 0.5, z));
       const shade = 1 - Math.min(0.16, fs * 0.09);
       col[p] = rgb[0] * shade; col[p + 1] = rgb[1] * shade; col[p + 2] = rgb[2] * (0.5 + shade * 0.5);
+      if (rgb[3]) { glow[p / 3] = rgb[3]; glowing = true; }
       p += 3;
     }
   }
   // Cut the ground into chunks down the hill, so the ones out of view aren't drawn.
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true });
+  if (glowing) glowMaterial(mat);
   const row = (NX + 1) * 3, CHUNK = 150;
   for (let j0 = 0; j0 < NZ; j0 += CHUNK) {
     const rows = Math.min(CHUNK, NZ - j0);
@@ -771,12 +775,34 @@ function buildTerrain(rnd, ground, kickerColor) {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(pos.slice(j0 * row, (j0 + rows + 1) * row), 3));
     geo.setAttribute("color", new THREE.BufferAttribute(col.slice(j0 * row, (j0 + rows + 1) * row), 3));
+    if (glowing) geo.setAttribute("glow", new THREE.BufferAttribute(glow.slice(j0 * (NX + 1), (j0 + rows + 1) * (NX + 1)), 1));
     geo.setIndex(new THREE.BufferAttribute(idx, 1));
     geo.computeVertexNormals();
     const mesh = new THREE.Mesh(geo, mat);
     mesh.receiveShadow = true;
     levelGroup.add(mesh);
   }
+}
+
+// Ground that glows by its "glow" attribute, lit or not, with a slow pulse
+// that rolls down the hill like the lava's flowing. groundGlowTime drives it.
+const groundGlowTime = { value: 0 };
+function glowMaterial(mat) {
+  mat.onBeforeCompile = (sh) => {
+    sh.uniforms.uGlowT = groundGlowTime;
+    sh.vertexShader = sh.vertexShader
+      .replace("#include <common>", `#include <common>
+attribute float glow;
+uniform float uGlowT;
+varying float vGlow;`)
+      .replace("#include <begin_vertex>", `#include <begin_vertex>
+vGlow = glow * (0.75 + 0.25 * sin(uGlowT * 1.7 - position.z * 0.21 + position.x * 0.13) * sin(uGlowT * 0.9 - position.z * 0.07));`);
+    sh.fragmentShader = sh.fragmentShader
+      .replace("#include <common>", `#include <common>
+varying float vGlow;`)
+      .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
+totalEmissiveRadiance += diffuseColor.rgb * vGlow;`);
+  };
 }
 
 // Groomed snow on the run, slightly bluer snow up the banks.
@@ -1072,7 +1098,8 @@ function fCliffAt(zE, u0, u1, D, run, faceKind, rnd) {
 // Fallen logs (or concrete barriers in the city) lying across part of the run.
 // Hit one at speed for a little pop.
 function fLogs(z0, z1, rnd, cfg, ua = -HALF_W + 1.5, ub = HALF_W - 1.5) {
-  const kind = cfg.logs, r = kind === "log" ? 0.45 : 0.7;
+  // "log" and "charred" (burnt, with embers along the top) are round; "barrier" is a concrete block.
+  const kind = cfg.logs, round = kind !== "barrier", r = round ? 0.45 : 0.7;
   const n = Math.max(2, Math.round((z1 - z0) / 13));
   const items = [];
   for (let i = 0; i < n; i++) {
@@ -1085,7 +1112,7 @@ function fLogs(z0, z1, rnd, cfg, ua = -HALF_W + 1.5, ub = HALF_W - 1.5) {
         const lat = band(u, a, b, 0.3);
         if (!lat) return 0;
         const t = Math.abs(zz - z) / r;
-        return lat * (kind === "log" ? r * Math.sqrt(Math.max(0, 1 - t * t)) : r * Math.min(1, (1 - t) / 0.55));
+        return lat * (round ? r * Math.sqrt(Math.max(0, 1 - t * t)) : r * Math.min(1, (1 - t) / 0.55));
       },
     });
     items.push({ z, a, b });
@@ -1095,13 +1122,15 @@ function fLogs(z0, z1, rnd, cfg, ua = -HALF_W + 1.5, ub = HALF_W - 1.5) {
       const x = center(z) + (a + b) / 2;
       return { x, z, len: b - a, y: terrainH(x, z) - r };
     });
-    if (kind === "log") {
+    if (round) {
+      const charred = kind === "charred";
       instanced(new THREE.CylinderGeometry(1, 1, 1, 10), placed, (l, o, c) => {
-        o.position.set(l.x, l.y, l.z); o.rotation.set(0, 0, Math.PI / 2); o.scale.set(r, l.len, r); c.set(0x5a3e2b);
+        o.position.set(l.x, l.y, l.z); o.rotation.set(0, 0, Math.PI / 2); o.scale.set(r, l.len, r); c.set(charred ? 0x231c19 : 0x5a3e2b);
       });
+      // Snow along the top, or glowing embers on a burnt one.
       instanced(new THREE.BoxGeometry(1, 1, 1), placed, (l, o, c) => {
-        o.position.set(l.x, l.y + r - 0.02, l.z); o.scale.set(l.len * 0.9, 0.08, r * 1.1); c.set(0xf2f6fb);
-      });
+        o.position.set(l.x, l.y + r - 0.02, l.z); o.scale.set(l.len * 0.9, charred ? 0.05 : 0.08, r * (charred ? 0.7 : 1.1)); c.set(charred ? 0xff5a1a : 0xf2f6fb);
+      }, charred ? { mat: new THREE.MeshBasicMaterial({ color: 0xffffff }), shadow: false } : undefined);
     } else {
       instanced(new THREE.BoxGeometry(1, 1, 1), placed, (l, o, c) => {
         o.position.set(l.x, l.y + r / 2, l.z); o.scale.set(l.len, r + 0.02, 0.55); c.set(0xb9bcc4);
@@ -1312,6 +1341,18 @@ function fFork(z0, len, { w, widen = 0, H = 6, pines = false, rocks = false }, r
   return { mid, visual };
 }
 
+// A giant ledge right across the valley: the ground ends in a sheer rock face
+// D metres high, and the run carries on far below. Ride off it at speed and
+// you're in the air for seconds.
+function fMegaDrop(zE, D) {
+  const EDGE = 2;
+  features.push({
+    z0: zE, z1: Infinity,
+    h: (u, z) => -D * smooth(Math.min(1, (z - zE) / EDGE)),
+    color: (u, z) => (z < zE + EDGE + 0.5 ? ROCK_FACE : null),
+  });
+}
+
 const FEATURES = {
   moguls: (a, b) => fMoguls(a, Math.min(b, a + 55)),
   rollers: (a, b) => fRollers(a, Math.min(b, a + 50)),
@@ -1325,6 +1366,12 @@ const FEATURES = {
 // Put one feature in each gap between the built kickers (and before the first
 // and after the last), in the order the level lists them.
 function placeFeatures(cfg, rnd) {
+  // Clear the kickers off the run-up to a giant ledge and the landing below it.
+  const M = cfg.megaDrop;
+  if (M) {
+    fMegaDrop(M.z, M.D);
+    kickers.splice(0, kickers.length, ...kickers.filter((k) => k.z < M.z - 90 || k.z > M.z + 180));
+  }
   const built = kickers.slice();
   const gaps = [[45, built[0].z - built[0].len - 10]];
   for (let i = 0; i + 1 < built.length; i++) gaps.push([built[i].z + 28, built[i + 1].z - built[i + 1].len - 10]);
@@ -1342,6 +1389,9 @@ function placeFeatures(cfg, rnd) {
     for (const g of gaps) {
       if (g[0] < z1 + 10 && g[1] > fc.z - 10) { if (g[0] < fc.z) g[1] = Math.min(g[1], fc.z - 10); else g[0] = Math.max(g[0], z1 + 10); }
     }
+  }
+  if (M) for (const g of gaps) {
+    if (g[0] < M.z + 160 && g[1] > M.z - 70) { if (g[0] < M.z - 70) g[1] = M.z - 70; else g[0] = Math.max(g[0], M.z + 160); }
   }
   gaps.forEach(([a, b], i) => {
     if (b - a < 24) return;
@@ -1725,6 +1775,219 @@ function buildBowl(rnd) {
     s.renderOrder = -16;
     backdrop.add(s);
   }
+}
+
+// --- Lava Rush: surfing a lava flow below an erupting volcano ---------------------
+// The run is a river of molten lava with plates of cooling crust floating on
+// it; the banks are black basalt with the odd glowing crack. The 4th value is
+// how brightly it glows (see glowMaterial).
+function lavaGround(x, z, d, n) {
+  const v = Math.sin(x * 0.21 + z * 0.13) * Math.sin(z * 0.17 - x * 0.11) + 0.5 * Math.sin(x * 0.5 + z * 0.37) * Math.sin(z * 0.41 - x * 0.29);
+  if (d < HALF_W) {
+    // Crust gathers towards the edges of the flow.
+    const crust = v + Math.max(0, d - HALF_W + 5) * 0.12;
+    // (Colours are linear, so these look a lot lighter on screen than they read.)
+    if (crust > 0.25) return [0.03 + n * 0.3, 0.02 + n * 0.3, 0.018 + n * 0.3, 0];
+    if (crust > 0.1) return [0.6, 0.035, 0.004, 0.6];
+    if (crust < -0.6) return [1, 0.28 + n * 2, 0.02, 1];
+    return [0.85, 0.08 + n, 0.006, 0.8];
+  }
+  const e = d - HALF_W, crack = Math.abs(Math.sin(x * 0.07 + z * 0.045) * Math.sin(z * 0.06 - x * 0.03));
+  if (e < 2) return [0.06, 0.02, 0.012, 0.3 * (1 - e / 2)]; // still cooling where it meets the flow
+  if (crack < 0.035 && e < 40) return [0.8, 0.06, 0.005, 0.9];
+  if (v > 0.6) return [0.07 + n * 0.3, 0.065 + n * 0.3, 0.06 + n * 0.3, 0]; // ash
+  return [0.022 + n * 0.3, 0.02 + n * 0.3, 0.02 + n * 0.3, 0];
+}
+
+function buildVolcano(rnd) {
+  // Burnt trees and basalt boulders on the banks.
+  const trees = [], rocks = [];
+  scatter(rnd, { step: 4, chance: 0.22, dMin: HALF_W + 3, dSpread: 30, power: 1.4 }, (t) => trees.push(t));
+  addPines(trees, [0x1f1a18, 0x2a2320, 0x171312], 0x3a2a22);
+  scatter(rnd, { step: 6, chance: 0.4, dMin: HALF_W + 6, dSpread: 24 }, (t) => rocks.push({ ...t, s: 1 + t.s * 1.6, y: t.y - 0.5 }));
+  addRocks(rocks);
+
+  skyDome(0x12060a, 0x9a3412, 0x3a1408);
+  peakRing(rnd, { n: 16, r0: 900, r1: 1150, h0: 300, h1: 520, base: -420, colors: [0x2a1a16, 0x241612, 0x30201a], cap: 0x4a2a20 });
+
+  // The volcano, straight ahead down the valley: a dark cone with its top blown off.
+  const VX = -90, VZ = 1250, BASE = -460, H = 690, R0 = 560, R1 = 70, top = BASE + H;
+  const add = (m, order) => { m.renderOrder = order; backdrop.add(m); return m; };
+  add(new THREE.Mesh(new THREE.CylinderGeometry(R1, R0, H, 28, 6), new THREE.MeshLambertMaterial({ color: 0x2a1c18, flatShading: true, fog: false })), -5).position.set(VX, BASE + H / 2, VZ);
+  // Lava running down its sides: glowing ribbons that wander as they go.
+  const lavaMat = new THREE.MeshBasicMaterial({ color: 0xff5a12, fog: false, side: THREE.DoubleSide });
+  for (const [da, len0] of [[-0.62, 0.45], [-0.3, 0.8], [-0.05, 0.35], [0.18, 0.65], [0.5, 0.5]]) {
+    // On the side facing the run, each a different length.
+    const a0 = Math.PI + da + rnd() * 0.06, len = len0 + rnd() * 0.15, k = da * 10, pos = [], idx = [];
+    const steps = 24;
+    for (let i = 0; i <= steps; i++) {
+      const t = (i / steps) * len, a = a0 + Math.sin(t * 9 + k) * 0.06;
+      const r = (R1 + (R0 - R1) * t) * 1.004, y = top - t * H, w = (3 + t * 12) * (1 - (i / steps) ** 4 * 0.8) / r;
+      for (const s of [-1, 1]) pos.push(VX + Math.sin(a + s * w) * r, y, VZ + Math.cos(a + s * w) * r);
+      if (i) { const b = (i - 1) * 2; idx.push(b, b + 2, b + 1, b + 1, b + 2, b + 3); }
+    }
+    const geo = new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    geo.setIndex(idx);
+    add(new THREE.Mesh(geo, lavaMat), -4);
+  }
+  const craterGlow = add(new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture("rgba(255,150,60,1)", "rgba(255,60,10,0)"), fog: false, depthWrite: false, blending: THREE.AdditiveBlending })), -3);
+  craterGlow.position.set(VX, top + 30, VZ);
+
+  // A column of smoke and ash billowing out of the crater.
+  const smokeTex = glowTexture("rgba(120,70,52,0.9)", "rgba(70,44,36,0)");
+  const smoke = Array.from({ length: 26 }, (_, i) => {
+    const sp = add(new THREE.Sprite(new THREE.SpriteMaterial({ map: smokeTex, fog: false, depthWrite: false, transparent: true })), -4);
+    sp.userData.age = (i / 26) * 14;
+    sp.userData.dx = (rnd() - 0.5) * 2;
+    return sp;
+  });
+
+  // Lava bombs thrown out of the crater, glowing as they arc and fall.
+  const BOMBS = 140, bPos = new Float32Array(BOMBS * 3), bVel = new Float32Array(BOMBS * 3);
+  const throwBomb = (i) => {
+    const a = Math.random() * Math.PI * 2, out = 20 + Math.random() * 60;
+    bPos.set([VX + (Math.random() - 0.5) * 40, top + 10, VZ + (Math.random() - 0.5) * 40], i * 3);
+    bVel.set([Math.sin(a) * out, 90 + Math.random() * 120, Math.cos(a) * out], i * 3);
+  };
+  for (let i = 0; i < BOMBS; i++) { throwBomb(i); bPos[i * 3 + 1] -= Math.random() * 400; }
+  const bombGeo = new THREE.BufferGeometry().setAttribute("position", new THREE.BufferAttribute(bPos, 3));
+  add(new THREE.Points(bombGeo, new THREE.PointsMaterial({
+    size: 16, color: 0xff7a22, map: glowTexture("rgba(255,210,120,1)", "rgba(255,90,20,0)"), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
+  })), -3);
+
+  // A red dragon hovering beside the fall off the giant ledge, out to one side
+  // of the run and well below the top, so you see it beneath you as you go off
+  // and drop right past it.
+  const M = level.terrain.megaDrop, dragon = M ? makeDragon() : null;
+  if (dragon) {
+    const zD = M.z + 130, side = -1;
+    dragon.base.set(center(zD) + side * 40, terrainH(center(M.z - 2), M.z - 2) - 200, zD);
+    dragon.group.position.copy(dragon.base);
+    dragon.group.rotation.y = Math.PI + side * 0.6; // facing back up at the ledge, turned toward the run
+    levelGroup.add(dragon.group);
+  }
+
+  let last = null;
+  return (t) => {
+    const dt = last === null ? 0 : Math.min(0.1, t - last);
+    last = t;
+    groundGlowTime.value = t;
+    dragon?.update(t);
+    craterGlow.scale.setScalar(330 + Math.sin(t * 3.1) * 30 + Math.sin(t * 7.3) * 15);
+    for (const sp of smoke) {
+      const u = sp.userData;
+      u.age = (u.age + dt) % 14;
+      const k = u.age / 14;
+      sp.position.set(VX + u.dx * k * 120 + k * 90, top + 40 + k * 520, VZ - k * 60);
+      sp.scale.setScalar(120 + k * 420);
+      sp.material.opacity = 0.85 * Math.min(1, u.age * 1.5) * (1 - k);
+    }
+    for (let i = 0; i < BOMBS; i++) {
+      const j = i * 3;
+      bVel[j + 1] -= 60 * dt;
+      bPos[j] += bVel[j] * dt; bPos[j + 1] += bVel[j + 1] * dt; bPos[j + 2] += bVel[j + 2] * dt;
+      if (bPos[j + 1] < top - 260) throwBomb(i);
+    }
+    bombGeo.attributes.position.needsUpdate = true;
+  };
+}
+
+// A low-poly red dragon, built from simple shapes about 15 m long with a 50 m
+// wingspan. It faces +z in its own frame. update(t) flaps the wings, bobs the
+// body with each beat and swings the tail.
+function makeDragon() {
+  const group = new THREE.Group(), base = new THREE.Vector3();
+  // A touch of glow of its own, so it stands out red against the dark valley.
+  const mat = (color, emissive = 0x4a0806) => new THREE.MeshStandardMaterial({ color, emissive, roughness: 0.7, flatShading: true });
+  const red = mat(0xc4261c), belly = mat(0xe8903e, 0x3a1a04), dark = mat(0x3a0d0a, 0x100202), wingMat = mat(0x8a1812, 0x380604);
+  wingMat.side = THREE.DoubleSide;
+  const part = (geo, m, x, y, z, parent = body) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); parent.add(o); return o; };
+  const ball = (r) => new THREE.SphereGeometry(r, 8, 6);
+  const body = new THREE.Group();
+  group.add(body);
+  body.scale.setScalar(1.25);
+
+  part(ball(1), red, 0, 0, 0).scale.set(3, 2.8, 7.5);
+  part(ball(1), belly, 0, -0.9, 0.6).scale.set(2.4, 2, 6);
+  // Spikes down the spine.
+  for (let i = 0; i < 7; i++) part(new THREE.ConeGeometry(0.45, 1.6, 5), dark, 0, 2.6 - Math.abs(i - 2) * 0.15, 4.5 - i * 1.6);
+
+  // Neck curving up to the head, which looks back up at the ledge.
+  for (let i = 1; i <= 5; i++) {
+    const k = i / 5;
+    part(ball(1.7 - k * 0.6), red, 0, 1 + k * 4.2, 6 + k * 4.6 - k * k * 1.2);
+  }
+  const head = new THREE.Group();
+  head.position.set(0, 5.8, 10.6);
+  body.add(head);
+  part(new THREE.BoxGeometry(2.2, 1.8, 3), red, 0, 0, 0.6, head);
+  part(new THREE.BoxGeometry(1.6, 1.1, 2.6), red, 0, -0.35, 2.8, head);
+  part(new THREE.BoxGeometry(1.5, 0.35, 2.4), belly, 0, -0.95, 2.6, head).rotation.x = 0.18; // jaw
+  for (const s of [-1, 1]) {
+    part(new THREE.ConeGeometry(0.3, 2.4, 5), dark, s * 0.7, 1.3, -0.6, head).rotation.set(-1, 0, s * -0.3); // horns
+    part(ball(0.22), new THREE.MeshBasicMaterial({ color: 0xffd23a }), s * 0.85, 0.35, 1.5, head); // eyes
+  }
+
+  // Tail: a chain of shrinking segments ending in a spade. Swung in update.
+  const tail = [];
+  let parent = body;
+  for (let i = 0; i < 9; i++) {
+    const seg = new THREE.Group();
+    seg.position.set(0, i ? -0.25 : -0.4, i ? -2.1 : -6.5);
+    parent.add(seg);
+    part(ball(1.35 - i * 0.12), red, 0, 0, -1, seg).scale.set(1, 0.9, 1.6);
+    tail.push(seg);
+    parent = seg;
+  }
+  part(new THREE.ConeGeometry(1.1, 2.2, 4), dark, 0, 0, -2.6, parent).rotation.x = -Math.PI / 2;
+
+  // Legs: hind legs hanging down, small forelegs tucked up.
+  for (const s of [-1, 1]) {
+    const hind = part(new THREE.CylinderGeometry(0.6, 0.35, 4.5, 6), red, s * 2, -3.2, -3);
+    hind.rotation.x = 0.35;
+    part(new THREE.BoxGeometry(0.9, 0.4, 1.6), dark, s * 2, -5.4, -2.2);
+    part(new THREE.CylinderGeometry(0.4, 0.25, 2.6, 6), red, s * 1.6, -2.2, 4.2).rotation.x = -0.6;
+  }
+
+  // Wings: a membrane stretched over a bony arm and three fingers, pivoting at the shoulder.
+  const pts = [[0, 0, 1.6], [7, 1.5, 0.8], [13, 2.2, -0.5], [19, 0.6, -2], [15.5, -0.2, -6.5], [10.5, -0.2, -8.5], [5.5, -0.1, -7.5], [0, 0, -4.5]];
+  const wings = [-1, 1].map((s) => {
+    const pivot = new THREE.Group();
+    pivot.position.set(s * 2.2, 1.6, 1.2);
+    body.add(pivot);
+    const pos = [], idx = [];
+    pos.push(s * 2, 0.4, -1.5); // a point near the shoulder to fan the membrane from
+    for (const [x, y, z] of pts) pos.push(s * x, y, z);
+    for (let i = 1; i < pts.length; i++) idx.push(0, i, i + 1);
+    const geo = new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    geo.setIndex(idx);
+    geo.computeVertexNormals();
+    pivot.add(new THREE.Mesh(geo, wingMat));
+    // Bones along the leading edge and out to each finger tip.
+    const bone = (a, b, r) => {
+      const A = new THREE.Vector3(s * a[0], a[1], a[2]), B = new THREE.Vector3(s * b[0], b[1], b[2]);
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.6, r, A.distanceTo(B), 5), dark);
+      m.position.copy(A).add(B).multiplyScalar(0.5);
+      m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize());
+      pivot.add(m);
+    };
+    bone(pts[0], pts[1], 0.55); bone(pts[1], pts[2], 0.45);
+    for (const k of [3, 4, 5]) bone(pts[2], pts[k], 0.25);
+    return { pivot, s };
+  });
+
+  return {
+    group, base,
+    update(t) {
+      const beat = Math.sin(t * 2.6);
+      for (const w of wings) w.pivot.rotation.z = w.s * (0.25 + 0.65 * beat);
+      // The body lifts on each downstroke.
+      group.position.set(base.x, base.y - beat * 1.8, base.z);
+      body.rotation.x = -0.12 + beat * 0.05;
+      tail.forEach((seg, i) => { seg.rotation.y = Math.sin(t * 1.4 - i * 0.5) * 0.12; seg.rotation.x = 0.06 + Math.sin(t * 2.6 - i * 0.4) * 0.04; });
+      head.rotation.y = Math.sin(t * 0.7) * 0.25;
+    },
+  };
 }
 
 // --- Snowy Peak: the original overcast mountain --------------------------------
@@ -2123,6 +2386,22 @@ const LEVELS = {
     snow: 0, puffs: 0.8, kickerColor: [0.55, 0.75, 1.0],
     furniture: { poles: [0xff6a2a, 0x3a6dff], lip: 0xff8a2a, net: "#ff7a1a", banners: ["#3a6dff", "#e0443a"] },
   },
+  volcano: {
+    name: "Lava Rush", blurb: "Surf a river of molten lava below an erupting volcano, past burnt trees, basalt cliffs and showers of embers.",
+    seed: 6660, build: buildVolcano, ground: lavaGround, sections: 3,
+    track: { artist: "The Prodigy", title: "Firestarter", video: "wmin5WkOuPw" },
+    course: { a1: 14, p1: 160, o1: 1.1, a2: 8, p2: 57, o2: 0.4, bump: 2.4 },
+    kickers: { start: 140, offsets: [3, -6, 6, -3, 0, 5], gaps: [110, 125, 140] },
+    terrain: {
+      list: ["rollers", "cliff", "moguls", "rock", "split", "rollers", "cliff", "rock", "moguls", "split", "cliff", "rock"],
+      drop: 5, face: "rock", logs: "charred", pines: [[0x1f1a18, 0x2a2320], 0x3a2a22],
+      // Near the end the whole valley drops away: about five seconds of free fall.
+      megaDrop: { z: 3500, D: 350 },
+    },
+    sky: 0x2a0d08, fog: [0x2e1008, 40, 360], hemi: [0x5a4040, 0x9a3412, 0.85], sun: [0xff8a4a, 0.9], riderLight: 0,
+    snow: 0.9, embers: true, puffs: 0.5, puffColor: 0x2a2220, spray: 0xff8a3a, kickerColor: [0.045, 0.038, 0.036],
+    furniture: { poles: [0xffc43a, 0x2a2420], lip: 0xffb040, lipGlow: true, net: "#ffb020", post: 0x1a1414, banners: ["#2a1a14", "#e0441a"] },
+  },
 };
 const LEVEL_IDS = Object.keys(LEVELS);
 
@@ -2172,9 +2451,18 @@ function setLevel(id) {
   sun.color.set(level.sun[0]); sun.intensity = level.sun[1];
   riderLight.intensity = level.riderLight;
   snowfall.visible = level.snow > 0;
+  // Embers glow (they're added on top) and are a little bigger than snowflakes.
+  const sm = snowfall.material;
+  sm.color.set(level.embers ? 0xff7a2a : 0xffffff);
+  sm.size = level.embers ? 0.17 : 0.13;
+  if (sm.blending !== (level.embers ? THREE.AdditiveBlending : THREE.NormalBlending)) {
+    sm.blending = level.embers ? THREE.AdditiveBlending : THREE.NormalBlending;
+    sm.needsUpdate = true;
+  }
+  for (const pf of puffs) pf.material.color.set(level.puffColor ?? 0xffffff);
   snowfall.material.opacity = level.snow;
   // Thrown snow would glow white at night: shade it to the street light.
-  sprayMat.color.set(level.riderLight ? 0xa4acd0 : 0xffffff);
+  sprayMat.color.set(level.spray ?? (level.riderLight ? 0xa4acd0 : 0xffffff));
   sheetMat.color.copy(sprayMat.color);
 
   best = bestFor(id);
@@ -2928,7 +3216,8 @@ function updateWeather(dt) {
   for (let i = 0; i < FLAKES; i++) {
     const j = i * 3, s = flakeSeed[i], ph = s * 60;
     const x = flakePos[j] + (wx + Math.sin(weatherT * 1.3 + ph) * 0.5) * dt;
-    const y = flakePos[j + 1] - (1 + s * 0.9) * dt;
+    // Snow drifts down; embers float up.
+    const y = flakePos[j + 1] - (level.embers ? -(0.5 + s * 1.3) : 1 + s * 0.9) * dt;
     const z = flakePos[j + 2] + (wz + Math.cos(weatherT * 1.1 + ph) * 0.5) * dt;
     flakePos[j] = cx + wrapIn(x - cx, SNOW_HALF.x);
     flakePos[j + 1] = cy + wrapIn(y - cy, SNOW_HALF.y);
@@ -3565,7 +3854,12 @@ function land(r, ground) {
   const len = Math.hypot(gx, 1, gz);
   const nx = -gx / len, ny = 1 / len, nz = -gz / len;
   const vn = r.vx * nx + r.vy * ny + r.vz * nz;
+  const before = Math.hypot(r.vx, r.vz);
   if (vn < 0) { r.vx -= vn * nx; r.vy -= vn * ny; r.vz -= vn * nz; }
+  // Landing on a downslope turns some of your fall into speed along it. Off a
+  // long drop that would be a huge burst, so cap what a landing can add.
+  const after = Math.hypot(r.vx, r.vz), cap = before + 10;
+  if (after > cap) { r.vx *= cap / after; r.vz *= cap / after; }
   r.grounded = true;
   r.groundVy = gx * r.vx + gz * r.vz;
   r.charge = 0;

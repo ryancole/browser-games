@@ -14,7 +14,7 @@ The menus are full-screen, with big chrome lettering over the course. Behind the
 
 ## Courses
 
-Pick a course when you start a single-player race or host a lobby. Picking one builds it straight away behind the menu, and the game remembers your choice. All five are the same length with the same par time, but each has its own bends, kicker layout, obstacles and scenery.
+Pick a course when you start a single-player race or host a lobby. Picking one builds it straight away behind the menu, and the game remembers your choice. There are six. Frozen Gorge, Glacier Bowl and Lava Rush are three times as long as the rest, and every course has its own bends, kicker layout, obstacles and scenery.
 
 | Course | What it's like |
 | ------ | -------------- |
@@ -23,6 +23,7 @@ Pick a course when you start a single-player race or host a lobby. Picking one b
 | **Lakeside Valley** | A clear, sunny spring day. Green grass shows through the snow on the banks, which are lined with pines and leafy trees. Ahead, the run looks down over a green valley with fields, rolling hills and a lake, with a lakeside village and snow-capped mountains beyond. |
 | **Frozen Gorge** | A technical, route-heavy run through a rocky gorge at dusk, under an orange sky. See below. |
 | **Glacier Bowl** | A huge open bowl above the treeline on a bright, clear day, more than twice as wide as the other courses. See below. |
+| **Lava Rush** | No snow at all: you surf a river of molten lava down a black basalt valley, with an erupting volcano ahead and a giant ledge near the end. See below. |
 
 ### Frozen Gorge
 
@@ -48,7 +49,13 @@ A freeride course with no single right line. It is three times as long as the ot
 - An **ice half-pipe** down one side for part of the way. Carve up its walls to launch.
 - **A fork** near the end of each stretch: a long rib of boulders splits the bowl in two. One side drops off the 18 m cliff; the other has a kicker and moguls.
 
-Walls and roofs are solid on both courses. Riding into a rock face or the side of a ledge pushes you along it, and you wipe out if you hit it hard. You can't fly up through the cave's ceiling or the cabin's roof. The ice slabs over the ice cave and the ice tunnel are solid from above too: land on top and you can ride along them, but they're slippery. Your edges hardly bite on ice, so when you turn you keep sliding the way you were going, and braking barely slows you.
+Walls and roofs are solid on both hand-built courses. Riding into a rock face or the side of a ledge pushes you along it, and you wipe out if you hit it hard. You can't fly up through the cave's ceiling or the cabin's roof. The ice slabs over the ice cave and the ice tunnel are solid from above too: land on top and you can ride along them, but they're slippery. Your edges hardly bite on ice, so when you turn you keep sliding the way you were going, and braking barely slows you.
+
+### Lava Rush
+
+The odd one out. The run is a river of glowing lava with plates of dark, cooling crust floating on it, and the glow pulses down the hill as it flows. It rides just like snow. The banks are black basalt and ash with the odd glowing crack, lined with burnt trees and boulders. Straight ahead, a volcano erupts the whole way down: lava streams run down its sides, its crater glows and flickers, it throws out glowing lava bombs, and a column of smoke billows out of the top. Embers float up around you instead of falling snow, dark smoke drifts across the flow, and your board throws up orange lava spray. The course has rollers, moguls, cliff drops into the lava, rock kickers, and islands of burnt trees with charred logs still glowing along their tops. It's three times as long as the short courses.
+
+Near the end, the whole valley drops away: a sheer rock face 350 m high runs right across the run. Ride off it and you fall for about five seconds before the lava flow picks up again far below, plenty of time for a long trick if you can land it. Partway down you drop right past a huge red dragon hovering off to one side of the run, beating its wings, swinging its tail and turning its head to watch you go by. A landing that big doesn't turn into a sudden burst of speed: however far you fall, landing adds at most a little speed along the slope.
 
 ### Terrain features
 
@@ -58,10 +65,10 @@ Between the built kickers, every course has natural and built terrain to ride an
 | ------- | ---------- | ----- |
 | **Moguls** | A field of staggered bumps. At speed you skip from crest to crest. | All courses (snow piles in the city) |
 | **Rollers** | Big humps across the whole run. Fast riders take off from the crests. | All courses (snow banks in the city) |
-| **Cliff drops** | A shelf across one side of the run that ends in a sheer drop, with boulders at the foot. The other side stays a normal slope, so you choose the drop or the way round. | Snowy Peak, Lakeside Valley (a concrete ledge with a hazard stripe in the city) |
+| **Cliff drops** | A shelf across one side of the run that ends in a sheer drop, with boulders at the foot. The other side stays a normal slope, so you choose the drop or the way round. | Snowy Peak, Lakeside Valley, Lava Rush (a concrete ledge with a hazard stripe in the city) |
 | **Logs and barriers** | Fallen logs, or concrete barriers in the city, lying across part of the run. Hit one at speed for a little pop. | All courses |
 | **Rooftop jumps** | A building half-buried in snow: ride the snow ramp up onto the roof and jump off the far end. The walls are solid, so don't ride into the side. | A ski patrol hut on Snowy Peak, a parked bus in the city, a log cabin in the valley |
-| **Rock kickers** | A snowdrift banked against rocks: a natural kicker with no built lip. The boulders either side are solid. | Snowy Peak, Lakeside Valley |
+| **Rock kickers** | A snowdrift banked against rocks: a natural kicker with no built lip. The boulders either side are solid. | Snowy Peak, Lakeside Valley, Lava Rush |
 | **Tree islands** | A raised island of trees down the middle that splits the run into two lines, with moguls on one side and logs or barriers on the other. | All courses (trees in planters in the city) |
 | **Forks** | A long ridge rises out of the middle of the run and splits it in two, with the banks pushed out so each route is close to full width. The routes ride differently, then join up again before the finish. The ridge is steep, and the trees or boulders along its top are solid. | Lakeside Valley (a forested ridge: a jump line on one side, moguls and logs on the other), Frozen Gorge and Glacier Bowl (see above) |
 
@@ -117,6 +124,7 @@ The music is real songs, played from the artists' official YouTube videos so the
 | **Lakeside Valley** | Dave Matthews Band – Crash Into Me | [youtube.com/watch?v=k7in-9E3ImQ](https://www.youtube.com/watch?v=k7in-9E3ImQ) |
 | **Frozen Gorge** | Pendulum – Watercolour | [youtube.com/watch?v=tEPB7uzKuh4](https://www.youtube.com/watch?v=tEPB7uzKuh4) |
 | **Glacier Bowl** | Foo Fighters – Everlong | [youtube.com/watch?v=eBG7P-K-r1Y](https://www.youtube.com/watch?v=eBG7P-K-r1Y) |
+| **Lava Rush** | The Prodigy – Firestarter | [youtube.com/watch?v=wmin5WkOuPw](https://www.youtube.com/watch?v=wmin5WkOuPw) |
 
 If a place has no song, it's silent apart from the sound effects.
 
@@ -157,7 +165,7 @@ How it works:
 | Flip               | 600 for one, 1500 for a double, 2800 for a triple, 4500 for a quad |
 | Combo              | ×1.5 for two of flip, spin and grab; ×2 for all three |
 | Taking off switch  | ×1.25                                     |
-| Time bonus         | 50 per second under par: 70 seconds, or 210 on Frozen Gorge and Glacier Bowl |
+| Time bonus         | 50 per second under par: 70 seconds, or 210 on Frozen Gorge, Glacier Bowl and Lava Rush |
 
 ## Controls
 
