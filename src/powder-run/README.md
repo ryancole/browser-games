@@ -10,11 +10,11 @@ Serve the `src/` folder from any static web server and open `powder-run/`. Openi
 
 The game opens on a title screen: your rider, in your outfit for this visit, hangs in a slow-motion grab high against a blue sky, shot from below with snow spraying off the board. Press any key, or tap, to go to the main menu. Invite links skip the title screen and go straight to the join screen with the code filled in.
 
-The menus are full-screen, with big chrome lettering over the course. Behind them you and the bots ride the picked course on autopilot, and the camera watches you from in front. Courses are picked from a row of lift passes, each showing the course's line and colours, and the highlighted course is built behind the menu as you browse. The main menu offers **Single player**, **Multiplayer** and **High scores**. **Single player** asks which course to race, then starts a race against the bots. **Multiplayer** asks for your name and whether you're hosting or joining: hosting asks which course to use and then creates the lobby, and joining asks for the lobby code. Use the arrow keys (or WASD) to move, **Enter** to pick and **Esc** to go back, or click and tap. In the lobby the host can also use **← →** to change the course and **↑ ↓** to change the number of bots.
+The menus are full-screen, with big chrome lettering over the course. Behind them you and the bots ride the picked course on autopilot, and the camera cuts between shots every few seconds like a TV broadcast: following you from in front, chasing from behind, a fly-by that sweeps round you, a trackside camera that pans as you race past, one sitting in the snow that you fly over or ride past, and a high aerial. In the lobby, where nobody's moving yet, it holds a view of the start gate. Courses are picked from a row of lift passes, each showing the course's line and colours, and the highlighted course is built behind the menu as you browse. The main menu offers **Single player**, **Multiplayer** and **High scores**. **Single player** asks which course to race, then starts a race against the bots. **Multiplayer** asks for your name and whether you're hosting or joining: hosting asks which course to use and then creates the lobby, and joining asks for the lobby code. Use the arrow keys (or WASD) to move, **Enter** to pick and **Esc** to go back, or click and tap. In the lobby the host can also use **← →** to change the course and **↑ ↓** to change the number of bots.
 
 ## Courses
 
-Pick a course when you start a single-player race or host a lobby. Picking one builds it straight away behind the menu, and the game remembers your choice. There are six. Frozen Gorge, Glacier Bowl and Lava Rush are three times as long as the rest, and every course has its own bends, kicker layout, obstacles and scenery.
+Pick a course when you start a single-player race or host a lobby. Picking one builds it straight away behind the menu, and the game remembers your choice. There are seven. Frozen Gorge, Glacier Bowl and Lava Rush are three times as long as the short courses and Everest is twice as long, and every course has its own bends, kicker layout, obstacles and scenery.
 
 | Course | What it's like |
 | ------ | -------------- |
@@ -24,6 +24,7 @@ Pick a course when you start a single-player race or host a lobby. Picking one b
 | **Frozen Gorge** | A technical, route-heavy run through a rocky gorge at dusk, under an orange sky. See below. |
 | **Glacier Bowl** | A huge open bowl above the treeline on a bright, clear day, more than twice as wide as the other courses. See below. |
 | **Lava Rush** | No snow at all: you surf a river of molten lava down a black basalt valley, with an erupting volcano ahead and a giant ledge near the end. See below. |
+| **Everest** | Straight down the side of the world's highest mountain: one long, relentlessly steep face high above the clouds. See below. |
 
 ### Frozen Gorge
 
@@ -57,6 +58,10 @@ The odd one out. The run is a river of glowing lava with plates of dark, cooling
 
 Near the end, the whole valley drops away: a sheer rock face 350 m high runs right across the run. Ride off it and you fall for about five seconds before the lava flow picks up again far below, plenty of time for a long trick if you can land it. Partway down you drop right past a huge red dragon hovering off to one side of the run, beating its wings, swinging its tail and turning its head to watch you go by. A landing that big doesn't turn into a sudden burst of speed: however far you fall, landing adds at most a little speed along the slope.
 
+### Everest
+
+Snowboarding the side of Everest. The whole course is one long, steep face, about twice as steep as the other courses, so you reach well over 100 km/h without even tucking. The banks barely rise either side, so it's an open mountain face rather than a valley, and the camera stays closer to level so you can see the face drop away ahead. The run is wind-packed snow with patches of blue ice. The banks are snow and grey rock, crossed by a band of yellowish rock like Everest's own Yellow Band. Up here the sky is a deep blue, a sea of cloud lies far below with the rest of the Himalaya poking up through it, two neighbouring giants tower on either side, and strings of prayer flags are slung high across the run. Mountain goats stand about in ones, twos and threes on the slopes just past the nets, and partway down a rope team of five climbers is working its way up the face beside the run, roped together, ice axes out. Two goats have wandered right onto the run: they're solid, so ride into one and you wipe out. At the bottom you finish in base camp, with dome tents in every colour, crates and fuel barrels either side of the last stretch and round the flat runout, under more prayer flags. The tents, crates and barrels inside the nets are solid too. Spindrift blows across the slope and a little snow falls. The course has rollers, cliff drops off rock bands, rock kickers and moguls, and no trees. Its par time is 80 seconds.
+
 ### Terrain features
 
 Between the built kickers, every course has natural and built terrain to ride and launch off. Each course mixes these differently:
@@ -65,10 +70,10 @@ Between the built kickers, every course has natural and built terrain to ride an
 | ------- | ---------- | ----- |
 | **Moguls** | A field of staggered bumps. At speed you skip from crest to crest. | All courses (snow piles in the city) |
 | **Rollers** | Big humps across the whole run. Fast riders take off from the crests. | All courses (snow banks in the city) |
-| **Cliff drops** | A shelf across one side of the run that ends in a sheer drop, with boulders at the foot. The other side stays a normal slope, so you choose the drop or the way round. | Snowy Peak, Lakeside Valley, Lava Rush (a concrete ledge with a hazard stripe in the city) |
+| **Cliff drops** | A shelf across one side of the run that ends in a sheer drop, with boulders at the foot. The other side stays a normal slope, so you choose the drop or the way round. | Snowy Peak, Lakeside Valley, Lava Rush, Everest (a concrete ledge with a hazard stripe in the city) |
 | **Logs and barriers** | Fallen logs, or concrete barriers in the city, lying across part of the run. Hit one at speed for a little pop. | All courses |
 | **Rooftop jumps** | A building half-buried in snow: ride the snow ramp up onto the roof and jump off the far end. The walls are solid, so don't ride into the side. | A ski patrol hut on Snowy Peak, a parked bus in the city, a log cabin in the valley |
-| **Rock kickers** | A snowdrift banked against rocks: a natural kicker with no built lip. The boulders either side are solid. | Snowy Peak, Lakeside Valley, Lava Rush |
+| **Rock kickers** | A snowdrift banked against rocks: a natural kicker with no built lip. The boulders either side are solid. | Snowy Peak, Lakeside Valley, Lava Rush, Everest |
 | **Tree islands** | A raised island of trees down the middle that splits the run into two lines, with moguls on one side and logs or barriers on the other. | All courses (trees in planters in the city) |
 | **Forks** | A long ridge rises out of the middle of the run and splits it in two, with the banks pushed out so each route is close to full width. The routes ride differently, then join up again before the finish. The ridge is steep, and the trees or boulders along its top are solid. | Lakeside Valley (a forested ridge: a jump line on one side, moguls and logs on the other), Frozen Gorge and Glacier Bowl (see above) |
 
@@ -125,6 +130,7 @@ The music is real songs, played from the artists' official YouTube videos so the
 | **Frozen Gorge** | Pendulum – Watercolour | [youtube.com/watch?v=tEPB7uzKuh4](https://www.youtube.com/watch?v=tEPB7uzKuh4) |
 | **Glacier Bowl** | Foo Fighters – Everlong | [youtube.com/watch?v=eBG7P-K-r1Y](https://www.youtube.com/watch?v=eBG7P-K-r1Y) |
 | **Lava Rush** | The Prodigy – Firestarter | [youtube.com/watch?v=wmin5WkOuPw](https://www.youtube.com/watch?v=wmin5WkOuPw) |
+| **Everest** | CAKE – The Distance | [youtube.com/watch?v=F_HoMkkRHv8](https://www.youtube.com/watch?v=F_HoMkkRHv8) |
 
 If a place has no song, it's silent apart from the sound effects.
 
@@ -165,7 +171,7 @@ How it works:
 | Flip               | 600 for one, 1500 for a double, 2800 for a triple, 4500 for a quad |
 | Combo              | ×1.5 for two of flip, spin and grab; ×2 for all three |
 | Taking off switch  | ×1.25                                     |
-| Time bonus         | 50 per second under par: 70 seconds, or 210 on Frozen Gorge, Glacier Bowl and Lava Rush |
+| Time bonus         | 50 per second under par: 70 seconds, 210 on Frozen Gorge, Glacier Bowl and Lava Rush, or 80 on Everest |
 
 ## Controls
 

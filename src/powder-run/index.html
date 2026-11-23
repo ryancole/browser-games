@@ -435,7 +435,7 @@
     <div class="ribbon">SNOWBOARDING</div>
   </div>
   <div class="press"><span class="keys-only">Press any key</span><span class="tap-only">Tap the screen</span></div>
-  <div class="foot">Six courses · Spins, flips and grabs · Race bots or friends</div>
+  <div class="foot">Seven courses · Spins, flips and grabs · Race bots or friends</div>
 </div>
 
 <script type="module">
@@ -449,7 +449,8 @@ const SECTION_LEN = 1400;  // metres in one section of a course; most levels are
 let COURSE_LEN = SECTION_LEN; // metres from start to the finish line (set per level)
 const RUNOUT = 180;        // flat-ish area past the finish
 let HALF_W = 18;           // half-width of the groomed run (set per level)
-const SLOPE = 0.3;         // average fall-line gradient
+let SLOPE = 0.3;           // average fall-line gradient (set per level)
+let BANK = 1;              // how steeply the banks rise either side of the run (set per level)
 const PAR_TIME = 70;       // seconds per section; finishing faster earns a time bonus
 
 const G_GROUND = 22;       // gravity used for sliding along the slope
@@ -602,7 +603,7 @@ function terrainH(x, z) {
   const d = Math.abs(x - center(z)), hw = HALF_W + widen(z);
   if (d > hw) {
     const e = Math.min(d - hw, 28);
-    h += e * e * 0.09 + e * 0.15 + Math.max(0, d - hw - 28) * 0.5;
+    h += BANK * (e * e * 0.09 + e * 0.15 + Math.max(0, d - hw - 28) * 0.5);
   }
   return h + kickerH(x, z) + featureH(x, z);
 }
@@ -1990,6 +1991,198 @@ function makeDragon() {
   };
 }
 
+// --- Everest: straight down the side of the world's highest mountain ------------
+// A relentless steep face high above the clouds. The run is wind-packed snow
+// with patches of blue ice; the banks are snow and grey rock, crossed by a band
+// of yellowish rock like Everest's Yellow Band.
+function everestGround(x, z, d, n) {
+  const rocky = Math.sin(x * 0.12 + z * 0.05) * Math.sin(z * 0.07 - x * 0.09);
+  if (d < HALF_W) {
+    if (Math.sin(x * 0.09 + z * 0.031) * Math.sin(z * 0.047 - x * 0.06) > 0.72) return [0.68 + n, 0.82 + n, 0.97 + n * 0.5]; // ice
+    return [0.88 + n, 0.92 + n, 1 + n * 0.5];
+  }
+  const e = d - HALF_W;
+  if (e > 13 && e < 22 && rocky > -0.3) return [0.6 + n, 0.53 + n, 0.36 + n];
+  if (e > 3 && rocky + e * 0.02 > 0.35) return [0.27 + n, 0.27 + n, 0.3 + n];
+  return [0.86 + n, 0.9 + n, 0.98 + n * 0.5];
+}
+
+// Strings of Tibetan prayer flags slung high across the run between the banks.
+const FLAG_COLORS = [0x2a5bd7, 0xf2f2f2, 0xd8342c, 0x2f9a4a, 0xf2c12e];
+function addPrayerFlags(spans) {
+  const flags = [], line = [];
+  for (const [z, lift] of spans) {
+    const c = center(z), xa = c - HALF_W - 6, xb = c + HALF_W + 6;
+    const ya = terrainH(xa, z) + lift, yb = terrainH(xb, z) + lift;
+    const N = 40, sag = 5;
+    let prev = null;
+    for (let i = 0; i <= N; i++) {
+      const t = i / N, x = xa + (xb - xa) * t, y = ya + (yb - ya) * t - Math.sin(t * Math.PI) * sag;
+      if (prev) line.push(...prev, x, y, z); // one line segment per step
+      prev = [x, y, z];
+      if (i > 0 && i < N) flags.push({ x, y: y - 0.35, z, k: i });
+    }
+  }
+  levelGroup.add(new THREE.LineSegments(new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(line, 3)),
+    new THREE.LineBasicMaterial({ color: 0x3a3226 })));
+  instanced(new THREE.PlaneGeometry(0.75, 0.6), flags, (f, o, col) => {
+    o.position.set(f.x, f.y, f.z); o.rotation.set(0, 0, Math.sin(f.k * 1.7) * 0.15);
+    col.set(FLAG_COLORS[f.k % FLAG_COLORS.length]);
+  }, { mat: new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide }), shadow: false });
+}
+
+// Copies of a little model made of box-and-cone parts, all standing still. Each
+// part is one InstancedMesh, so a whole herd costs a handful of draw calls.
+// A part is { geo, color, at, rot, scale }: its place in the model, which faces
+// +z with its feet at the origin. `color` can be a function of the place, so
+// copies can be dressed differently. Places are { x, y, z, yaw, s }.
+function addFigures(parts, places) {
+  const M = new THREE.Matrix4(), P = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), v = new THREE.Vector3(), sc = new THREE.Vector3(), c = new THREE.Color();
+  for (const part of parts) {
+    const mesh = new THREE.InstancedMesh(part.geo, litMat(), Math.max(1, places.length));
+    mesh.castShadow = true;
+    mesh.frustumCulled = false;
+    P.compose(v.fromArray(part.at ?? [0, 0, 0]), q.setFromEuler(e.set(...(part.rot ?? [0, 0, 0]))), sc.fromArray(part.scale ?? [1, 1, 1]));
+    places.forEach((pl, i) => {
+      M.compose(v.set(pl.x, pl.y, pl.z), q.setFromEuler(e.set(0, pl.yaw ?? 0, 0)), sc.setScalar(pl.s ?? 1));
+      mesh.setMatrixAt(i, M.multiply(P));
+      mesh.setColorAt(i, c.set(typeof part.color === "function" ? part.color(pl, i) : part.color));
+    });
+    levelGroup.add(mesh);
+  }
+}
+
+// A mountain goat: shaggy white coat, dark horns and hooves.
+const blk = (x, y, z) => new THREE.BoxGeometry(x, y, z);
+const GOAT = [
+  { geo: blk(0.5, 0.55, 1.1), color: 0xe3d4b0, at: [0, 0.95, 0] },
+  { geo: blk(0.3, 0.45, 0.3), color: 0xe3d4b0, at: [0, 1.25, 0.55], rot: [-0.5, 0, 0] },
+  { geo: blk(0.26, 0.3, 0.45), color: 0xd9c9a3, at: [0, 1.5, 0.75], rot: [0.4, 0, 0] },
+  { geo: blk(0.1, 0.22, 0.1), color: 0xe3d4b0, at: [0, 1.3, 0.92] }, // beard
+  { geo: new THREE.ConeGeometry(0.05, 0.45, 5), color: 0x2e2a26, at: [0.08, 1.75, 0.62], rot: [-1.1, 0, 0] },
+  { geo: new THREE.ConeGeometry(0.05, 0.45, 5), color: 0x2e2a26, at: [-0.08, 1.75, 0.62], rot: [-1.1, 0, 0] },
+  { geo: blk(0.1, 0.12, 0.2), color: 0xe3d4b0, at: [0, 1.15, -0.6], rot: [0.5, 0, 0] }, // tail
+  ...[[0.17, 0.4], [-0.17, 0.4], [0.17, -0.4], [-0.17, -0.4]].flatMap(([x, z]) => [
+    { geo: blk(0.13, 0.7, 0.13), color: 0xc9b993, at: [x, 0.4, z] },
+    { geo: blk(0.14, 0.1, 0.15), color: 0x2e2a26, at: [x, 0.05, z] },
+  ]),
+];
+
+// A climber in a climbing pose: leaning into the slope, one knee up, an ice axe
+// planted ahead and a pack on their back. Jacket and pack colours vary.
+const JACKETS = [0xd8342c, 0xf2c12e, 0x2a5bd7, 0xff7a1a, 0x2f9a4a], PACKS = [0x2a2f3a, 0x5a3e2b, 0x3a4a6b, 0x6b2a2a, 0x2a2f3a];
+const CLIMBER = [
+  { geo: blk(0.17, 0.12, 0.3), color: 0x2a2420, at: [0.12, 0.06, -0.05] }, // boots
+  { geo: blk(0.17, 0.12, 0.3), color: 0x2a2420, at: [-0.12, 0.42, 0.42] },
+  { geo: blk(0.17, 0.85, 0.19), color: 0x33363e, at: [0.12, 0.5, -0.08], rot: [0.15, 0, 0] }, // back leg
+  { geo: blk(0.17, 0.5, 0.19), color: 0x33363e, at: [-0.12, 0.8, 0.2], rot: [-1.0, 0, 0] }, // thigh, knee up
+  { geo: blk(0.17, 0.45, 0.19), color: 0x33363e, at: [-0.12, 0.58, 0.4], rot: [0.15, 0, 0] }, // shin
+  { geo: blk(0.46, 0.62, 0.3), color: (pl, i) => JACKETS[i % JACKETS.length], at: [0, 1.3, 0.1], rot: [0.4, 0, 0] },
+  { geo: blk(0.4, 0.55, 0.26), color: (pl, i) => PACKS[i % PACKS.length], at: [0, 1.4, -0.17], rot: [0.4, 0, 0] },
+  { geo: blk(0.25, 0.27, 0.25), color: 0xc89a7a, at: [0, 1.74, 0.32] }, // head
+  { geo: blk(0.29, 0.13, 0.29), color: (pl, i) => JACKETS[(i + 2) % JACKETS.length], at: [0, 1.91, 0.31] }, // helmet
+  { geo: blk(0.13, 0.58, 0.13), color: (pl, i) => JACKETS[i % JACKETS.length], at: [0.29, 1.45, 0.42], rot: [-1.15, 0, 0] }, // reaching arm
+  { geo: blk(0.13, 0.55, 0.13), color: (pl, i) => JACKETS[i % JACKETS.length], at: [-0.29, 1.12, 0.08], rot: [0.35, 0, 0] },
+  { geo: blk(0.045, 0.8, 0.045), color: 0x2a2f3a, at: [0.29, 1.35, 0.78], rot: [-0.35, 0, 0] }, // ice axe
+  { geo: blk(0.05, 0.05, 0.3), color: 0x9aa0aa, at: [0.29, 1.73, 0.92] },
+];
+
+function buildEverest(rnd) {
+  // Boulders on the banks; nothing grows up here.
+  const rocks = [];
+  scatter(rnd, { step: 5, chance: 0.35, dMin: HALF_W + 4, dSpread: 26 }, (t) => rocks.push({ ...t, s: 0.8 + t.s * 1.6, y: t.y - 0.4 }));
+  addRocks(rocks);
+  const spans = [[14, 9]];
+  for (let z = 350; z < COURSE_LEN - 100; z += 420) spans.push([z, 11]);
+  addPrayerFlags(spans);
+
+  // Mountain goats in ones, twos and threes on the slopes either side, just past the nets.
+  const goats = [];
+  for (let z = 110; z < COURSE_LEN - 60; z += 90 + rnd() * 90) {
+    const side = rnd() < 0.5 ? -1 : 1, d = 31 + rnd() * 10, n = 1 + Math.floor(rnd() * 3);
+    for (let k = 0; k < n; k++) {
+      const gz = z + (rnd() - 0.5) * 8, gx = center(gz) + side * (d + rnd() * 4);
+      goats.push({ x: gx, y: terrainH(gx, gz), z: gz, yaw: rnd() * Math.PI * 2, s: 1.5 + rnd() * 0.4 });
+    }
+  }
+  addFigures(GOAT, goats);
+
+  // A couple of goats that have wandered right onto the run. They're solid:
+  // ride into one and you wipe out. Each stands clear of the kickers' run-ups
+  // and landings, facing up the hill at whoever's coming.
+  const onRun = [];
+  for (const [z0, u] of [[640, -7], [2250, 6]]) {
+    let z = z0;
+    while (kickers.some((k) => z - k.z > -30 && z - k.z < 80)) z += 10;
+    const x = center(z) + u, y = terrainH(x, z);
+    onRun.push({ x, y, z, yaw: Math.PI + (rnd() - 0.5) * 0.8, s: 1.5 });
+    addObstacle({ x, z, y, r: 1.1, h: 2.4, name: "Hit a goat!" });
+  }
+  addFigures(GOAT, onRun);
+
+  // Base camp at the bottom: dome tents, crates and fuel barrels on both sides
+  // of the run's last stretch and round the flat runout past the finish, with
+  // prayer flags strung over it. Tents inside the nets are solid.
+  const TENT_COLORS = [0xf2a51a, 0xffd23a, 0xd8342c, 0x2a5bd7, 0xff7a1a, 0x2f9a4a];
+  const tents = [], crates = [], barrels = [];
+  for (let tries = 0; tents.length < 40 && tries < 500; tries++) {
+    const z = COURSE_LEN - 140 + rnd() * (RUNOUT + 120), side = rnd() < 0.5 ? -1 : 1;
+    // Past the finish they can sit anywhere off the middle; above it, only beyond the nets.
+    const d = z > COURSE_LEN + 25 ? 10 + rnd() * 34 : 31 + rnd() * 14;
+    const x = center(z) + side * d;
+    if (tents.some((t) => Math.hypot(t.x - x, t.z - z) < 6.5)) continue;
+    const t = { x, y: terrainH(x, z) - 0.05, z, yaw: -side * Math.PI / 2 + (rnd() - 0.5) * 0.9, s: 1.2 + rnd() * 0.4 };
+    tents.push(t);
+    if (d < FENCE_D) addObstacle({ x, z, y: t.y, r: 1.7 * t.s, h: 2.1 * t.s, name: "Hit a tent!" });
+    if (rnd() < 0.5) {
+      const cz = z + (rnd() - 0.5) * 3, cx = x + side * (2.4 + rnd());
+      (rnd() < 0.6 ? crates : barrels).push({ x: cx, y: terrainH(cx, cz), z: cz, yaw: rnd() * 3 });
+    }
+  }
+  addFigures([
+    { geo: new THREE.SphereGeometry(1, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2), color: (pl, i) => TENT_COLORS[i % TENT_COLORS.length], scale: [1.5, 1.2, 1.9] },
+    { geo: blk(0.75, 0.85, 0.06), color: 0x2a2f3a, at: [0, 0.42, 1.68], rot: [-0.55, 0, 0] }, // door
+  ], tents);
+  addFigures([{ geo: blk(0.9, 0.6, 0.6), color: 0x8a6a3a, at: [0, 0.3, 0] }, { geo: blk(0.95, 0.08, 0.65), color: 0x5a4426, at: [0, 0.6, 0] }], crates);
+  addFigures([{ geo: new THREE.CylinderGeometry(0.32, 0.32, 0.9, 10), color: 0x2a5bd7, at: [0, 0.45, 0] }], barrels);
+  for (const b of barrels) if (Math.abs(b.x - center(b.z)) < FENCE_D) addObstacle({ x: b.x, z: b.z, y: b.y, r: 0.6, h: 1, name: "Hit a barrel!" });
+  for (const c of crates) if (Math.abs(c.x - center(c.z)) < FENCE_D) addObstacle({ x: c.x, z: c.z, y: c.y, r: 0.7, h: 0.7, name: "Hit a crate!" });
+  addPrayerFlags([[COURSE_LEN + 70, 7], [COURSE_LEN + 130, 7]]);
+
+  // A rope team of five climbers heading up the face beside the run, roped together.
+  const climbers = [], rope = [];
+  for (let i = 0; i < 5; i++) {
+    const z = 1240 - i * 3.2, x = center(z) + 36 + Math.sin(i * 1.3) * 0.8;
+    climbers.push({ x, y: terrainH(x, z), z, yaw: Math.PI, s: 1.15 });
+  }
+  addFigures(CLIMBER, climbers);
+  for (let i = 1; i < climbers.length; i++) {
+    const a = climbers[i - 1], b = climbers[i];
+    rope.push(a.x, a.y + 1.15, a.z - 0.1, b.x, b.y + 1.15, b.z + 0.1);
+  }
+  levelGroup.add(new THREE.LineSegments(new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(rope, 3)),
+    new THREE.LineBasicMaterial({ color: 0xff5a1a })));
+
+  // Deep blue overhead at this height, fading to a bright haze over a sea of
+  // cloud far below, with the rest of the Himalaya poking up through it.
+  skyDome(0x0b2a6e, 0xb9d6f2, 0xf2f6fb);
+  const cloudTex = canvasTexture(512, 512, (g) => {
+    g.fillStyle = "#e9f0f8"; g.fillRect(0, 0, 512, 512);
+    for (let i = 0; i < 160; i++) {
+      const x = rnd() * 512, y = rnd() * 512, r = 20 + rnd() * 60;
+      const grd = g.createRadialGradient(x, y, 0, x, y, r);
+      grd.addColorStop(0, "rgba(255,255,255,0.9)"); grd.addColorStop(1, "rgba(255,255,255,0)");
+      g.fillStyle = grd; g.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+  }, true);
+  cloudTex.repeat.set(8, 8);
+  flatLayer(new THREE.CircleGeometry(1450, 48).rotateX(-Math.PI / 2).translate(0, -650, 0), new THREE.MeshBasicMaterial({ map: cloudTex }), -10);
+  peakRing(rnd, { n: 26, r0: 850, r1: 1250, h0: 380, h1: 640, base: -1000, colors: [0x6f7f99, 0x7c8ca6, 0x63728c], cap: 0xf6f9fd });
+  // Neighbouring giants, close by on either side.
+  peakRing(rnd, { n: 2, r0: 620, r1: 700, h0: 1050, h1: 1150, base: -1150, colors: [0x5f6e88, 0x6a7a94], cap: 0xf6f9fd, spread: 1.2, offset: 0.9 });
+  peakRing(rnd, { n: 2, r0: 620, r1: 700, h0: 1000, h1: 1100, base: -1150, colors: [0x5f6e88, 0x6a7a94], cap: 0xf6f9fd, spread: 1.2, offset: -2.1 });
+}
+
 // --- Snowy Peak: the original overcast mountain --------------------------------
 function buildPeak(rnd) {
   const trees = [];
@@ -2402,6 +2595,20 @@ const LEVELS = {
     snow: 0.9, embers: true, puffs: 0.5, puffColor: 0x2a2220, spray: 0xff8a3a, kickerColor: [0.045, 0.038, 0.036],
     furniture: { poles: [0xffc43a, 0x2a2420], lip: 0xffb040, lipGlow: true, net: "#ffb020", post: 0x1a1414, banners: ["#2a1a14", "#e0441a"] },
   },
+  everest: {
+    name: "Everest", blurb: "Straight down the side of the world's highest mountain: one long, relentlessly steep face high above the clouds.",
+    seed: 8848, build: buildEverest, ground: everestGround, slope: 0.62, bank: 0.3, sections: 2, halfW: 22, par: 80,
+    track: { artist: "CAKE", title: "The Distance", video: "F_HoMkkRHv8" },
+    course: { a1: 9, p1: 210, o1: 0.3, a2: 4, p2: 75, o2: 1, bump: 1.2 },
+    kickers: { start: 190, offsets: [0, -6, 6, -3, 3], gaps: [150, 180, 210] },
+    terrain: {
+      list: ["rollers", "cliff", "rock", "moguls", "cliff", "rollers", "rock", "moguls", "cliff", "rock"],
+      drop: 6, face: "rock", logs: "log", pines: [[0x2f5d46, 0x356b4c], 0xeef4fb],
+    },
+    levelCam: true, sky: 0x5a8ad0, fog: [0xc6dcf2, 150, 1100], hemi: [0xeaf2ff, 0x9fb2cc, 1.5], sun: [0xffffff, 2.4], riderLight: 0,
+    snow: 0.35, puffs: 1.4, kickerColor: [0.5, 0.72, 1.0],
+    furniture: { poles: [0x111111, 0xffd23a], lip: 0xff8a2a, net: "#ff7a1a", post: 0x2a2f3a, banners: ["#111111", "#2a5bd7"] },
+  },
 };
 const LEVEL_IDS = Object.keys(LEVELS);
 
@@ -2429,6 +2636,8 @@ function setLevel(id) {
   ceilings.length = 0;
   forks.length = 0;
   HALF_W = level.halfW ?? 18;
+  SLOPE = level.slope ?? 0.3;
+  BANK = level.bank ?? 1;
   FENCE_D = HALF_W + 7;
   Object.assign(course, { tight: null }, level.course);
   COURSE_LEN = SECTION_LEN * (level.sections ?? 1);
@@ -4641,7 +4850,12 @@ function updateCamera(dt, snap = false) {
   if (snap) camera.position.copy(camTarget);
   else camera.position.lerp(camTarget, 1 - Math.exp(-6 * dt));
   camera.position.y = Math.max(camera.position.y, terrainH(camera.position.x, camera.position.z) + 1.5);
-  camera.lookAt(me.x + fx * 4, me.y + 1.2, me.z + fz * 4);
+  // On a very steep face the ground behind lifts the camera well above the
+  // rider, so it looks down the slope and the slope reads as a flat floor. Lift
+  // the aim by half as much, so the camera stays closer to level and the face
+  // visibly drops away beneath the horizon.
+  const lift = level.levelCam ? Math.max(0, camera.position.y - (me.y + 4.2)) * 0.5 : 0;
+  camera.lookAt(me.x + fx * 4, me.y + 1.2 + lift, me.z + fz * 4);
   camera.fov = 62 + Math.min(speed, 40) * 0.3;
   camera.updateProjectionMatrix();
 
@@ -4657,25 +4871,91 @@ function snapCamera() {
   updateCamera(0, true);
 }
 
-// Behind the menus (and the lobby, where nobody's moving): low and in front of you, looking back up at you as you
-// ride, drifting from one side to the other.
+// Behind the menus the camera works like a TV director, cutting between shots
+// every few seconds: the follow shot from in front of you, a chase shot from
+// behind, a fly-by sweeping round you, a trackside camera that pans as you go
+// past, one sitting in the snow that you ride over or past, and a high aerial.
+// In the lobby, where nobody's moving, it just holds the front shot.
 let attractYaw = 0;
-const attractCam = new THREE.Vector3();
+const attractCam = new THREE.Vector3(), shotLook = new THREE.Vector3();
+const SHOTS = ["front", "trackside", "flyby", "chase", "ground", "aerial"];
+let shot = { kind: "front", t: 0, dur: 9 };
+
+function nextShot() {
+  // Any shot but the one just shown; the front shot comes round most often.
+  const pool = SHOTS.filter((k) => k !== shot.kind);
+  const kind = shot.kind !== "front" && Math.random() < 0.35 ? "front" : pool[Math.floor(Math.random() * pool.length)];
+  const speed = Math.hypot(me.vx, me.vz);
+  const s = { kind, t: 0, dur: { front: 8, chase: 6, flyby: 6, aerial: 7, trackside: 9, ground: 8 }[kind], side: Math.random() < 0.5 ? -1 : 1 };
+  if (kind === "trackside" || kind === "ground") {
+    // Planted ahead of you, so you arrive in a few seconds.
+    const z = me.z + Math.max(10, speed) * (kind === "ground" ? 2.5 : 3) + 15;
+    const u = kind === "ground" ? (Math.random() - 0.5) * 8 : s.side * (HALF_W + widen(z) + 3);
+    const x = center(z) + u;
+    s.pos = new THREE.Vector3(x, terrainH(x, z) + (kind === "ground" ? 0.35 : 3 + Math.random() * 3), z);
+  }
+  shot = s;
+}
+
 function updateAttractCamera(dt) {
   const snap = attractSnap;
   attractSnap = false;
   const speed = Math.hypot(me.vx, me.vz);
   const want = speed > 2 ? Math.atan2(me.vx, me.vz) : me.heading;
   attractYaw = snap ? want : attractYaw + wrapAngle(want - attractYaw) * (1 - Math.exp(-1.5 * dt));
-  const a = attractYaw + Math.PI * 0.82 + Math.sin(attractT * 0.12) * 0.45;
-  // Standing still in the lobby, pull back down the hill to take in the whole start gate.
-  const dist = (attract ? 8.5 : 17) + Math.sin(attractT * 0.21) * 1.5;
-  // Rigidly tied to you (the turning is what's smoothed), so you never overtake it.
-  attractCam.set(me.x + Math.sin(a) * dist, me.y + (attract ? 2.2 : 1.5), me.z + Math.cos(a) * dist);
+  if (snap || !attract) shot = { kind: "front", t: 0, dur: 9 };
+  else {
+    shot.t += dt;
+    // Planted cameras cut away once you're well past them.
+    const passed = shot.pos && me.z > shot.pos.z + (shot.kind === "ground" ? 12 : 30);
+    if (shot.t > shot.dur || passed) nextShot();
+  }
+
+  const fx = Math.sin(attractYaw), fz = Math.cos(attractYaw);
+  let fov = 55, groundGap = 1.2;
+  shotLook.set(me.x, me.y + 1.1, me.z);
+  switch (shot.kind) {
+    case "front": {
+      // Low and in front of you, looking back up at you, drifting from side to side.
+      const a = attractYaw + Math.PI * 0.82 + Math.sin(attractT * 0.12) * 0.45;
+      // Standing still in the lobby, pull back down the hill to take in the whole start gate.
+      const dist = (attract ? 8.5 : 17) + Math.sin(attractT * 0.21) * 1.5;
+      // Rigidly tied to you (the turning is what's smoothed), so you never overtake it.
+      attractCam.set(me.x + Math.sin(a) * dist, me.y + (attract ? 2.2 : 1.5), me.z + Math.cos(a) * dist);
+      break;
+    }
+    case "chase":
+      attractCam.set(me.x - fx * 9, me.y + 3.6, me.z - fz * 9);
+      shotLook.set(me.x + fx * 6, me.y + 1, me.z + fz * 6);
+      fov = 62;
+      break;
+    case "flyby": {
+      // Sweeps from in front of you, round one side, to behind you, rising as it goes.
+      const k = smooth(Math.min(1, shot.t / shot.dur));
+      const a = attractYaw + shot.side * (Math.PI * 0.2 + k * Math.PI * 0.85);
+      const dist = 6 + k * 6;
+      attractCam.set(me.x + Math.sin(a) * dist, me.y + 1 + k * 4, me.z + Math.cos(a) * dist);
+      fov = 60;
+      break;
+    }
+    case "aerial": {
+      // High up behind and to one side, slowly circling.
+      const a = attractYaw + Math.PI + shot.side * (0.5 + shot.t * 0.05);
+      attractCam.set(me.x + Math.sin(a) * 26, me.y + 14 + shot.t * 1.2, me.z + Math.cos(a) * 26);
+      fov = 50;
+      break;
+    }
+    default:
+      // trackside and ground: the camera stays put and pans to keep you in shot,
+      // zoomed in a little while you're far off.
+      attractCam.copy(shot.pos);
+      fov = Math.min(65, Math.max(30, 70 - attractCam.distanceTo(shotLook) * 0.7));
+      groundGap = shot.kind === "ground" ? 0.3 : 1.2;
+  }
   camera.position.copy(attractCam);
-  camera.position.y = Math.max(camera.position.y, terrainH(camera.position.x, camera.position.z) + 1.2);
-  camera.lookAt(me.x, me.y + 1.1, me.z);
-  camera.fov = 55;
+  camera.position.y = Math.max(camera.position.y, terrainH(camera.position.x, camera.position.z) + groundGap);
+  camera.lookAt(shotLook);
+  camera.fov = fov;
   camera.updateProjectionMatrix();
   sun.position.set(me.x - 25, me.y + 45, me.z - 15);
   sun.target.position.set(me.x, me.y, me.z);
@@ -5156,7 +5436,7 @@ const refreshLobby = () => { if (net.role && state === "menu") showLobby(); };
 
 function showResults() {
   resultsShown = true;
-  const bonus = Math.max(0, Math.round((PAR_TIME * COURSE_LEN / SECTION_LEN - me.finishTime) * 50));
+  const bonus = Math.max(0, Math.round(((level.par ?? PAR_TIME * COURSE_LEN / SECTION_LEN) - me.finishTime) * 50));
   const total = me.trickScore + bonus;
   const isBest = total > best;
   if (isBest) { best = total; store.set(bestKey(levelId), String(best)); }
