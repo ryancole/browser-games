@@ -501,7 +501,7 @@
     <div class="ribbon">SNOWBOARDING</div>
   </div>
   <div class="press"><span class="keys-only">Press any key</span><span class="tap-only">Tap the screen</span></div>
-  <div class="foot">Nine courses · Spins, flips and grabs · Race bots or friends</div>
+  <div class="foot">Ten courses · Spins, flips and grabs · Race bots or friends</div>
 </div>
 
 <script type="module">
@@ -553,10 +553,14 @@ const wrapAngle = (a) => a - Math.PI * 2 * Math.round(a / (Math.PI * 2));
 // The run's middle line. Each level sets its own bends (see LEVELS).
 // `tight` adds quick, tight turns near the top that straighten out by z = tight.z1.
 const course = { a1: 16, p1: 130, o1: 0, a2: 7, p2: 53, o2: 1.3, bump: 0, tight: null };
+const bends = (z) => course.a1 * Math.sin(z / course.p1 + course.o1) + course.a2 * Math.sin(z / course.p2 + course.o2);
 const center = (z) => {
-  let c = course.a1 * Math.sin(z / course.p1 + course.o1) + course.a2 * Math.sin(z / course.p2 + course.o2);
+  let c = bends(z);
   const t = course.tight;
   if (t && z < t.z1) c += t.a * Math.sin(z / t.p) * (1 - smooth(Math.max(0, z) / t.z1));
+  // `straight`: from z0 the bends ease out over `len` metres, and the run carries on dead straight.
+  const s = course.straight;
+  if (s && z > s.z0) { const k = smooth(Math.min(1, (z - s.z0) / s.len)); c = c * (1 - k) + bends(s.z0) * k; }
   return c;
 };
 
@@ -618,6 +622,9 @@ const lanes = [];
 // Roofs over caves and cabins: { z0, z1, u0, u1, clear }, where `clear` is how
 // high your feet can go above the floor underneath.
 const ceilings = [];
+// Ice on the ground, where your edges hardly bite: { z0, z1, at(u, z) } (see groundStep).
+const iceZones = [];
+const onIce = (x, z) => iceZones.some((q) => z >= q.z0 && z <= q.z1 && q.at(x - center(z), z));
 
 // Ice roofs over caves are solid from above: land on one and you ride it, and
 // it's slippery. The roof under (x, z), if any.
@@ -630,7 +637,8 @@ function roofAt(x, z) {
   return null;
 }
 // The roof follows the cave floor along its middle, so its slope is the floor's there.
-const roofTop = (c, z) => terrainH(center(z) + c.uc, z) + c.top;
+// A roof with `at` (a bridge deck) keeps a smooth height of its own instead.
+const roofTop = (c, z) => (c.at ? c.at(z) : terrainH(center(z) + c.uc, z) + c.top);
 // What's under feet at height y at (x, z): [height, roof]. A roof counts if
 // you're on it or above it; from inside the cave it's the floor.
 function surfaceAt(x, z, y) {
@@ -638,7 +646,7 @@ function surfaceAt(x, z, y) {
   if (c) { const t = roofTop(c, z); if (y >= t - 0.6) return [t, c]; }
   return [terrainH(x, z), null];
 }
-const surfaceGrad = (x, z, roof) => (roof ? grad(center(z) + roof.uc, z) : grad(x, z));
+const surfaceGrad = (x, z, roof) => (!roof ? grad(x, z) : roof.at ? [0, (roof.at(z + 0.1) - roof.at(z - 0.1)) / 0.2] : grad(center(z) + roof.uc, z));
 
 // Forks: stretches where a ridge rises out of the middle of the run and splits
 // it into two routes that join up again further down. The banks are pushed out
@@ -680,6 +688,9 @@ function terrainH(x, z) {
   }
   return h + kickerH(x, z) + featureH(x, z);
 }
+
+// The ground under (x, z) without the features and kickers on it.
+const groundBase = (x, z) => terrainH(x, z) - featureH(x, z) - kickerH(x, z);
 
 function grad(x, z) {
   const e = 0.15;
@@ -903,7 +914,7 @@ const POLE_HIT_R = 0.45;  // how close a rider's middle has to come to knock one
 const POLE_K = 70, POLE_DAMP = 3.2, POLE_MAX = 1.25; // spring stiffness, damping, furthest it bends (rad)
 const sidePoles = { list: [], mesh: null };
 
-function buildCourseFurniture({ poles: poleColors, lipMat, net: netColor, post = 0x2a2f3a, banners }) {
+function buildCourseFurniture({ poles: poleColors, lipMat, net: netColor, post = 0x2a2f3a, banners, bannerH }) {
   const poles = [];
   for (let z = POLE_Z0; z < COURSE_LEN; z += POLE_GAP) {
     for (const side of [-1, 1]) {
@@ -960,8 +971,8 @@ function buildCourseFurniture({ poles: poleColors, lipMat, net: netColor, post =
     col.set(post);
   });
 
-  addBanner(4, "START", banners[0]);
-  addBanner(COURSE_LEN, "FINISH", banners[1]);
+  addBanner(4, "START", banners[0], bannerH);
+  addBanner(COURSE_LEN, "FINISH", banners[1], bannerH);
 }
 
 // Traffic cones: ride into one and it goes flying, tumbling end over end and
@@ -1102,18 +1113,18 @@ function updatePoles(dt) {
   if (moved) mesh.instanceMatrix.needsUpdate = true;
 }
 
-function addBanner(z, text, bg) {
+function addBanner(z, text, bg, H = 10) {
   const c = center(z);
   const poleMat = new THREE.MeshStandardMaterial({ color: 0x2a2f3a });
   let top = -Infinity;
   for (const side of [-1, 1]) {
     const x = c + side * HALF_W;
     const y = terrainH(x, z);
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 10, 8), poleMat);
-    pole.position.set(x, y + 5, z);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, H, 8), poleMat);
+    pole.position.set(x, y + H / 2, z);
     pole.castShadow = true;
     levelGroup.add(pole);
-    top = Math.max(top, y + 10);
+    top = Math.max(top, y + H);
   }
   const map = canvasTexture(1024, 128, (g) => {
     g.fillStyle = bg; g.fillRect(0, 0, 1024, 128);
@@ -1176,13 +1187,13 @@ function flatLayer(geo, mat, order) {
 // Boxes with a repeating window texture, merged into one mesh. Faces get a
 // fixed shade so the buildings read as solid without any lighting.
 const WIN_W = 24, WIN_H = 28.8; // metres covered by one tile of the window texture
-function windowTexture(rnd, lit) {
+function windowTexture(rnd, lit, chance = 0.42) {
   return canvasTexture(256, 256, (g) => {
     g.fillStyle = "#0b0d18"; g.fillRect(0, 0, 256, 256);
     for (let row = 0; row < 8; row++) {
       for (let col = 0; col < 8; col++) {
         const r = rnd();
-        g.fillStyle = r < 0.42 ? lit[Math.floor(rnd() * lit.length)] : r < 0.62 ? "#262a40" : "#161a2a";
+        g.fillStyle = r < chance ? lit[Math.floor(rnd() * lit.length)] : r < chance + 0.2 ? "#262a40" : "#161a2a";
         g.fillRect(col * 32 + 7, row * 32 + 9, 18, 16);
       }
     }
@@ -1284,8 +1295,8 @@ function fCliff(a, b, rnd, cfg) {
 }
 
 // A drop of D metres at zE across [u0, u1], with a shelf that builds up over `run` metres before it.
-function fCliffAt(zE, u0, u1, D, run, faceKind, rnd) {
-  const z0 = zE - run, EDGE = 1.6;
+function fCliffAt(zE, u0, u1, D, run, faceKind, rnd, EDGE = 1.6) {
+  const z0 = zE - run;
   const face = faceKind === "rock" ? ROCK_FACE : [0.55, 0.56, 0.6];
   const cfg = { face: faceKind };
   features.push({
@@ -3287,6 +3298,15 @@ function fConeScatter(z0, z1, n, rnd) {
   for (let i = 0; i < n; i++) flyers.items.push({ u: (rnd() - 0.5) * (HALF_W * 2 - 4), z: z0 + rnd() * (z1 - z0) });
 }
 
+// A car buried in snow, in its place's `color`.
+const SNOWED_CAR = [
+  { geo: blk(1.8, 0.8, 4.2), color: (pl) => pl.color, at: [0, 0.6, 0] },
+  { geo: blk(1.6, 0.6, 2.2), color: (pl) => pl.color, at: [0, 1.25, -0.2] },
+  { geo: blk(1.7, 0.35, 2.4), color: 0xf2f6fb, at: [0, 1.7, -0.2] }, // snow on the roof
+  { geo: blk(1.9, 0.3, 1.2), color: 0xf2f6fb, at: [0, 1.1, 1.5] }, // and on the bonnet
+  { geo: blk(1.62, 0.45, 0.06), color: 0x1b2233, at: [0, 1.25, 0.92], rot: [-0.5, 0, 0] },
+];
+
 // The highway in three hand-built stretches; the kickers (plowed snow piles) are in the level's list.
 const highwayLayout = [highwayTop, highwayPass, highwayDescent];
 
@@ -3428,13 +3448,7 @@ function buildHighway(rnd) {
     cars.push({ x, y: terrainH(x, z), z, yaw: Math.atan(centerSlope(z)) + (rnd() - 0.5) * 0.3, color: CAR_COLORS[cars.length % CAR_COLORS.length] });
     for (const d of [-1.3, 1.3]) addObstacle({ x, z: z + d, y: terrainH(x, z), r: 1.0, h: 1.6, name: "Hit a car!" });
   }
-  addFigures([
-    { geo: blk(1.8, 0.8, 4.2), color: (pl) => pl.color, at: [0, 0.6, 0] },
-    { geo: blk(1.6, 0.6, 2.2), color: (pl) => pl.color, at: [0, 1.25, -0.2] },
-    { geo: blk(1.7, 0.35, 2.4), color: 0xf2f6fb, at: [0, 1.7, -0.2] }, // snow on the roof
-    { geo: blk(1.9, 0.3, 1.2), color: 0xf2f6fb, at: [0, 1.1, 1.5] }, // and on the bonnet
-    { geo: blk(1.62, 0.45, 0.06), color: 0x1b2233, at: [0, 1.25, 0.92], rot: [-0.5, 0, 0] },
-  ], cars);
+  addFigures(SNOWED_CAR, cars);
 
   // The sky, and the range the pass climbs through.
   skyDome(0x3f7fd0, 0xd8e6f4, 0xe6eef8);
@@ -3461,6 +3475,460 @@ function buildHighway(rnd) {
   return (t) => { const on = Math.sin(t * 6) > 0; for (const m of workLights) m.opacity = on ? 1 : 0.12; };
 }
 
+// --- Midnight Crossing: a sleeping town at 2 a.m., down to a frozen river ------
+// Empty streets between snowy rowhouses, down through a rail yard and onto a
+// frozen river, finishing across a long suspension bridge. Quiet: a few lit
+// windows, warm pools of lamplight and snow falling through them.
+const MC_RIVER = 2540;   // where the river starts, at the foot of the embankment
+const MC_DECK = 9;       // the bridge deck's height above the river
+const MC_RAMP0 = 3800, MC_BRIDGE = 3930; // the bridge's approach ramp starts, then its deck (the ramp tops out under its first 12 m)
+const MC_TOWERS = [4010, 4260];
+const STONE = [0.62, 0.62, 0.66], STONE_DARK = [0.42, 0.42, 0.47];
+// The hill without its bumps or features: what the bridge deck follows.
+const hillLine = (z) => -Math.min(z, COURSE_LEN) * SLOPE - Math.max(0, z - COURSE_LEN) * 0.04;
+// Clear black ice on the river, where the snow has blown off.
+const mcSlick = (u, z) => Math.sin(z * 0.05 + u * 0.21) * Math.sin(z * 0.017 - u * 0.09) + 0.35 * Math.sin(z * 0.11 + u * 0.4) > 0.15;
+const crossLights = [];
+
+// A flight of steps down the street: it builds up over a level stretch, then
+// steps down `D` metres over `len`, with rails and boxes down it to grind.
+function fStairs(zs, len, D, grinds) {
+  const run = D / 0.16, n = Math.max(4, Math.round(len / 2.4));
+  const at = (z) => { const t = ((z - zs) / len) * n, k = Math.floor(t); return [k, t - k]; };
+  features.push({
+    z0: zs - run, z1: zs + len + 0.5,
+    h: (u, z) => {
+      const lat = band(u, -HALF_W - 3, HALF_W + 3, 3);
+      if (!lat) return 0;
+      if (z < zs) return D * lat * smooth((z - (zs - run)) / run);
+      const [k, f] = at(z);
+      return D * lat * Math.max(0, 1 - (k + smooth(Math.min(1, Math.max(0, (f - 0.6) / 0.4)))) / n);
+    },
+    color: (u, z) => (z >= zs && z <= zs + len && Math.abs(u) < HALF_W + 1 ? (at(z)[1] > 0.6 ? STONE_DARK : STONE) : null),
+  });
+  for (const [kind, u] of grinds) addRail(kind, zs, len, u);
+}
+
+// A frozen fountain in a little square: go either side of it.
+function fFountain(z) {
+  const x = center(z), y = terrainH(x, z);
+  addObstacle({ x, z, y, r: 2.6, h: 2.6, name: "Hit the fountain!" });
+  lanes.push({ z0: z - 15, z1: z + 6, opts: [-9, 9] });
+  return () => {
+    const stone = new THREE.MeshStandardMaterial({ color: 0x8a8d96, roughness: 0.9, flatShading: true });
+    const g = new THREE.Group();
+    g.position.set(x, terrainH(x, z), z);
+    levelGroup.add(g);
+    const add = (geo, mat, py) => { const m = new THREE.Mesh(geo, mat); m.position.y = py; m.castShadow = true; g.add(m); return m; };
+    add(new THREE.CylinderGeometry(2.6, 2.8, 0.8, 16), stone, 0.4);
+    add(new THREE.CylinderGeometry(2.3, 2.3, 0.1, 16), new THREE.MeshStandardMaterial({ color: 0xbfe6ff, roughness: 0.15 }), 0.72);
+    add(new THREE.CylinderGeometry(0.35, 0.45, 1.6, 8), stone, 1.5);
+    add(new THREE.CylinderGeometry(1.1, 0.5, 0.35, 12), stone, 2.3);
+    add(new THREE.CylinderGeometry(1.15, 1.15, 0.15, 12), new THREE.MeshStandardMaterial({ color: 0xf2f6fb }), 2.52);
+    // Icicles hanging off the bowl.
+    const ice = iceMat();
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2, ic = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.5 + (i % 3) * 0.2, 5), ice);
+      ic.position.set(Math.cos(a) * 1.05, 1.9, Math.sin(a) * 1.05); ic.rotation.x = Math.PI;
+      g.add(ic);
+    }
+  };
+}
+
+// Railway track: two rails on sleepers, `along` the run at u from z0 to z1, or
+// straight `across` it at z.
+function addTrack({ across, along }) {
+  const rails = [], ties = [];
+  if (across != null) {
+    const z = across, yaw = Math.atan(centerSlope(z));
+    for (let u = -HALF_W - 40; u < HALF_W + 40; u += 2) {
+      for (const dz of [-0.75, 0.75]) { const x = center(z) + u + 1; rails.push({ x, y: terrainH(x, z + dz), z: z + dz, yaw, kind: "x" }); }
+    }
+    for (let u = -HALF_W - 40; u < HALF_W + 40; u += 0.8) { const x = center(z) + u; ties.push({ x, y: terrainH(x, z), z, yaw, kind: "x" }); }
+  } else {
+    const [u, z0, z1] = along;
+    for (const du of [-0.75, 0.75]) for (const p of alongRun(z0, z1, 2, u + du)) rails.push({ ...p, kind: "z" });
+    for (const p of alongRun(z0, z1, 0.8, u)) ties.push({ ...p, kind: "z" });
+  }
+  const steel = new THREE.MeshStandardMaterial({ color: 0x6a6e78, metalness: 0.6, roughness: 0.4 });
+  instanced(new THREE.BoxGeometry(0.1, 0.14, 2.02), rails, (p, o) => {
+    o.position.set(p.x, p.y + 0.2, p.z);
+    if (p.kind === "x") o.rotation.set(0, p.yaw + Math.PI / 2, 0); else faceRun(o, p);
+  }, { mat: steel, shadow: false });
+  instanced(new THREE.BoxGeometry(2.4, 0.12, 0.24), ties, (p, o, c) => {
+    o.position.set(p.x, p.y + 0.06, p.z);
+    if (p.kind === "x") o.rotation.set(0, p.yaw + Math.PI / 2, 0); else faceRun(o, p);
+    c.set(0x3a2e26);
+  }, { shadow: false });
+}
+
+// A level crossing: the track across the road, red lights flashing, and a gate
+// arm down across each side, leaving a gap down the middle. Jump an arm, or go
+// through the gap.
+function fCrossing(z) {
+  const ARM = 1.1;
+  for (const s of [-1, 1]) {
+    for (let u = 3; u <= HALF_W; u += 0.9) {
+      const x = center(z) + s * u;
+      addObstacle({ x, z, y: terrainH(x, z), r: 0.32, h: ARM + 0.1, name: "Hit the crossing gate!" });
+    }
+  }
+  lanes.push({ z0: z - 30, z1: z + 4, opts: [0] });
+  return () => {
+    addTrack({ across: z + 3 });
+    const yaw = Math.atan(centerSlope(z));
+    const stripes = canvasTexture(256, 16, (g) => { for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? "#d8342c" : "#f4f4f4"; g.fillRect(i * 32, 0, 32, 16); } });
+    const armMat = new THREE.MeshStandardMaterial({ map: stripes, roughness: 0.5 }), post = new THREE.MeshStandardMaterial({ color: 0xdedede, roughness: 0.6 });
+    const pts = [[], []];
+    for (const s of [-1, 1]) {
+      const x = center(z) + s * (HALF_W + 0.8), y = terrainH(x, z);
+      const g = new THREE.Group();
+      g.position.set(x, y, z); g.rotation.y = yaw;
+      levelGroup.add(g);
+      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 4.2, 8), post); p.position.y = 2.1; g.add(p);
+      // The crossbuck, and the arm reaching across the road.
+      for (const r of [0.6, -0.6]) { const b = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.25, 0.05), post); b.position.set(0, 3.7, -0.1); b.rotation.z = r; g.add(b); }
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(HALF_W - 2.2, 0.16, 0.16), armMat);
+      arm.position.set(-s * (HALF_W - 2.2) / 2 - s * 0.6, ARM, 0); g.add(arm);
+      for (const k of [-1, 1]) pts[(k + 1) / 2].push(x + k * 0.35, y + 3.0, z - 0.2);
+    }
+    for (const list of pts) {
+      const m = new THREE.PointsMaterial({ size: 1.2, color: 0xff2a1a, map: glowTexture("rgba(255,60,40,1)"), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+      levelGroup.add(new THREE.Points(new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(list, 3)), m));
+      crossLights.push(m);
+    }
+  };
+}
+
+// A line of boxcars standing on a siding at u, starting at z0. Their snowy
+// roofs are solid to land on and ride along, jumping the gaps between cars;
+// with `ramp`, a snow drift against the first one gets you up there.
+function fBoxcars(z0, n, u, ramp) {
+  const L = 14, GAP = 2.2, TOP = 4.2, end = z0 + n * (L + GAP) - GAP;
+  // The drift stays level for a few metres inside the first car, so you're on its roof before it falls away.
+  if (ramp) features.push({
+    z0: z0 - 18, z1: z0 + 3.3,
+    h: (uu, z) => band(uu, u - 2.4, u + 2.4, 1.4) * (TOP + 0.05) * (z < z0 ? smooth((z - (z0 - 18)) / 18) : z < z0 + 3 ? 1 : Math.max(0, 1 - (z - z0 - 3) / 0.3)),
+  });
+  const cars = [];
+  for (let i = 0; i < n; i++) {
+    const a = z0 + i * (L + GAP), b = a + L;
+    cars.push([a, b]);
+    ceilings.push({ z0: a, z1: b, u0: u - 1.5, u1: u + 1.5, clear: 2, top: TOP, name: "Hit a freight car!", at: (z) => groundBase(center(z) + u, z) + TOP, uc: u, r0: u - 1.5, r1: u + 1.5, grip: true, face: true });
+    for (let z = a + 0.6; z < b; z += 1.3) {
+      for (const du of [-1, 0, 1]) {
+        const x = center(z) + u + du;
+        addObstacle({ x, z, y: groundBase(x, z), r: 0.6, h: TOP - 0.2, name: "Hit a freight car!" });
+      }
+    }
+  }
+  lanes.push({ z0: z0 - 25, z1: end, opts: [u > 0 ? u - 10 : u + 10] });
+  return () => {
+    addTrack({ along: [u, z0 - 30, end + 30] });
+    const COLORS = [0x7a3a26, 0x3a4a6a, 0x5a5048, 0x8a6a2a, 0x2f5a4a];
+    cars.forEach(([a, b], i) => {
+      const zc = (a + b) / 2, x = center(zc) + u, ya = groundBase(center(a) + u, a), yb = groundBase(center(b) + u, b);
+      const g = new THREE.Group();
+      g.position.set(x, (ya + yb) / 2, zc);
+      g.quaternion.setFromEuler(runE.set(Math.atan2(ya - yb, L), Math.atan(centerSlope(zc)), 0, "YXZ"));
+      levelGroup.add(g);
+      const add = (geo, color, px, py, pz) => { const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, roughness: 0.85, flatShading: true })); m.position.set(px, py, pz); m.castShadow = m.receiveShadow = true; g.add(m); return m; };
+      add(new THREE.BoxGeometry(2.9, 3.3, L), COLORS[(i * 3 + Math.round(u)) % COLORS.length], 0, 2.35, 0);
+      add(new THREE.BoxGeometry(3.0, 0.2, L), 0xf2f6fb, 0, TOP - 0.1, 0);
+      add(new THREE.BoxGeometry(0.06, 2.4, 3.2), 0x2a2a2a, 1.48, 2.1, 0); // the doors
+      add(new THREE.BoxGeometry(0.06, 2.4, 3.2), 0x2a2a2a, -1.48, 2.1, 0);
+      for (const dz of [-L / 2 + 2, L / 2 - 2]) add(new THREE.BoxGeometry(2.2, 0.7, 2.4), 0x1a1a1a, 0, 0.45, dz); // bogies
+    });
+  };
+}
+
+// A wooden jetty out from the bank at `side`: its posts and planks block the way.
+function fJetty(z, side) {
+  const u0 = HALF_W - 7, u1 = HALF_W + 3;
+  for (let u = u0; u <= u1; u += 1.2) {
+    for (const dz of [0, 5]) {
+      const x = center(z + dz) + side * u;
+      addObstacle({ x, z: z + dz, y: terrainH(x, z + dz), r: 0.45, h: 1.5, name: "Hit the jetty!" });
+    }
+  }
+  return () => {
+    const wood = new THREE.MeshStandardMaterial({ color: 0x5a4030, roughness: 0.95, flatShading: true });
+    const posts = [], planks = [];
+    for (let u = u0; u <= u1; u += 1.2) for (const dz of [0, 5]) { const x = center(z + dz) + side * u; posts.push({ x, y: terrainH(x, z + dz), z: z + dz }); }
+    for (let u = u0; u <= u1; u += 0.5) { const x = center(z + 2.5) + side * u; planks.push({ x, y: terrainH(x, z + 2.5), z: z + 2.5 }); }
+    instanced(new THREE.CylinderGeometry(0.16, 0.18, 2.4, 6), posts, (p, o) => o.position.set(p.x, p.y + 0.6, p.z), { mat: wood });
+    instanced(new THREE.BoxGeometry(0.46, 0.12, 5.6), planks, (p, o, c) => { o.position.set(p.x, p.y + 1.4, p.z); c.set(rndShade(p.x)); }, { mat: wood });
+    instanced(new THREE.BoxGeometry(0.5, 0.06, 5.6), planks, (p, o) => o.position.set(p.x, p.y + 1.49, p.z), { mat: new THREE.MeshStandardMaterial({ color: 0xf2f6fb }), shadow: false });
+  };
+}
+const rndShade = (x) => 0.85 + 0.15 * Math.abs(Math.sin(x * 12.9));
+
+// A small boat frozen into the ice, listing to one side. It's solid.
+function fBoat(z, u) {
+  for (const dz of [-2.4, 0, 2.4]) { const x = center(z + dz) + u; addObstacle({ x, z: z + dz, y: terrainH(x, z + dz), r: 1.3, h: 2.6, name: "Hit the boat!" }); }
+  return () => {
+    const x = center(z) + u, y = terrainH(x, z);
+    const g = new THREE.Group();
+    g.position.set(x, y - 0.3, z); g.rotation.set(0, Math.atan(centerSlope(z)) + 0.25, 0.12);
+    levelGroup.add(g);
+    const add = (geo, color, px, py, pz) => { const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, roughness: 0.8, flatShading: true })); m.position.set(px, py, pz); m.castShadow = true; g.add(m); return m; };
+    add(new THREE.BoxGeometry(2.4, 1.2, 6), 0xe8e4da, 0, 0.6, 0);
+    add(new THREE.ConeGeometry(1.2, 2, 4).rotateX(Math.PI / 2).rotateZ(Math.PI / 4), 0xe8e4da, 0, 0.6, 4).scale.set(1, 0.5, 1);
+    add(new THREE.BoxGeometry(2.45, 0.25, 6.05), 0x2a5bd7, 0, 1.15, 0); // the stripe
+    add(new THREE.BoxGeometry(1.6, 1.2, 2), 0xd8d4ca, 0, 1.8, -0.6); // the wheelhouse
+    add(new THREE.BoxGeometry(1.7, 0.2, 2.1), 0xf2f6fb, 0, 2.5, -0.6);
+    add(new THREE.CylinderGeometry(0.06, 0.06, 4, 6), 0x8a8f98, 0, 3.4, 0.6);
+  };
+}
+
+// Ice-fishing huts out on the river, little sheds with a lit window and a stovepipe. They're solid.
+function addIceHuts(spots) {
+  const huts = spots.map(([z, u], i) => {
+    const x = center(z) + u, y = terrainH(x, z);
+    addObstacle({ x, z, y, r: 1.6, h: 2.6, name: "Hit a fishing hut!" });
+    return { x, y, z, yaw: (i * 1.7) % Math.PI, color: [0xc8372d, 0x2a5bd7, 0x2f7a4a, 0xd8a030, 0x6a4a8a][i % 5] };
+  });
+  addFigures([
+    { geo: blk(2.2, 2.0, 2.6), color: (pl) => pl.color, at: [0, 1.0, 0] },
+    { geo: blk(2.5, 0.3, 2.9), color: 0xf2f6fb, at: [0, 2.1, 0] },
+    { geo: blk(0.7, 1.4, 0.06), color: 0x3a2817, at: [0, 0.7, 1.31] },
+    { geo: new THREE.CylinderGeometry(0.08, 0.08, 1.2, 6), color: 0x2a2a2a, at: [0.6, 2.6, -0.5] },
+  ], huts);
+  levelGroup.add(new THREE.Points(new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(huts.flatMap((h) => [h.x + Math.cos(h.yaw) * 1.15, h.y + 1.3, h.z - Math.sin(h.yaw) * 1.15]), 3)),
+    new THREE.PointsMaterial({ size: 1.6, color: 0xffc070, map: glowTexture("rgba(255,190,110,1)"), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })));
+}
+
+// The suspension bridge at the end: a ramp climbs from the river to its deck,
+// which carries you over the finish between two tall towers, hung from lit
+// cables. Or stay down on the ice and ride underneath it.
+function fBridge() {
+  const z0 = MC_BRIDGE, z1 = COURSE_LEN + RUNOUT + 20, W = 7.3;
+  const at = (z) => hillLine(z) + MC_DECK;
+  features.push({
+    z0: MC_RAMP0, z1: z0 + 12.6,
+    h: (u, z) => { const lat = band(u, -W + 0.3, W - 0.3, 1.0); return lat ? MC_DECK * lat * (z <= z0 ? smooth((z - MC_RAMP0) / (z0 - MC_RAMP0)) : z <= z0 + 12 ? 1 : Math.max(0, 1 - (z - z0 - 12) / 0.6)) : 0; },
+    color: (u, z) => { const lat = band(u, -W + 0.3, W - 0.3, 1.0); return lat > 0.04 && lat < 0.96 && z > MC_RAMP0 + 20 ? STONE : null; },
+  });
+  ceilings.push({ z0, z1, u0: -W, u1: W, clear: MC_DECK - 2.4, top: MC_DECK, at, uc: 0, r0: -W, r1: W, grip: true, face: true });
+  for (let z = z0; z < z1; z += 1.5) for (const s of [-1, 1]) addObstacle({ x: center(z) + s * (W + 0.1), z, y: at(z), r: 0.3, h: 1.1, name: "Hit the railing!" });
+  for (const zt of MC_TOWERS) for (const s of [-1, 1]) { const x = center(zt) + s * 8.9; addObstacle({ x, z: zt, y: terrainH(x, zt), r: 1.2, h: 80, name: "Hit the tower!" }); }
+  lanes.push({ z0: MC_RAMP0 - 40, z1: MC_TOWERS[1] + 10, opts: [0, -14, 14] });
+  return () => {
+    const conc = new THREE.MeshStandardMaterial({ color: 0x6a6e7a, roughness: 0.9, flatShading: true });
+    const steel = new THREE.MeshStandardMaterial({ color: 0x3a4050, metalness: 0.5, roughness: 0.5 });
+    const deck = [];
+    for (let z = z0; z < z1; z += 4) {
+      const zc = Math.min(z + 2, z1 - 0.01);
+      deck.push({ x: center(zc), y: at(zc), z: zc, pitch: Math.atan2(at(z) - at(z + 4), 4), yaw: 0 });
+    }
+    instanced(new THREE.BoxGeometry(W * 2, 0.9, 4.05), deck, (p, o) => { o.position.set(p.x, p.y - 0.52, p.z); faceRun(o, p); }, { mat: conc });
+    instanced(new THREE.BoxGeometry(W * 2, 0.08, 4.05), deck, (p, o, c) => { o.position.set(p.x, p.y - 0.04, p.z); faceRun(o, p); c.set(0xe8eef8); }, { shadow: false });
+    const rail = [];
+    for (const s of [-1, 1]) for (const p of deck) rail.push({ ...p, x: p.x + s * (W + 0.1) });
+    instanced(new THREE.BoxGeometry(0.1, 0.1, 4.05), rail, (p, o) => { o.position.set(p.x, p.y + 1.05, p.z); faceRun(o, p); }, { mat: steel });
+    instanced(new THREE.BoxGeometry(0.08, 1.1, 0.08), rail, (p, o) => o.position.set(p.x, p.y + 0.5, p.z), { mat: steel });
+    // Lamp posts along both sides of the deck.
+    const lamps = [];
+    for (let z = z0 + 8; z < z1; z += 24) for (const s of [-1, 1]) lamps.push({ x: center(z) + s * (W + 0.3), y: at(z), z, s });
+    instanced(new THREE.CylinderGeometry(0.07, 0.09, 5, 6), lamps, (l, o) => o.position.set(l.x, l.y + 2.5, l.z), { mat: steel });
+    levelGroup.add(new THREE.Points(new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(lamps.flatMap((l) => [l.x - l.s * 0.5, l.y + 5, l.z]), 3)),
+      new THREE.PointsMaterial({ size: 3, color: 0xffd08a, map: glowTexture("rgba(255,214,150,1)"), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })));
+    // The towers: two legs each, tied together by beams, with a red light on top.
+    const TOWER = 32, beacons = [];
+    for (const zt of MC_TOWERS) {
+      for (const s of [-1, 1]) {
+        const x = center(zt) + s * 8.9, base = terrainH(x, zt) - 1, top = at(zt) + TOWER;
+        const leg = new THREE.Mesh(new THREE.BoxGeometry(1.8, top - base, 2.2), conc);
+        leg.position.set(x, (base + top) / 2, zt); leg.castShadow = true;
+        levelGroup.add(leg);
+        beacons.push(x, top + 0.6, zt);
+      }
+      for (const h of [-1.4, 14, TOWER - 1]) {
+        const beam = new THREE.Mesh(new THREE.BoxGeometry(17.8, 1.4, 1.8), conc);
+        beam.position.set(center(zt), at(zt) + h, zt);
+        levelGroup.add(beam);
+      }
+    }
+    levelGroup.add(new THREE.Points(new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(beacons, 3)),
+      new THREE.PointsMaterial({ size: 2.2, color: 0xff3020, map: glowTexture("rgba(255,60,40,1)"), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })));
+    // The main cables: up from the deck's ends to the tower tops, sagging between,
+    // strung with lights, with hangers down to the deck.
+    const [t1, t2] = MC_TOWERS, top = (zt) => at(zt) + TOWER;
+    const cableY = (z) => {
+      const sag = (za, ya, zb, yb, dip) => { const t = (z - za) / (zb - za); return ya + (yb - ya) * t - dip * 4 * t * (1 - t); };
+      if (z < t1) return sag(z0, at(z0) + 1.5, t1, top(t1), 6);
+      if (z < t2) return sag(t1, top(t1), t2, top(t2), (top(t1) + top(t2)) / 2 - (at((t1 + t2) / 2) + 3));
+      return sag(t2, top(t2), z1, at(z1) + 1.5, 6);
+    };
+    const segs = [], lights = [], hangers = [];
+    const up = new THREE.Vector3(0, 1, 0), dir = new THREE.Vector3();
+    for (const s of [-1, 1]) {
+      for (let z = z0; z < z1; z += 3) {
+        const za = z, zb = Math.min(z + 3, z1);
+        const a = new THREE.Vector3(center(za) + s * 8.9, cableY(za), za), b = new THREE.Vector3(center(zb) + s * 8.9, cableY(zb), zb);
+        dir.subVectors(b, a);
+        segs.push({ mid: a.clone().add(b).multiplyScalar(0.5), len: dir.length(), q: new THREE.Quaternion().setFromUnitVectors(up, dir.clone().normalize()) });
+        if (Math.round(z) % 6 === 0) lights.push(a.x, a.y + 0.25, a.z);
+        if (Math.round(z) % 6 === 0 && z > z0 + 4) hangers.push({ x: center(z) + s * 7.9, y0: at(z), y1: cableY(z), z });
+      }
+    }
+    instanced(new THREE.CylinderGeometry(0.22, 0.22, 1, 6), segs, (p, o) => { o.position.copy(p.mid); o.quaternion.copy(p.q); o.scale.set(1, p.len + 0.05, 1); }, { mat: steel, shadow: false });
+    instanced(new THREE.CylinderGeometry(0.04, 0.04, 1, 4), hangers, (p, o) => { o.position.set(p.x, (p.y0 + p.y1) / 2, p.z); o.scale.set(1, p.y1 - p.y0, 1); }, { mat: steel, shadow: false });
+    levelGroup.add(new THREE.Points(new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(lights, 3)),
+      new THREE.PointsMaterial({ size: 0.9, color: 0xfff0d0, map: glowTexture("rgba(255,240,210,1)"), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })));
+  };
+}
+
+// The course in three hand-built stretches; the kickers (drifts the plows left) are in the level's list.
+const midnightLayout = [midnightTown, midnightYard, midnightRiver];
+
+// The old town: rowhouses close on both sides, porch roofs to ride onto, three
+// flights of steps with rails down them, and a frozen fountain in the square.
+function midnightTown(rnd, cfg, dz) {
+  const Z = (z) => z + dz, V = [];
+  V.push(fRoof(Z(170), Z(200), rnd, cfg));
+  fStairs(Z(330), 30, 5, [["rail", -7], ["box", 7]]);
+  V.push(fFountain(Z(560)));
+  fStairs(Z(740), 24, 4, [["rail", 0]]);
+  V.push(fRoof(Z(820), Z(850), rnd, cfg));
+  fStairs(Z(1130), 36, 6, [["box", -6], ["rail", 6]]);
+  V.push(fRoof(Z(1240), Z(1270), rnd, cfg));
+  return V;
+}
+
+// The rail yard: a level crossing, two lines of boxcars to ride on top of
+// (each with a snow drift up onto its first car), another crossing, a
+// loading dock, and the embankment drop down to the river with a jetty below.
+function midnightYard(rnd, cfg, dz) {
+  const Z = (z) => z + dz, V = [];
+  V.push(fCrossing(Z(60)));
+  V.push(fBoxcars(Z(160), 8, 9, true));
+  V.push(fBoxcars(Z(360), 6, -10, true));
+  V.push(fCrossing(Z(600)));
+  V.push(fLedge(Z(700), 60, -1, 3));
+  fRollers(Z(850), Z(900), 1.0);
+  V.push(fCliffAt(Z(1020), -HALF_W - 3, HALF_W + 3, 8, 50, "rock", rnd, 12));
+  V.push(fJetty(Z(1200), -1));
+  return V;
+}
+
+// The river: a boat frozen into the ice to jump, pressure ridges, a cluster of
+// ice-fishing huts, then the bridge.
+function midnightRiver(rnd, cfg, dz) {
+  const Z = (z) => z + dz, V = [];
+  V.push(fBoat(Z(100), 9));
+  fRollers(Z(250), Z(310), 1.2);
+  V.push(() => addIceHuts([[Z(430), -12], [Z(490), 10], [Z(550), -4], [Z(620), 13], [Z(670), -14], [Z(730), 4]]));
+  V.push(fBridge());
+  return V;
+}
+
+// Streets with slushy tyre tracks and snowy pavements in the town, a snowy
+// yard, then the frozen river: clear black ice in patches, snow-dusted elsewhere.
+function midnightGround(x, z, d, n) {
+  const u = x - center(z), au = Math.abs(u);
+  if (z > MC_RIVER) {
+    if (d > 0) return d < 2 ? [0.52 + n, 0.53 + n, 0.58 + n] : [0.84 + n, 0.87 + n, 0.95 + n * 0.5];
+    return mcSlick(u, z) ? [0.3 + n, 0.4 + n, 0.53 + n] : [0.76 + n, 0.8 + n, 0.9 + n * 0.5];
+  }
+  if (d > 0) return d < 3 && z < 1400 ? [0.7 + n, 0.71 + n, 0.75 + n] : [0.85 + n, 0.88 + n, 0.95 + n * 0.5];
+  if (z > 1400) return Math.sin(x * 0.3 + z * 0.17) * Math.sin(z * 0.05 - x * 0.2) > 0.5 ? [0.55 + n, 0.53 + n, 0.52 + n] : [0.82 + n, 0.85 + n, 0.92 + n * 0.5];
+  const rut = [4.5, 13.5].some((lc) => Math.abs(Math.abs(au - lc) - 1) < 0.5);
+  return rut ? [0.42 + n, 0.43 + n, 0.47 + n] : [0.8 + n, 0.82 + n, 0.88 + n * 0.5];
+}
+
+function buildMidnight(rnd) {
+  crossLights.length = 0;
+  iceZones.push({ z0: MC_RIVER, z1: COURSE_LEN + RUNOUT + 60, at: (u, z) => Math.abs(u) <= HALF_W && mcSlick(u, z) && !(Math.abs(u) < 8 && z > MC_RAMP0 - 10) });
+
+  // Street lamps down both sides of the town and the yard, and spaced out along the riverbanks.
+  const lamps = [];
+  for (let z = 12, i = 0; z < COURSE_LEN + RUNOUT - 20; z += z < MC_RIVER - 120 ? 32 : 64, i++) {
+    if (z > MC_RIVER - 120 && z < MC_RIVER + 20) continue;
+    const side = i % 2 ? 1 : -1, x = center(z) + side * (HALF_W + 1.6), y = terrainH(x, z);
+    lamps.push({ x, z, y, side, hx: x - side * 1.5 });
+    addObstacle({ x, z, y, r: 0.5, h: 5.4, name: "Lamp post!" });
+  }
+  addStreetLamps(lamps);
+
+  // Rowhouses close along both sides of the town, mostly dark; long warehouses in the yard.
+  const warm = ["#ffd9a0", "#ffe9c0", "#ffc070"];
+  const winMats = [0.1, 0.16].map((ch) => new THREE.MeshBasicMaterial({ map: windowTexture(rnd, warm, ch), vertexColors: true, color: 0xb8bed0 }));
+  const rows = [[], []], caps = [];
+  for (const side of [-1, 1]) {
+    let z = -60 + rnd() * 6;
+    while (z < MC_RIVER - 140) {
+      const yard = z > 1400, len = yard ? 28 + rnd() * 24 : 7 + rnd() * 4, dep = yard ? 14 + rnd() * 6 : 9 + rnd() * 3;
+      const d = FENCE_D + 2 + rnd() * 2 + dep / 2, bz = z + len / 2, x = center(bz) + side * d;
+      const [lo, hi] = groundSpan(x, bz, dep, len);
+      const top = hi + (yard ? 5 + rnd() * 3 : 5 + rnd() * 5);
+      rows[Math.floor(rnd() * 2)].push({ x, z: bz, w: dep, d: len, y0: lo - 2, y1: top, uo: Math.floor(rnd() * 8) / 8 });
+      caps.push({ x, z: bz, w: dep, d: len, y: top });
+      z += len + (yard ? 6 + rnd() * 20 : 0.3 + rnd() * 0.8);
+    }
+  }
+  rows.forEach((boxes, i) => buildingMesh(boxes, winMats[i], levelGroup, 0.45));
+  instanced(new THREE.BoxGeometry(1, 1, 1), caps, (b, o, c) => { o.position.set(b.x, b.y + 0.2, b.z); o.scale.set(b.w + 0.3, 0.4, b.d + 0.3); c.set(0xdfe6f2); }, { shadow: false });
+
+  // The church up on the left bank, its clock stopped at two.
+  {
+    const z = 640, x = center(z) - (FENCE_D + 34), y = terrainH(x, z);
+    const stone = new THREE.MeshStandardMaterial({ color: 0x6a6870, roughness: 0.95, flatShading: true });
+    const add = (geo, mat, px, py, pz) => { const m = new THREE.Mesh(geo, mat); m.position.set(px, py, pz); m.castShadow = true; levelGroup.add(m); return m; };
+    add(new THREE.BoxGeometry(12, 10, 24), stone, x, y + 5, z + 10);
+    add(new THREE.BoxGeometry(7, 26, 7), stone, x, y + 13, z - 4);
+    add(new THREE.ConeGeometry(5, 14, 4), new THREE.MeshStandardMaterial({ color: 0x3a3f4a, flatShading: true }), x, y + 33, z - 4).rotation.y = Math.PI / 4;
+    const clock = new THREE.Mesh(new THREE.CircleGeometry(2, 24), new THREE.MeshBasicMaterial({ map: canvasTexture(128, 128, (g) => {
+      g.fillStyle = "#f4e8c8"; g.beginPath(); g.arc(64, 64, 62, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = "#2a2420"; g.lineWidth = 6; g.lineCap = "round";
+      g.beginPath(); g.moveTo(64, 64); g.lineTo(64 + 26 * Math.sin(Math.PI / 3), 64 - 26 * Math.cos(Math.PI / 3)); g.stroke(); // hour: two
+      g.lineWidth = 4; g.beginPath(); g.moveTo(64, 64); g.lineTo(64, 14); g.stroke(); // minutes: on the hour
+    }) }));
+    clock.position.set(x + 3.55, y + 20, z - 4); clock.rotation.y = Math.PI / 2;
+    levelGroup.add(clock);
+  }
+
+  // Cars parked along the town's streets, buried in snow. They're solid.
+  const cars = [], CAR_COLORS = [0x6a2a2a, 0x2a3a5a, 0x3a3f48, 0xb8b8b8, 0x2f4a3a];
+  for (let tries = 0; cars.length < 12 && tries < 300; tries++) {
+    const z = 60 + rnd() * 1300, s = rnd() < 0.5 ? -1 : 1, u = s * (HALF_W - 1.4);
+    if (kickers.some((k) => Math.abs(z - k.z) < 35) || cars.some((c) => Math.abs(c.z - z) < 45)) continue;
+    if (features.some((f) => z > f.z0 - 12 && z < f.z1 + 12 && Math.abs(f.h(u, Math.min(Math.max(z, f.z0), f.z1))) > 0.05)) continue;
+    if (Math.abs(z - 560) < 20 || rails.some((r) => z > r.z0 - 15 && z < r.z1 + 5)) continue;
+    const x = center(z) + u;
+    cars.push({ x, y: terrainH(x, z), z, yaw: Math.atan(centerSlope(z)), color: CAR_COLORS[cars.length % CAR_COLORS.length] });
+    for (const d of [-1.3, 1.3]) addObstacle({ x, z: z + d, y: terrainH(x, z), r: 1.0, h: 1.6, name: "Hit a car!" });
+  }
+  addFigures(SNOWED_CAR, cars);
+
+  // Bare trees and a few pines along the riverbanks.
+  const trees = [];
+  scatter(rnd, { step: 5, chance: 0.35, dMin: HALF_W + 6, dSpread: 26, power: 1.4 }, (t) => { if (t.z > MC_RIVER + 30) trees.push(t); });
+  addPines(trees, [0x1f3a30, 0x24443a], 0xdfe6f2);
+
+  // The night sky: deep blue, stars, a big pale moon low over the bridge, and dark hills around.
+  skyDome(0x02040c, 0x1a2848, 0x0e1428);
+  const stars = [];
+  for (let i = 0; i < 900; i++) {
+    const a = rnd() * Math.PI * 2, el = 0.08 + rnd() * 1.4;
+    stars.push(Math.cos(el) * Math.sin(a) * 1400, Math.sin(el) * 1400, Math.cos(el) * Math.cos(a) * 1400);
+  }
+  backdrop.add(new THREE.Points(new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(stars, 3)),
+    new THREE.PointsMaterial({ size: 1.6, sizeAttenuation: false, color: 0xdfe8ff, fog: false, transparent: true, opacity: 0.8 })));
+  const moon = new THREE.Sprite(new THREE.SpriteMaterial({ map: canvasTexture(256, 256, (g) => {
+    const grd = g.createRadialGradient(128, 128, 40, 128, 128, 128);
+    grd.addColorStop(0, "rgba(250,246,232,1)"); grd.addColorStop(0.36, "rgba(240,236,220,1)"); grd.addColorStop(0.42, "rgba(200,210,240,0.35)"); grd.addColorStop(1, "rgba(160,180,240,0)");
+    g.fillStyle = grd; g.fillRect(0, 0, 256, 256);
+    g.fillStyle = "rgba(190,186,170,0.5)"; for (const [cx, cy, r] of [[110, 100, 14], [150, 140, 10], [120, 150, 8]]) { g.beginPath(); g.arc(cx, cy, r, 0, 7); g.fill(); }
+  }), fog: false, depthWrite: false }));
+  moon.position.set(160, 330, 1250); moon.scale.setScalar(190); moon.renderOrder = -14;
+  backdrop.add(moon);
+  peakRing(rnd, { n: 16, r0: 800, r1: 1000, h0: 160, h1: 300, base: -260, colors: [0x141a2a, 0x18203a, 0x101626], cap: 0x3a4664 });
+
+  // The crossing lights flash in turn.
+  return (t) => { const on = Math.sin(t * 7) > 0; crossLights.forEach((m, i) => { m.opacity = (i % 2 ? on : !on) ? 1 : 0.08; }); };
+}
+
 // --- Snowy Peak: the original overcast mountain --------------------------------
 function buildPeak(rnd) {
   const trees = [];
@@ -3478,6 +3946,52 @@ function buildPeak(rnd) {
     m.rotation.y = rnd() * 3;
     backdrop.add(m);
   }
+}
+
+// Street lamps: { x, z, y, side, hx } (hx is under the bulb). Each throws a
+// warm pool of light onto the snow. Their posts' collision is up to the caller.
+function addStreetLamps(lamps) {
+  const metal = new THREE.MeshStandardMaterial({ color: 0x2a2f3a, roughness: 0.6, metalness: 0.4 });
+  instanced(new THREE.CylinderGeometry(0.09, 0.13, 5.6, 6), lamps, (l, o) => o.position.set(l.x, l.y + 2.8, l.z), { mat: metal });
+  instanced(new THREE.BoxGeometry(1.6, 0.1, 0.12), lamps, (l, o) => o.position.set(l.x - l.side * 0.75, l.y + 5.55, l.z), { mat: metal });
+  instanced(new THREE.BoxGeometry(0.6, 0.18, 0.4), lamps, (l, o) => o.position.set(l.hx, l.y + 5.45, l.z), { mat: metal });
+  const bulbs = new THREE.Points(
+    new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(lamps.flatMap((l) => [l.hx, l.y + 5.25, l.z]), 3)),
+    new THREE.PointsMaterial({ size: 3.2, map: glowTexture("rgba(255,214,150,1)"), color: 0xffd08a, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+  levelGroup.add(bulbs);
+  // Pools of lamplight: discs that hug the snow, bright in the middle and fading out.
+  const pos = [], col = [], idx = [];
+  const RINGS = 6, SEGS = 18, R = 7;
+  const warm = new THREE.Color(0xffb565);
+  for (const l of lamps) {
+    const base = pos.length / 3;
+    for (let ri = 0; ri <= RINGS; ri++) {
+      const rr = (ri / RINGS) * R, k = (1 - ri / RINGS) ** 1.6 * 0.55;
+      for (let s = 0; s < (ri ? SEGS : 1); s++) {
+        const a = (s / SEGS) * Math.PI * 2;
+        const x = l.hx + Math.cos(a) * rr, z = l.z + Math.sin(a) * rr;
+        pos.push(x, terrainH(x, z) + 0.08, z);
+        col.push(warm.r * k, warm.g * k, warm.b * k);
+      }
+    }
+    for (let s = 0; s < SEGS; s++) idx.push(base, base + 1 + ((s + 1) % SEGS), base + 1 + s);
+    for (let ri = 1; ri < RINGS; ri++) {
+      const a0 = base + 1 + (ri - 1) * SEGS, a1 = a0 + SEGS;
+      for (let s = 0; s < SEGS; s++) {
+        const s1 = (s + 1) % SEGS;
+        idx.push(a0 + s, a0 + s1, a1 + s, a0 + s1, a1 + s1, a1 + s);
+      }
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+  geo.setIndex(idx);
+  const pools = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+    vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    polygonOffset: true, polygonOffsetFactor: -2, side: THREE.DoubleSide,
+  }));
+  levelGroup.add(pools);
 }
 
 // --- Neon Nights: a snowy street run through a city at night --------------------
@@ -3514,49 +4028,7 @@ function buildCity(rnd) {
     lamps.push({ x, z, y, side, hx: x - side * 1.5 });
     addObstacle({ x, z, y, r: 0.5, h: 5.4, name: "Lamp post!" });
   }
-  const metal = new THREE.MeshStandardMaterial({ color: 0x2a2f3a, roughness: 0.6, metalness: 0.4 });
-  instanced(new THREE.CylinderGeometry(0.09, 0.13, 5.6, 6), lamps, (l, o) => o.position.set(l.x, l.y + 2.8, l.z), { mat: metal });
-  instanced(new THREE.BoxGeometry(1.6, 0.1, 0.12), lamps, (l, o) => o.position.set(l.x - l.side * 0.75, l.y + 5.55, l.z), { mat: metal });
-  instanced(new THREE.BoxGeometry(0.6, 0.18, 0.4), lamps, (l, o) => o.position.set(l.hx, l.y + 5.45, l.z), { mat: metal });
-  const bulbs = new THREE.Points(
-    new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(lamps.flatMap((l) => [l.hx, l.y + 5.25, l.z]), 3)),
-    new THREE.PointsMaterial({ size: 3.2, map: glowTexture("rgba(255,214,150,1)"), color: 0xffd08a, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
-  levelGroup.add(bulbs);
-  {
-    // Pools of lamplight: discs that hug the snow, bright in the middle and fading out.
-    const pos = [], col = [], idx = [];
-    const RINGS = 6, SEGS = 18, R = 7;
-    const warm = new THREE.Color(0xffb565);
-    for (const l of lamps) {
-      const base = pos.length / 3;
-      for (let ri = 0; ri <= RINGS; ri++) {
-        const rr = (ri / RINGS) * R, k = (1 - ri / RINGS) ** 1.6 * 0.55;
-        for (let s = 0; s < (ri ? SEGS : 1); s++) {
-          const a = (s / SEGS) * Math.PI * 2;
-          const x = l.hx + Math.cos(a) * rr, z = l.z + Math.sin(a) * rr;
-          pos.push(x, terrainH(x, z) + 0.08, z);
-          col.push(warm.r * k, warm.g * k, warm.b * k);
-        }
-      }
-      for (let s = 0; s < SEGS; s++) idx.push(base, base + 1 + ((s + 1) % SEGS), base + 1 + s);
-      for (let ri = 1; ri < RINGS; ri++) {
-        const a0 = base + 1 + (ri - 1) * SEGS, a1 = a0 + SEGS;
-        for (let s = 0; s < SEGS; s++) {
-          const s1 = (s + 1) % SEGS;
-          idx.push(a0 + s, a0 + s1, a1 + s, a0 + s1, a1 + s1, a1 + s);
-        }
-      }
-    }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
-    geo.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
-    geo.setIndex(idx);
-    const pools = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
-      vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-      polygonOffset: true, polygonOffsetFactor: -2, side: THREE.DoubleSide,
-    }));
-    levelGroup.add(pools);
-  }
+  addStreetLamps(lamps);
 
   // Little pines in the snow banks, wrapped in coloured lights.
   const trees = [];
@@ -3932,6 +4404,23 @@ const LEVELS = {
     snow: 0.5, puffs: 0.8, kickerColor: [0.86, 0.89, 0.95],
     furniture: { poles: [0xf4f4f4, 0xf4f4f4], lip: 0xff8a1a, net: "#8a93a0", post: 0x5a5f68, banners: ["#1f6b3a", "#e0443a"] },
   },
+  midnight: {
+    name: "Midnight Crossing", blurb: "A sleeping town at 2 a.m.: empty streets, a rail yard, then out onto a frozen river and across a long, lit suspension bridge to the finish.",
+    seed: 2002, build: buildMidnight, ground: midnightGround, layout: midnightLayout, sections: 3, halfW: 18, rough: 0.4, bank: 0.4,
+    track: { artist: "Avril Lavigne", title: "I'm With You", video: "dGR65RWwzg8" },
+    // The run straightens out for the bridge.
+    course: { a1: 14, p1: 210, o1: 0.3, a2: 6, p2: 70, o2: 1.8, bump: 0.9, straight: { z0: 3600, len: 250 } },
+    // Drifts the plows left, out in the streets and on the ice.
+    kickers: { at: [
+      [100, -6], [250, 6], [440, 0, true], [520, -8], [640, 7], [900, -5], [990, 6, true], [1190, -7], [1330, 0],
+      [1430, 0], [1520, -6], [1620, -7], [1700, 2], [1745, 3, true], [1900, 5], [2050, 0, true], [2210, 8], [2330, -5],
+      [2660, 5], [2885, 9, true], [3000, -6], [3160, 0, true], [3380, 6], [3600, -5], [3700, 8, true],
+    ] },
+    terrain: { logs: "log", pines: [[0x1f3a30, 0x24443a], 0xdfe6f2] },
+    sky: 0x050812, fog: [0x0e1424, 35, 300], hemi: [0x4a5a8a, 0x151520, 0.65], sun: [0x9fb4e8, 0.55], riderLight: 9,
+    snow: 0.9, puffs: 0.35, spray: 0xa8b4d0, kickerColor: [0.72, 0.77, 0.9],
+    furniture: { poles: [0xffb04a, 0x6fa8ff], lip: 0xffb04a, net: "#3a4058", post: 0x1a1d26, banners: ["#1f2a4a", "#a8324a"], bannerH: 16 },
+  },
 };
 const LEVEL_IDS = Object.keys(LEVELS);
 
@@ -3978,6 +4467,7 @@ function setLevel(id) {
   features.length = 0;
   lanes.length = 0;
   ceilings.length = 0;
+  iceZones.length = 0;
   forks.length = 0;
   pipes.length = 0;
   rails.length = 0;
@@ -3992,7 +4482,7 @@ function setLevel(id) {
   BANK = level.bank ?? 1;
   ROUGH = level.rough ?? 1;
   FENCE_D = HALF_W + 7;
-  Object.assign(course, { tight: null }, level.course);
+  Object.assign(course, { tight: null, straight: null }, level.course);
   COURSE_LEN = SECTION_LEN * (level.sections ?? 1);
   // Kickers and features get their own random streams, so they don't shift the scenery's.
   layoutKickers(level.kickers, mulberry32(level.seed ^ 0x2545f491));
@@ -5323,7 +5813,7 @@ function groundStep(r, h, inp) {
   // Edges bite: sideways speed bleeds off, and most of it is redirected forward
   // when carving. On ice they hardly bite, so you turn but keep sliding the way
   // you were going, and braking does little.
-  const ice = !!r.roof && !r.roof.grip;
+  const ice = r.roof ? !r.roof.grip : onIce(r.x, r.z);
   const grip = r.crashT > 0 ? 1.5 : ice ? (brake ? 0.9 : 0.5) : brake ? 3 : 7;
   const keep = Math.exp(-grip * h);
   const lost = Math.abs(vs) * (1 - keep);
@@ -5394,7 +5884,7 @@ function airStep(r, h, inp) {
       else {
         r.z = zPrev < c.z0 ? c.z0 - 0.05 : c.z1 + 0.05;
         r.vz = -r.vz * 0.2;
-        if (!r.finished) crash(r, "Hit the bridge!");
+        if (!r.finished) crash(r, c.name || "Hit the bridge!");
       }
     }
   }

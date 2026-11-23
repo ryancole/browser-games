@@ -14,7 +14,7 @@ The menus are full-screen, with big chrome lettering over the course. Behind the
 
 ## Courses
 
-Pick a course when you start a single-player race or host a lobby. Picking one builds it straight away behind the menu, and the game remembers your choice. There are nine, all the same length (4.2 km), and every course has its own bends, kicker layout, obstacles and scenery. No stretch of a course repeats another: the hand-built courses are built stretch by stretch, and on the rest the kickers and features are laid out at random from the course's seed, so they're the same every time you ride it but never repeat down the hill.
+Pick a course when you start a single-player race or host a lobby. Picking one builds it straight away behind the menu, and the game remembers your choice. There are ten, all the same length (4.2 km), and every course has its own bends, kicker layout, obstacles and scenery. No stretch of a course repeats another: the hand-built courses are built stretch by stretch, and on the rest the kickers and features are laid out at random from the course's seed, so they're the same every time you ride it but never repeat down the hill.
 
 | Course | What it's like |
 | ------ | -------------- |
@@ -27,6 +27,7 @@ Pick a course when you start a single-player race or host a lobby. Picking one b
 | **Everest** | Straight down the side of the world's highest mountain: one long, relentlessly steep face high above the clouds. See below. |
 | **Sea of Tranquility** | Snowboarding the Moon, at a sixth of the gravity. See below. |
 | **Summit Highway** | A snowed-in highway over a mountain pass, with tunnels, medians, slip roads and road works. See below. |
+| **Midnight Crossing** | A sleeping town at 2 a.m., down through a rail yard onto a frozen river and across a suspension bridge. See below. |
 
 ### Frozen Gorge
 
@@ -78,6 +79,15 @@ Snowboarding a divided highway over a mountain pass after the snow plows gave up
 - **Road works**: lanes closed off by a line of cones, tapering in and out, with a truck parked inside flashing its arrow board. The trucks are solid, but the **cones** aren't: ride into one and it goes flying, tumbling and bouncing down the road, without slowing you down. Near the top of the last stretch, cones that have been knocked all over the road.
 - **Overpasses** carrying side roads over the highway, on piers at the shoulders and in the middle. Their decks are solid: jump high enough and you can land on one and ride across it, but fly into the side of it and you wipe out. There are also **sign gantries** over the lanes pointing to the exits.
 - **A snow shed**: a concrete roof over the road against the cliffs, open on the valley side between pillars.
+
+### Midnight Crossing
+
+A quiet night course: a small town asleep at 2 a.m., deep blue sky, stars and a pale moon, snow falling through warm pools of lamplight, and only a few windows still lit. It's built by hand in three different stretches, with drifts the plows left to jump.
+
+- **The old town**: empty streets between snowy rowhouses, cars buried along the kerbs, porch roofs to ride up onto, three flights of stone steps with rails and boxes down them to grind, and a frozen fountain in a little square. A church up on the bank has its clock stopped at two.
+- **The rail yard**: two level crossings with their gates down and red lights flashing (jump an arm or go through the gap down the middle), and two lines of boxcars standing on sidings. A snow drift against the first car of each gets you up onto the roofs: ride along the train and jump the gaps between the cars. Then a loading dock, and a drop down the embankment to the river.
+- **The frozen river**: clear black ice in patches where the snow's blown off, where your edges hardly bite, like the ice roofs on Frozen Gorge. A jetty out from the bank, a boat frozen into the ice to jump, pressure ridges, and a cluster of ice-fishing huts with their windows lit.
+- **The bridge**: a ramp climbs from the ice up onto a long suspension bridge, its cables strung with lights between two tall towers, and you finish halfway across. Or stay down on the ice and ride underneath it.
 
 ### Terrain features
 
@@ -153,6 +163,7 @@ The music is real songs, played from the artists' official YouTube videos so the
 | **Everest** | CAKE – The Distance | [youtube.com/watch?v=F_HoMkkRHv8](https://www.youtube.com/watch?v=F_HoMkkRHv8) |
 | **Sea of Tranquility** | Kid Cudi – Man On The Moon (The Anthem) | [youtube.com/watch?v=CCPbYJvtywI](https://www.youtube.com/watch?v=CCPbYJvtywI) |
 | **Summit Highway** | Fleetwood Mac – Dreams | [youtube.com/watch?v=Y3ywicffOj4](https://www.youtube.com/watch?v=Y3ywicffOj4) |
+| **Midnight Crossing** | Avril Lavigne – I'm With You | [youtube.com/watch?v=dGR65RWwzg8](https://www.youtube.com/watch?v=dGR65RWwzg8) |
 
 If a place has no song, it's silent apart from the sound effects.
 

@@ -18,5 +18,5 @@ Play them at https://rycole.com/browser-games/.
 | [Catch It](src/catch-it/) | Catch the green blocks, dodge the red ones. |
 | [Brick Breaker](src/brick-breaker/) | Bounce the ball off your paddle and smash every brick. |
 | [Sky Hop](src/sky-hop/) | Tap to flap through the gaps between the pillars. |
-| [Powder Run](src/powder-run/) | Snowboard down nine 3D courses, from a neon city at night and an icy gorge to a lava flow, a snowed-in mountain highway, the face of Everest and the Moon, spinning and grabbing off kickers, cliffs and rooftops. |
+| [Powder Run](src/powder-run/) | Snowboard down ten 3D courses, from a neon city at night and an icy gorge to a lava flow, a snowed-in mountain highway, a sleeping town at midnight, the face of Everest and the Moon, spinning and grabbing off kickers, cliffs and rooftops. |
 | [Footbag Jam](src/footbag-jam/) | Keep the footbag in the air on an 8-bit beach with heads, knees, toes and back kicks. |
