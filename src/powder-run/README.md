@@ -152,7 +152,7 @@ The music is real songs, played from the artists' official YouTube videos so the
 | **Lava Rush** | The Prodigy – Firestarter | [youtube.com/watch?v=wmin5WkOuPw](https://www.youtube.com/watch?v=wmin5WkOuPw) |
 | **Everest** | CAKE – The Distance | [youtube.com/watch?v=F_HoMkkRHv8](https://www.youtube.com/watch?v=F_HoMkkRHv8) |
 | **Sea of Tranquility** | Kid Cudi – Man On The Moon (The Anthem) | [youtube.com/watch?v=CCPbYJvtywI](https://www.youtube.com/watch?v=CCPbYJvtywI) |
-| **Summit Highway** | Fleetwood Mac – Gypsy | [youtube.com/watch?v=mwgg1Pu6cNg](https://www.youtube.com/watch?v=mwgg1Pu6cNg) |
+| **Summit Highway** | Fleetwood Mac – Dreams | [youtube.com/watch?v=Y3ywicffOj4](https://www.youtube.com/watch?v=Y3ywicffOj4) |
 
 If a place has no song, it's silent apart from the sound effects.
 
