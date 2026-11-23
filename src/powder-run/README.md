@@ -159,7 +159,7 @@ The music is real songs, played from the artists' official YouTube videos so the
 | **Lakeside Valley** | Dave Matthews Band – Crash Into Me | [youtube.com/watch?v=k7in-9E3ImQ](https://www.youtube.com/watch?v=k7in-9E3ImQ) |
 | **Frozen Gorge** | Pendulum – Watercolour | [youtube.com/watch?v=tEPB7uzKuh4](https://www.youtube.com/watch?v=tEPB7uzKuh4) |
 | **Glacier Bowl** | Foo Fighters – Everlong | [youtube.com/watch?v=eBG7P-K-r1Y](https://www.youtube.com/watch?v=eBG7P-K-r1Y) |
-| **Lava Rush** | The Prodigy – Firestarter | [youtube.com/watch?v=wmin5WkOuPw](https://www.youtube.com/watch?v=wmin5WkOuPw) |
+| **Lava Rush** | Sugarcult – Back to California | [youtube.com/watch?v=raF9I1squlQ](https://www.youtube.com/watch?v=raF9I1squlQ) |
 | **Everest** | CAKE – The Distance | [youtube.com/watch?v=F_HoMkkRHv8](https://www.youtube.com/watch?v=F_HoMkkRHv8) |
 | **Sea of Tranquility** | Kid Cudi – Man On The Moon (The Anthem) | [youtube.com/watch?v=CCPbYJvtywI](https://www.youtube.com/watch?v=CCPbYJvtywI) |
 | **Summit Highway** | Fleetwood Mac – Dreams | [youtube.com/watch?v=Y3ywicffOj4](https://www.youtube.com/watch?v=Y3ywicffOj4) |
