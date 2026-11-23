@@ -14,7 +14,7 @@ The menus are full-screen, with big chrome lettering over the course. Behind the
 
 ## Courses
 
-Pick a course when you start a single-player race or host a lobby. Picking one builds it straight away behind the menu, and the game remembers your choice. There are eight. Frozen Gorge, Glacier Bowl, Lava Rush and Sea of Tranquility are three times as long as the short courses and Everest is twice as long, and every course has its own bends, kicker layout, obstacles and scenery.
+Pick a course when you start a single-player race or host a lobby. Picking one builds it straight away behind the menu, and the game remembers your choice. There are eight, all the same length (4.2 km), and every course has its own bends, kicker layout, obstacles and scenery. No stretch of a course repeats another: the hand-built courses are built stretch by stretch, and on the rest the kickers and features are laid out at random from the course's seed, so they're the same every time you ride it but never repeat down the hill.
 
 | Course | What it's like |
 | ------ | -------------- |
@@ -29,27 +29,27 @@ Pick a course when you start a single-player race or host a lobby. Picking one b
 
 ### Frozen Gorge
 
-A hand-built course that keeps asking you to pick a line. It is three times as long as the other courses: the gorge below plays through three times, with the middle stretch mirrored left to right.
+A hand-built course that keeps asking you to pick a line, in three stretches that are each built differently.
 
 - **Tight turns** at the very top that straighten out as the gorge opens up.
 - **Raised ledges** along one side of the run. Ride the ramp up to stay high, then drop off the end back onto the run, or stay low beside the rock wall.
 - **Bridges over ravines.** Stay on the bridge to keep your speed. Miss it and you drop into the ravine and have to ride out up the far side, slowly.
-- **An ice cave** cut through a block of rock on one side, with ice slabs overhead and icicles hanging down. The open side has moguls instead.
-- **A gap jump**: a kicker that launches you across a ravine, or a narrow bridge round the side.
-- **The narrows**, where rock walls close in from both sides.
-- **A fork** after the narrows: a rock spine with pines on top splits the gorge in two. One side is a jump line with two kickers; the other is a long ice tunnel. They join up again just before the cabin.
-- **A log cabin built across the run** at the end of each stretch. Ride straight through the doorway, or go round either side.
+- **Ice caves** cut through blocks of rock, with ice slabs overhead and icicles hanging down: one on each side of the run in the first two stretches, and one right down the middle in the last, with open runs either side.
+- **Gap jumps**: kickers that launch you across a ravine, or a bridge round the side (or through the middle).
+- **The narrows**, where rock walls close in from both sides, and further down a chicane where a wall juts in from one side and then the other.
+- **Three forks**, one per stretch, each a ridge splitting the gorge in two with a jump line of two kickers on one side. The other side is a long ice tunnel in the first and last, and moguls and logs in the middle one.
+- **A log cabin built across the run** at the end of the first stretch. Ride straight through the doorway, or go round either side. The course ends with a high ledge dropping you back onto the run for the finish.
 
 ### Glacier Bowl
 
-A freeride course with no single right line. It is three times as long as the other courses: the bowl below plays through three times, with the middle stretch mirrored left to right.
+A freeride course with no single right line, in three stretches that are each built differently.
 
-- A **small drop** at the start of each stretch, then a **crevasse** to jump.
-- **Huge cliff drops** staggered across the bowl, on the left, right and middle, up to 18 m high. Each has a long shelf leading up to it, so you reach the edge at speed.
+- **Crevasses** to jump: one near the top, a field of them below a drop in the middle stretch (the first one off a kicker), and more lower down.
+- **Huge cliff drops** staggered across the bowl, on the left, right and middle, up to 18 m high, and cliff bands right across it. Each has a long shelf leading up to it, so you reach the edge at speed.
 - **Stone pillars** standing all over the bowl to weave between.
-- **Tree glades**, **moguls** and **rollers**.
-- An **ice half-pipe** down one side for part of the way. Carve up its walls to launch.
-- **A fork** near the end of each stretch: a long rib of boulders splits the bowl in two. One side drops off the 18 m cliff; the other has a kicker and moguls.
+- **Tree glades**, a **tree island** down the middle, **moguls** and **rollers**.
+- **Ice half-pipes**: one down the side in the first stretch, twin pipes either side of a mogul run in the middle one, and one straight down the middle in the last. Carve up the walls to launch.
+- **Three forks**, one per stretch, each a long rib of boulders splitting the bowl in two. In the first and last, one side drops off an 18 m cliff and the other has a kicker and moguls; in the middle one, it's a cliff on one side and a half-pipe on the other.
 
 Walls and roofs are solid on both hand-built courses. Riding into a rock face or the side of a ledge pushes you along it, and you wipe out if you hit it hard. You can't fly up through the cave's ceiling or the cabin's roof. The ice slabs over the ice cave and the ice tunnel are solid from above too: land on top and you can ride along them, but they're slippery. Your edges hardly bite on ice, so when you turn you keep sliding the way you were going, and braking barely slows you.
 
@@ -61,11 +61,11 @@ Near the end, the whole valley drops away: a sheer rock face 350 m high runs rig
 
 ### Everest
 
-Snowboarding the side of Everest. The whole course is one long, steep face, about twice as steep as the other courses, so you reach well over 100 km/h without even tucking. The banks barely rise either side, so it's an open mountain face rather than a valley, and the camera stays closer to level so you can see the face drop away ahead. The run is wind-packed snow with patches of blue ice. The banks are snow and grey rock, crossed by a band of yellowish rock like Everest's own Yellow Band. Up here the sky is a deep blue, a sea of cloud lies far below with the rest of the Himalaya poking up through it, two neighbouring giants tower on either side, and strings of prayer flags are slung high across the run. Mountain goats stand about in ones, twos and threes on the slopes just past the nets, and partway down a rope team of five climbers is working its way up the face beside the run, roped together, ice axes out. Two goats have wandered right onto the run: they're solid, so ride into one and you wipe out. At the bottom you finish in base camp, with dome tents in every colour, crates and fuel barrels either side of the last stretch and round the flat runout, under more prayer flags. The tents, crates and barrels inside the nets are solid too. Spindrift blows across the slope and a little snow falls. The course has rollers, cliff drops off rock bands, rock kickers and moguls, and no trees. Its par time is 80 seconds.
+Snowboarding the side of Everest. The whole course is one long, steep face, about twice as steep as the other courses, so you reach well over 100 km/h without even tucking. The banks barely rise either side, so it's an open mountain face rather than a valley, and the camera stays closer to level so you can see the face drop away ahead. The run is wind-packed snow with patches of blue ice. The banks are snow and grey rock, crossed by a band of yellowish rock like Everest's own Yellow Band. Up here the sky is a deep blue, a sea of cloud lies far below with the rest of the Himalaya poking up through it, two neighbouring giants tower on either side, and strings of prayer flags are slung high across the run. Mountain goats stand about in ones, twos and threes on the slopes just past the nets, and partway down a rope team of five climbers is working its way up the face beside the run, roped together, ice axes out. Three goats have wandered right onto the run: they're solid, so ride into one and you wipe out. At the bottom you finish in base camp, with dome tents in every colour, crates and fuel barrels either side of the last stretch and round the flat runout, under more prayer flags. The tents, crates and barrels inside the nets are solid too. Spindrift blows across the slope and a little snow falls. The course has rollers, cliff drops off rock bands, rock kickers and moguls, and no trees. Its par time is 120 seconds.
 
 ### Sea of Tranquility
 
-Snowboarding the Moon. Gravity is a sixth of the usual, so you float: a plain ollie keeps you in the air for three seconds or more, kickers and crater rims throw you sky-high, and there's time for big spins and flips. There's no air either, so nothing slows you down but the ground: you keep building speed down the hill, and the dust your board throws up flies off and arcs slowly back down. The run is grey regolith pocked with craters. Small ones mark the ground everywhere, and bigger ones sit on the run itself, a raised rim round a bowl, so ride over a rim at speed and it launches you. There's no snow, no wind and no weather, just a black sky full of stars with Earth hanging in it, slowly turning. A gold lunar lander stands beside the start with the American flag planted next to it, Apollo-style on a pole with a crossbar along the top, and an Apollo-style lunar rover with gold fenders, two seats and an umbrella-like antenna dish is parked just down the hill. Two astronauts wave you off. It's three times as long as the short courses, with a par time of 190 seconds. Keep an eye out partway down: one little green alien stands beside the run in front of its flying saucer, waving at you as you go past.
+Snowboarding the Moon. Gravity is a sixth of the usual, so you float: a plain ollie keeps you in the air for three seconds or more, kickers and crater rims throw you sky-high, and there's time for big spins and flips. There's no air either, so nothing slows you down but the ground: you keep building speed down the hill, and the dust your board throws up flies off and arcs slowly back down. The run is grey regolith pocked with craters. Small ones mark the ground everywhere, and bigger ones sit on the run itself, a raised rim round a bowl, so ride over a rim at speed and it launches you. There's no snow, no wind and no weather, just a black sky full of stars with Earth hanging in it, slowly turning. A gold lunar lander stands beside the start with the American flag planted next to it, Apollo-style on a pole with a crossbar along the top, and an Apollo-style lunar rover with gold fenders, two seats and an umbrella-like antenna dish is parked just down the hill. Two astronauts wave you off. Its par time is 190 seconds. Keep an eye out partway down: one little green alien stands beside the run in front of its flying saucer, waving at you as you go past.
 
 ### Terrain features
 
@@ -82,7 +82,7 @@ Between the built kickers, every course has natural and built terrain to ride an
 | **Tree islands** | A raised island of trees down the middle that splits the run into two lines, with moguls on one side and logs or barriers on the other. | All courses (trees in planters in the city) |
 | **Rails and boxes** | A metal rail or a box with a yellow top, set off to one side of the run with a snow ramp up to it. Ride up the ramp or drop on from the air to grind it (see [Tricks](#tricks)). | All courses |
 | **Craters** | A raised rim round a bowl. Ride over the rim at speed and it throws you into the air; drop into the bowl and you ride out the far side. | Sea of Tranquility |
-| **Forks** | A long ridge rises out of the middle of the run and splits it in two, with the banks pushed out so each route is close to full width. The routes ride differently, then join up again before the finish. The ridge is steep, and the trees or boulders along its top are solid. | Lakeside Valley (a forested ridge: a jump line on one side, moguls and logs on the other), Frozen Gorge and Glacier Bowl (see above) |
+| **Forks** | A long ridge rises out of the middle of the run and splits it in two, with the banks pushed out so each route is close to full width. The routes ride differently, then join up again before the finish. The ridge is steep, and the trees or boulders along its top are solid. | Lakeside Valley (three forested ridges of different sizes: a jump line on one side, moguls and logs on the other, swapping sides each time), Frozen Gorge and Glacier Bowl (see above) |
 
 Any of them can give you air. Pop an ollie at the top of a bump for more height. If you leave the ground off a bump or drop without an ollie, a turn or tuck you were already holding doesn't spin or flip you until you let go and press it again, so you can ride through moguls or off a cliff holding a tuck. After an ollie, a turn you were holding counts straight away. A tuck or brake you were holding eases in instead: nothing for the first quarter of a second, then building up to a full-speed flip, so riding along tucked and popping a small ollie doesn't tip you onto your nose. Let go and press it again for a flip at full speed. Landing a little nose-down is also more forgiving than landing tail-down, as long as you weren't partway through a flip.
 

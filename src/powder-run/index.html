@@ -562,26 +562,28 @@ const center = (z) => {
 // Kickers: a ramp that curves up over `len` metres, then drops off at the lip.
 const KICK_HALF = 5, KICK_FADE = 2.5, LIP_DROP = 2;
 const kickers = [];
-function layoutKickers({ start, offsets, gaps, at }, sections = 1) {
+function layoutKickers({ start, offsets, gaps, at }, rnd) {
   kickers.length = 0;
-  // Courses with a hand-made layout list their kickers for one section: [z, offset
-  // across the run, big?]. Each section repeats them, with every other one mirrored.
+  // Courses with a hand-made layout list every kicker down the whole course:
+  // [z, offset across the run, big?].
   if (at) {
-    for (let s = 0; s < sections; s++) {
-      const dz = s * SECTION_LEN, m = s % 2 ? -1 : 1;
-      for (const [z0, off, big] of at) {
-        const z = z0 + dz;
-        kickers.push({ z, x: center(z) + m * off, h: big ? 3.2 : 2.1, len: big ? 15 : 12 });
-      }
-    }
+    for (const [z, off, big] of at) kickers.push({ z, x: center(z) + off, h: big ? 3.2 : 2.1, len: big ? 15 : 12 });
     return;
   }
-  let z = start, i = 0;
+  // The rest are placed at random (from the level's seed) within the spread of
+  // `offsets` across the run and the range of `gaps` between them, so no stretch
+  // of the course repeats another. Each one sits well away from the last across
+  // the run, and about every fourth is a big one.
+  const oLo = Math.min(...offsets), oHi = Math.max(...offsets), gLo = Math.min(...gaps), gHi = Math.max(...gaps);
+  let z = start, prev = offsets[0], sinceBig = 0;
   while (z < COURSE_LEN - 80) {
-    const big = i % 4 === 3;
-    kickers.push({ z, x: center(z) + offsets[i % offsets.length], h: big ? 3.2 : 2.1, len: big ? 15 : 12 });
-    z += gaps[i % gaps.length];
-    i++;
+    let off = prev;
+    for (let t = 0; t < 8 && Math.abs(off - prev) < 4; t++) off = Math.round(oLo + rnd() * (oHi - oLo));
+    const big = sinceBig >= 3 || (sinceBig >= 2 && rnd() < 0.35);
+    sinceBig = big ? 0 : sinceBig + 1;
+    kickers.push({ z, x: center(z) + off, h: big ? 3.2 : 2.1, len: big ? 15 : 12 });
+    prev = off;
+    z += Math.round(gLo + rnd() * (gHi - gLo));
   }
 }
 
@@ -1734,9 +1736,19 @@ function placeFeatures(cfg, rnd) {
   for (const g of gaps) {
     if (g[1] - g[0] > 60 && g[1] - lastSlot > 300) { railSlots.push(g[1] - 6); lastSlot = g[1]; g[1] -= 55; }
   }
+  // The level's list is its mix of features. Each time through it, it's
+  // shuffled, so the order never repeats down the course (and the same kind
+  // never comes twice in a row).
+  const order = [];
+  while (order.length < gaps.length) {
+    const deck = cfg.list.slice();
+    for (let i = deck.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [deck[i], deck[j]] = [deck[j], deck[i]]; }
+    if (order.length && deck[0] === order[order.length - 1]) deck.push(deck.shift());
+    order.push(...deck);
+  }
   gaps.forEach(([a, b], i) => {
     if (b - a < 24) return;
-    const v = FEATURES[cfg.list[i % cfg.list.length]](a, b, rnd, cfg);
+    const v = FEATURES[order[i]](a, b, rnd, cfg);
     if (v) visuals.push(v);
   });
   kickers.sort((p, q) => p.z - q.z);
@@ -1964,13 +1976,13 @@ function glade(rnd, z0, z1, u0, u1, n) {
   return list;
 }
 
-// Hand-built courses list their own features for one section, starting dz metres
-// down the hill; m = -1 mirrors the section left to right. Longer courses repeat
-// it, mirroring every other section. Meshes go in once every feature has shaped
-// the ground they sit on.
-function runLayout(layout, rnd, cfg, sections = 1) {
+// Hand-built courses list their own features, one function per section, each
+// built by hand so no stretch of the course repeats another. A section starts
+// dz metres down the hill. Meshes go in once every feature has shaped the
+// ground they sit on.
+function runLayout(layout, rnd, cfg) {
   const visuals = [];
-  for (let s = 0; s < sections; s++) visuals.push(...layout(rnd, cfg, s * SECTION_LEN, s % 2 ? -1 : 1));
+  layout.forEach((section, s) => visuals.push(...section(rnd, cfg, s * SECTION_LEN)));
   kickers.sort((p, q) => p.z - q.z);
   for (const v of visuals) if (v) v();
 }
@@ -1980,7 +1992,12 @@ function runLayout(layout, rnd, cfg, sections = 1) {
 // span [a, b] across the run flips to [-b, -a].
 const mirrorSpan = (m, a, b) => (m > 0 ? [a, b] : [-b, -a]);
 
-function gorgeLayout(rnd, cfg, dz = 0, m = 1) {
+// The gorge in three hand-built stretches; the kickers for all three are in the level's list.
+const gorgeLayout = [gorgeTop, gorgeFalls, gorgeExit];
+
+// The top of the gorge: ledges, ravines, an ice cave on the right, the narrows,
+// and a fork with a jump line or an ice tunnel, ending at a cabin to ride through.
+function gorgeTop(rnd, cfg, dz = 0, m = 1) {
   const V = [], Z = (z) => z + dz, S = (a, b) => mirrorSpan(m, a, b);
   fRollers(Z(60), Z(105), 1.4);
   V.push(fLedge(Z(185), 40, -m, 6));
@@ -2003,6 +2020,64 @@ function gorgeLayout(rnd, cfg, dz = 0, m = 1) {
   V.push(fork.visual);
   V.push(fMass(Z(1040), 110, ...S(8, HALF_W + 13), 7, { channel: { u: m * fork.mid, w: 7 }, roof: true }));
   V.push(fCabinThrough(Z(1262), 0));
+  return V;
+}
+
+// The frozen falls: a long high ledge on the right, a gap jump over the widest
+// ravine, an ice cave on the left, a chicane of rock walls, and a fork with
+// its jump line on the right and moguls and logs on the left.
+function gorgeFalls(rnd, cfg, dz) {
+  const V = [], Z = (z) => z + dz;
+  fMoguls(Z(45), Z(100), -HALF_W, HALF_W, 0.8);
+  V.push(fLedge(Z(130), 60, 1, 7));
+  // Jump the ravine off the kicker in the middle, or take the bridge on the left.
+  V.push(fGully(Z(299.5), 16, 9, { bridge: { u: -12, w: 5 }, opts: [0, -12] }));
+  // The ice cave on the left this time, moguls on the open right side.
+  V.push(fMass(Z(420), 120, -HALF_W - 5, -2, 9, { channel: { u: -11, w: 8 }, roof: true }));
+  fMoguls(Z(425), Z(535), 3, HALF_W, 0.8);
+  lanes.push({ z0: Z(418), z1: Z(540), opts: [-11, 10] });
+  // The chicane: a wall from the left, then one from the right.
+  fMass(Z(590), 50, -HALF_W - 5, -2, 8);
+  fMass(Z(655), 50, 2, HALF_W + 5, 8);
+  lanes.push({ z0: Z(585), z1: Z(640), opts: [9] });
+  lanes.push({ z0: Z(650), z1: Z(705), opts: [-9] });
+  V.push(fLogs(Z(725), Z(770), rnd, cfg));
+  // The fork: a ridge of pines. The jump line is on the right (its kickers are
+  // in the level's list); the left has moguls, then logs.
+  V.push(fFork(Z(800), 220, { w: 7, widen: 8, H: 8, pines: true }, rnd, cfg).visual);
+  fMoguls(Z(845), Z(920), -HALF_W - 7, -9, 0.85);
+  V.push(fLogs(Z(935), Z(975), rnd, cfg, -HALF_W - 6, -9));
+  // A second, narrower ravine with a bridge on the right.
+  V.push(fGully(Z(1160), 12, 7, { bridge: { u: 10, w: 6 } }));
+  fRollers(Z(1250), Z(1340), 1.8);
+  return V;
+}
+
+// The way out: two ledges for three lines, an ice cave down the middle, a gap
+// jump on the left, the tightest narrows, a fork with an ice tunnel on the left
+// and the jump line on the right, then one last ledge drop before the finish.
+function gorgeExit(rnd, cfg, dz) {
+  const V = [], Z = (z) => z + dz;
+  fRollers(Z(15), Z(65), 1.6);
+  // A low ledge on the left, then a higher one on the right.
+  V.push(fLedge(Z(150), 30, -1, 6));
+  V.push(fLedge(Z(220), 20, 1, 9));
+  // The ice cave right down the middle, with open runs either side.
+  V.push(fMass(Z(360), 90, -9, 9, 9, { channel: { u: 0, w: 8 }, roof: true }));
+  lanes.push({ z0: Z(358), z1: Z(452), opts: [0, -14, 14] });
+  // Gap jump off the kicker on the left, or the bridge in the middle.
+  V.push(fGully(Z(519.5), 12, 7, { bridge: { u: 0, w: 7 }, opts: [-10, 0] }));
+  // The tightest narrows on the course.
+  fMass(Z(620), 90, -HALF_W - 5, -4, 9);
+  fMass(Z(620), 90, 4, HALF_W + 5, 9);
+  fMoguls(Z(735), Z(800), -HALF_W, HALF_W, 0.75);
+  // The fork: rocks along the ridge, an ice tunnel on the left, the jump line on the right.
+  const fork = fFork(Z(840), 260, { w: 6, widen: 8, H: 8, rocks: true }, rnd, cfg);
+  V.push(fork.visual);
+  V.push(fMass(Z(900), 110, -HALF_W - 13, -8, 7, { channel: { u: -fork.mid, w: 7 }, roof: true }));
+  // A last high ledge on the left, dropping you back onto the run for the finish.
+  V.push(fLedge(Z(1160), 10, -1, 10));
+  fRollers(Z(1265), Z(1315), 1.6);
   return V;
 }
 
@@ -2045,7 +2120,28 @@ function buildGorge(rnd) {
 }
 
 // --- Glacier Bowl: a huge open bowl above the treeline -----------------------------
-function bowlLayout(rnd, cfg, dz = 0, m = 1) {
+// The bowl in three hand-built stretches; the kickers for all three are in the level's list.
+const bowlLayout = [bowlTop, bowlIcefall, bowlFinal];
+
+// Stone pillars scattered across the bowl between z0 and z1, clear of kickers,
+// half-pipes, forks and trees.
+function bowlPillars(rnd, z0, z1, n, trees) {
+  const pillars = [];
+  for (let tries = 0; pillars.length < n && tries < n * 16; tries++) {
+    const z = z0 + rnd() * (z1 - z0), u = -HALF_W + 4 + rnd() * (HALF_W * 2 - 8), x = center(z) + u;
+    // Keep the run-up and the landing clear.
+    if (kickers.some((k) => z - k.z > -22 && z - k.z < 50 && Math.abs(x - k.x) < 12)) continue;
+    if (pipes.some((p) => z > p.z0 - 10 && z < p.z1 + 10 && Math.abs(u - p.uc) < 14)) continue;
+    if (Math.abs(u) < 15 && forks.some((f) => z > f.z0 - 10 && z < f.z1 + 10)) continue;
+    if (pillars.some((p) => Math.hypot(p.x - x, p.z - z) < 18) || trees.some((t) => Math.hypot(t.x - x, t.z - z) < 4)) continue;
+    pillars.push({ x, z, y: terrainH(x, z) - 0.5, r: 1.6 + rnd() * 1.8, h: 8 + rnd() * 16 });
+  }
+  return pillars;
+}
+
+// The top of the bowl: a crevasse, staggered cliffs, a half-pipe on the right,
+// and a fork with the biggest cliff in the bowl on one side.
+function bowlTop(rnd, cfg, dz = 0, m = 1) {
   const V = [], Z = (z) => z + dz, S = (a, b) => mirrorSpan(m, a, b);
   // Big drops need long shelves that climb slower than the hill falls, so you
   // reach the edge at speed.
@@ -2074,17 +2170,77 @@ function bowlLayout(rnd, cfg, dz = 0, m = 1) {
   addGlade(1240, 1330, -HALF_W + 2, -12, 16);
   addGlade(1240, 1330, 12, HALF_W - 2, 16);
 
-  // Stone pillars scattered across the bowl, clear of kickers and the half-pipe.
-  const pillars = [];
-  for (let tries = 0; pillars.length < 24 && tries < 400; tries++) {
-    const z = Z(110 + rnd() * 1250), u = -HALF_W + 4 + rnd() * (HALF_W * 2 - 8), x = center(z) + u;
-    // Keep the run-up and the landing clear.
-    if (kickers.some((k) => z - k.z > -22 && z - k.z < 50 && Math.abs(x - k.x) < 12)) continue;
-    if (m * u > 8 && z > Z(550) && z < Z(700)) continue;
-    if (Math.abs(u) < 15 && forks.some((f) => z > f.z0 - 10 && z < f.z1 + 10)) continue;
-    if (pillars.some((p) => Math.hypot(p.x - x, p.z - z) < 18) || trees.some((t) => Math.hypot(t.x - x, t.z - z) < 4)) continue;
-    pillars.push({ x, z, y: terrainH(x, z) - 0.5, r: 1.6 + rnd() * 1.8, h: 8 + rnd() * 16 });
-  }
+  const pillars = bowlPillars(rnd, Z(110), Z(1360), 24, trees);
+  V.push(() => { addPines(trees, cfg.pines[0], cfg.pines[1]); addPillars(pillars); });
+  return V;
+}
+
+// The icefall: a drop into a field of crevasses (jump the first off a kicker),
+// twin half-pipes either side of a mogul run, and a fork with a cliff on the
+// left and a half-pipe on the right, then a cliff band and a tree island.
+function bowlIcefall(rnd, cfg, dz) {
+  const V = [], Z = (z) => z + dz;
+  const cliff = (zE, u0, u1, D) => V.push(fCliffAt(Z(zE), u0, u1, D, D / 0.16, "rock", rnd));
+  const trees = [], addGlade = (z0, z1, u0, u1, n) => trees.push(...glade(rnd, Z(z0), Z(z1), u0, u1, n));
+  cliff(60, -20, 20, 8);
+  fGully(Z(130), 6, 5);
+  fGully(Z(190), 8, 6);
+  // Twin half-pipes down both sides, moguls between them.
+  fPipe(Z(280), 160, -22);
+  fPipe(Z(300), 140, 22);
+  fMoguls(Z(290), Z(430), -10, 10, 0.85);
+  addGlade(470, 560, -HALF_W + 2, -12, 18);
+  cliff(550, 8, HALF_W + 3, 16);
+  // The fork: a wide rock rib. The left route drops off a cliff into moguls;
+  // the right route is a half-pipe.
+  V.push(fFork(Z(680), 280, { w: 12, H: 12, rocks: true }, rnd, cfg).visual);
+  cliff(850, -HALF_W - 3, -14, 14);
+  fMoguls(Z(870), Z(930), -HALF_W, -14, 0.85);
+  fPipe(Z(750), 150, 26, 16, 4);
+  fRollers(Z(1020), Z(1080), 2.8);
+  // A cliff band: the left drops first, the right a little later and higher.
+  cliff(1160, -HALF_W - 3, -2, 10);
+  cliff(1200, 2, HALF_W + 3, 12);
+  // A tree island down the middle near the end: go left or right of it.
+  addGlade(1250, 1380, -6, 6, 26);
+  lanes.push({ z0: Z(1240), z1: Z(1385), opts: [-16, 16] });
+
+  const pillars = bowlPillars(rnd, Z(40), Z(1380), 22, trees);
+  V.push(() => { addPines(trees, cfg.pines[0], cfg.pines[1]); addPillars(pillars); });
+  return V;
+}
+
+// The final bowl: a big mogul field, a cliff band in the middle with glades
+// either side, a half-pipe straight down the middle, the biggest cliffs in
+// the bowl, a fork with a cliff on the right, and a last drop to the finish.
+function bowlFinal(rnd, cfg, dz) {
+  const V = [], Z = (z) => z + dz;
+  const cliff = (zE, u0, u1, D) => V.push(fCliffAt(Z(zE), u0, u1, D, D / 0.16, "rock", rnd));
+  const trees = [], addGlade = (z0, z1, u0, u1, n) => trees.push(...glade(rnd, Z(z0), Z(z1), u0, u1, n));
+  fGully(Z(30), 5, 4);
+  fMoguls(Z(80), Z(190), -HALF_W, HALF_W, 0.9);
+  cliff(280, -14, 14, 15);
+  addGlade(220, 300, -HALF_W + 2, -22, 18);
+  addGlade(220, 300, 22, HALF_W - 2, 18);
+  // A half-pipe straight down the middle, moguls either side.
+  fPipe(Z(350), 180, 0, 20, 6);
+  fMoguls(Z(360), Z(520), -HALF_W, -16, 0.8);
+  fMoguls(Z(360), Z(520), 16, HALF_W, 0.8);
+  // The biggest cliffs in the bowl, with a gap down the middle to ride between them.
+  cliff(620, -HALF_W - 3, -10, 18);
+  cliff(640, 10, HALF_W + 3, 10);
+  // The fork: the right route drops off a cliff; the left has a kicker (in the level's list).
+  V.push(fFork(Z(720), 240, { w: 9, H: 10, rocks: true }, rnd, cfg).visual);
+  cliff(880, 12, HALF_W + 3, 18);
+  fMoguls(Z(830), Z(900), -HALF_W, -12, 0.85);
+  fRollers(Z(990), Z(1050), 2.4);
+  fGully(Z(1080), 7, 5);
+  // One last drop right across the bowl, then the glades down to the finish.
+  cliff(1250, -HALF_W - 3, HALF_W + 3, 6);
+  addGlade(1280, 1380, -HALF_W + 2, -25, 16);
+  addGlade(1280, 1380, 25, HALF_W - 2, 16);
+
+  const pillars = bowlPillars(rnd, Z(40), Z(1240), 22, trees);
   V.push(() => { addPines(trees, cfg.pines[0], cfg.pines[1]); addPillars(pillars); });
   return V;
 }
@@ -2453,7 +2609,7 @@ function buildEverest(rnd) {
   // ride into one and you wipe out. Each stands clear of the kickers' run-ups
   // and landings, facing up the hill at whoever's coming.
   const onRun = [];
-  for (const [z0, u] of [[640, -7], [2250, 6]]) {
+  for (const [z0, u] of [[640, -7], [2250, 6], [3500, -5]]) {
     let z = z0;
     while (kickers.some((k) => z - k.z > -30 && z - k.z < 80) || rails.some((rl) => z > rl.z0 - 20 && z < rl.z1 + 15)) z += 10;
     const x = center(z) + u, y = terrainH(x, z);
@@ -3059,13 +3215,12 @@ function buildValley(rnd) {
   return (t) => { glintMat.opacity = 0.55 + 0.45 * Math.sin(t * 2.3); };
 }
 
-// The courses. New courses should be three sections long (sections: 3, 4200 m),
-// like Frozen Gorge, Glacier Bowl, Lava Rush and Sea of Tranquility; the
-// shorter ones are older.
+// The courses. Every course is three sections long (sections: 3, 4200 m), and
+// new ones should be too.
 const LEVELS = {
   peak: {
     name: "Snowy Peak", blurb: "An overcast day high on a snowy mountain.",
-    seed: 7331, build: buildPeak, ground: snowGround,
+    seed: 7331, build: buildPeak, ground: snowGround, sections: 3,
     track: { artist: "Avicii", title: "Levels", video: "_ovdm2yX4MA" },
     course: { a1: 16, p1: 130, o1: 0, a2: 7, p2: 53, o2: 1.3, bump: 0 },
     kickers: { start: 150, offsets: [0, -7, 6, -3, 8, -6], gaps: [100, 120, 140] },
@@ -3079,7 +3234,7 @@ const LEVELS = {
   },
   city: {
     name: "Neon Nights", blurb: "A snowy street run through the city after dark, past lamps, towers and neon signs.",
-    seed: 90210, build: buildCity, ground: snowGround,
+    seed: 90210, build: buildCity, ground: snowGround, sections: 3,
     track: { artist: "Post Malone", title: "Saint-Tropez", video: "MRyLC2M1K2w" },
     course: { a1: 12, p1: 170, o1: 0.6, a2: 9, p2: 61, o2: 2.2, bump: 1.7 },
     kickers: { start: 130, offsets: [4, -6, 0, 7, -4, 2], gaps: [95, 120, 145] },
@@ -3093,14 +3248,19 @@ const LEVELS = {
   },
   valley: {
     name: "Lakeside Valley", blurb: "Sunny spring snow above the countryside, with a lake in the valley below.",
-    seed: 2468, build: buildValley, ground: valleyGround,
+    seed: 2468, build: buildValley, ground: valleyGround, sections: 3,
     track: { artist: "Dave Matthews Band", title: "Crash Into Me", video: "k7in-9E3ImQ" },
     course: { a1: 20, p1: 150, o1: 2, a2: 5, p2: 47, o2: 0, bump: 3.1 },
     kickers: { start: 160, offsets: [-5, 3, 8, -8, 0, 5], gaps: [105, 130] },
     terrain: {
       list: ["rollers", "roof", "moguls", "logs", "cliff", "split", "roof", "rock", "rollers", "roof", "moguls", "cliff"],
       drop: 4.5, face: "rock", logs: "log", roof: "cabin", pines: [[0x2f6b3a, 0x3a7a40, 0x2a5e35]],
-      forks: [{ z: 670, len: 280, w: 6, widen: 8, H: 5, pines: true, side: -1 }],
+      // Three forested ridges, each its own size, the jump line switching sides each time.
+      forks: [
+        { z: 670, len: 280, w: 6, widen: 8, H: 5, pines: true, side: -1 },
+        { z: 2010, len: 360, w: 8, widen: 10, H: 7, pines: true, rocks: true, side: 1 },
+        { z: 3290, len: 220, w: 5, widen: 7, H: 4, pines: true, side: -1 },
+      ],
     },
     sky: 0xdcebf7, fog: [0xd4e6f4, 70, 560], hemi: [0xeaf4ff, 0x7a8a60, 1.45], sun: [0xfff0d6, 2.1], riderLight: 0,
     snow: 0, puffs: 0.25, kickerColor: [0.55, 0.78, 1.0],
@@ -3111,7 +3271,11 @@ const LEVELS = {
     seed: 31337, build: buildGorge, ground: gorgeGround, layout: gorgeLayout, sections: 3,
     track: { artist: "Pendulum", title: "Watercolour", video: "tEPB7uzKuh4" },
     course: { a1: 12, p1: 150, o1: 0.4, a2: 6, p2: 60, o2: 2.5, bump: 0.8, tight: { a: 9, p: 24, z1: 330 } },
-    kickers: { at: [[150, 0], [300, -4, true], [440, 2], [610, -2], [760, 0], [1060, -16, true], [1150, -16], [1330, -3]] },
+    kickers: { at: [
+      [150, 0], [300, -4, true], [440, 2], [610, -2], [760, 0], [1060, -16, true], [1150, -16], [1330, -3],
+      [1698, 0, true], [1775, 8], [2260, 16], [2350, 16, true], [2470, 0, true], [2780, -5],
+      [2910, 2], [3110, 0], [3318, -10, true], [3700, 16], [3800, 16, true], [4000, 12], [4140, 0],
+    ] },
     terrain: { logs: "log", pines: [[0x24473a, 0x2a523f], 0xdfe6f5] },
     sky: 0x8f86b8, fog: [0x9a8fbc, 40, 320], hemi: [0xb8c2ee, 0x3d3550, 1.05], sun: [0xffb27a, 1.8], riderLight: 0,
     snow: 0.45, puffs: 0.5, kickerColor: [0.55, 0.7, 1.0],
@@ -3122,7 +3286,11 @@ const LEVELS = {
     seed: 4242, build: buildBowl, ground: bowlGround, layout: bowlLayout, sections: 3, halfW: 40,
     track: { artist: "Foo Fighters", title: "Everlong", video: "eBG7P-K-r1Y" },
     course: { a1: 10, p1: 220, o1: 1, a2: 5, p2: 90, o2: 0.3, bump: 2.2 },
-    kickers: { at: [[175, -14], [360, 0], [740, 12], [890, 14], [1000, -24], [1140, -8, true], [1330, 0]] },
+    kickers: { at: [
+      [175, -14], [360, 0], [740, 12], [890, 14], [1000, -24], [1140, -8, true], [1330, 0],
+      [1515, 0, true], [1650, 0], [1865, -4], [2030, 0], [2400, 0], [2720, 25],
+      [2865, 10], [3350, 0], [3600, -24], [3950, 0, true], [4150, 15],
+    ] },
     terrain: { pines: [[0x2f5d46, 0x356b4c], 0xeef4fb] },
     sky: 0xcfe6ff, fog: [0xd8ecff, 80, 700], hemi: [0xeef6ff, 0x9fb2cc, 1.45], sun: [0xfff4e0, 2.3], riderLight: 0,
     snow: 0, puffs: 0.8, kickerColor: [0.55, 0.75, 1.0],
@@ -3146,7 +3314,7 @@ const LEVELS = {
   },
   everest: {
     name: "Everest", blurb: "Straight down the side of the world's highest mountain: one long, relentlessly steep face high above the clouds.",
-    seed: 8848, build: buildEverest, ground: everestGround, slope: 0.62, bank: 0.3, sections: 2, halfW: 22, par: 80,
+    seed: 8848, build: buildEverest, ground: everestGround, slope: 0.62, bank: 0.3, sections: 3, halfW: 22, par: 120,
     track: { artist: "CAKE", title: "The Distance", video: "F_HoMkkRHv8" },
     course: { a1: 9, p1: 210, o1: 0.3, a2: 4, p2: 75, o2: 1, bump: 1.2 },
     kickers: { start: 190, offsets: [0, -6, 6, -3, 3], gaps: [150, 180, 210] },
@@ -3232,10 +3400,10 @@ function setLevel(id) {
   FENCE_D = HALF_W + 7;
   Object.assign(course, { tight: null }, level.course);
   COURSE_LEN = SECTION_LEN * (level.sections ?? 1);
-  layoutKickers(level.kickers, level.sections);
-  // Features get their own random stream, so they don't shift the scenery's.
+  // Kickers and features get their own random streams, so they don't shift the scenery's.
+  layoutKickers(level.kickers, mulberry32(level.seed ^ 0x2545f491));
   const frnd = mulberry32(level.seed ^ 0x5bd1e995);
-  if (level.layout) runLayout(level.layout, frnd, level.terrain, level.sections);
+  if (level.layout) runLayout(level.layout, frnd, level.terrain);
   else placeFeatures(level.terrain, frnd);
   placeRails(frnd);
 
