@@ -20,4 +20,4 @@ Play them at https://rycole.com/browser-games/.
 | [Sky Hop](src/sky-hop/) | Tap to flap through the gaps between the pillars. |
 | [Powder Run](src/powder-run/) | Snowboard down ten 3D courses, from a neon city at night and an icy gorge to a lava flow, a snowed-in mountain highway, a sleeping town at midnight, the face of Everest and the Moon, spinning and grabbing off kickers, cliffs and rooftops. |
 | [Footbag Jam](src/footbag-jam/) | Keep the footbag in the air on an 8-bit beach with heads, knees, toes and back kicks. |
-| [One Kick](src/one-kick/) | A retro first-person shooter about a superhero whose one power is kicking down any door in a single kick. |
+| [One Kick](src/one-kick/) | A retro first-person rescue game: you're a superhero whose one power is kicking down any door, and people are trapped behind them. |

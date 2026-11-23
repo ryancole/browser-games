@@ -87,15 +87,13 @@
 
 <div id="menu" class="screen show">
   <h1 class="logo">ONE KICK</h1>
-  <p class="tag">You have exactly one superpower: any door you meet comes down in a single kick. A gang has taken over the building. Kick your way up to the roof.</p>
+  <p class="tag">You have exactly one superpower: any door you meet comes down in a single kick. People are trapped behind locked doors all over this building. Listen for their calls, find them, and kick your way in.</p>
   <button id="play">Play</button>
   <div class="keys">
     <span>Mouse</span><span>Look</span>
     <span>W A S D</span><span>Move</span>
     <span>Space</span><span>Jump</span>
-    <span>F, E or right click</span><span>Kick</span>
-    <span>Left click</span><span>Shoot</span>
-    <span>1, 2 or wheel</span><span>Switch weapon</span>
+    <span>Click, F or E</span><span>Kick</span>
     <span>Esc</span><span>Pause</span>
   </div>
   <p class="note">Needs a keyboard and mouse.</p>
@@ -331,94 +329,61 @@ const TEX_SIZE = { crate: 1.2 }; // metres covered by one texture repeat; defaul
 }
 
 // ---------------------------------------------------------------------------
-// Enemy sprites: 8 viewing angles x 5 poses, plus a row of death frames.
-// Angles 0-4 are drawn (front, front-side, side, back-side, back); 5-7 are
-// the mirror images of 3-1. The figure is drawn with rectangles, like
+// People to rescue: sprites drawn from 8 viewing angles x 5 poses. Angles
+// 0-4 are drawn (front, front-side, side, back-side, back); 5-7 are the
+// mirror images of 3-1. Each figure is drawn with rectangles, like
 // hand-placed pixel art, from a few numbers that change with the angle.
 // ---------------------------------------------------------------------------
-const FW = 48, FH = 56, PX = 1.85 / 56; // frame size in pixels, metres per pixel
-const POSES = ["walk0", "walk1", "aim", "fire", "pain"];
+const FW = 48, FH = 56, PX = 1.8 / 56; // frame size in pixels, metres per pixel
+const POSES = ["idle", "wave0", "wave1", "cheer0", "cheer1"];
 
-function drawMan(g, a, pose, P) {
+function drawPerson(g, a, pose, P) {
   const R = rectFn(g);
   const s = Math.sin(a * Math.PI / 4), c = Math.cos(a * Math.PI / 4);
-  const cx = 24, bulk = P.bulk;
-  const bw = 16 + bulk - (6 + bulk * 0.4) * s;
-  const walk = pose === "walk0" ? 1 : pose === "walk1" ? -1 : 0;
-  const aiming = pose === "aim" || pose === "fire";
+  const cx = 24, hop = pose === "cheer1" ? 2 : 0;
+  const bw = 15 - 6 * s;
   // legs
-  const legTop = 36, legLen = 19, legW = 5 + bulk * 0.3;
-  const spread = (3 + bulk * 0.3) * (1 - s), stride = walk * 4 * s, lift = Math.abs(walk) * 2 * (1 - s);
-  const l1 = cx - legW / 2 - spread + stride, l2 = cx - legW / 2 + spread - stride;
-  const lift1 = walk > 0 ? lift : 0, lift2 = walk < 0 ? lift : 0;
-  R(l2, legTop, legW, legLen - lift2, P.pantsDark);
-  R(l2, legTop + legLen - 3 - lift2, legW + 1 + 2 * s, 3, P.shoe);
-  R(l1, legTop, legW, legLen - lift1, P.pants);
-  R(l1, legTop + legLen - 3 - lift1, legW + 1 + 2 * s, 3, P.shoe);
+  const legTop = 36 - hop, legLen = 19, legW = 5, spread = 3 * (1 - s);
+  R(cx - legW / 2 + spread, legTop, legW, legLen, P.pantsDark);
+  R(cx - legW / 2 + spread, legTop + legLen - 3, legW + 1 + 2 * s, 3, P.shoe);
+  R(cx - legW / 2 - spread, legTop, legW, legLen, P.pants);
+  R(cx - legW / 2 - spread, legTop + legLen - 3, legW + 1 + 2 * s, 3, P.shoe);
   // torso
-  const tx = cx - bw / 2, ty = 18;
-  R(tx, ty, bw, 19, P.jacket);
-  R(tx, ty, bw, 2, P.jacketLight);
-  if (c > 0.2) R(cx - 2 + s * 3, ty + 1, 4 - s, 12, P.shirt);
-  if (c < -0.2) R(tx + 2, ty + 5, bw - 4, 1, P.jacketDark);
-  R(tx, 35, bw, 2, P.belt);
+  const tx = cx - bw / 2, ty = 18 - hop;
+  R(tx, ty, bw, 19, P.shirt);
+  R(tx, ty, bw, 2, P.shirtLight);
+  if (P.tie && c > 0.2) R(cx - 1 + s * 3, ty + 1, 2, 11, P.tie);
+  R(tx, ty + 17, bw, 2, P.belt);
   // head
-  const hw = 10 + bulk * 0.3 - 2 * s, hx = cx - hw / 2 + s * 1.5, hy = 7;
+  const hw = 10 - 2 * s, hx = cx - hw / 2 + s * 1.5, hy = 7 - hop;
   R(cx - 2 + s, ty - 2, 4, 3, P.skin);
+  if (P.longHair) R(hx - 1, hy, hw + 2, 13, P.hair); // hair falling behind the head
   R(hx, hy, hw, 11, P.skin);
-  if (P.hat) R(hx - 0.5, hy - 2, hw + 1, 5, P.hat);
-  if (c < -0.2) R(hx, hy + 2, hw, 7, P.hat || P.skinDark);
+  R(hx - 0.5, hy - 2, hw + 1, 4, P.hair);
+  if (c < -0.2) R(hx, hy, hw, P.longHair ? 14 : 9, P.hair);
+  const happy = pose !== "idle";
   if (c > 0.2) {
-    R(hx + 1 + s * 2, hy + 4, hw - 2 - s * 3, 2, "#111");
-    R(cx - 1 + s * 3, hy + 8, 3, 1, P.mouth);
+    R(hx + 2 + s * 2, hy + 4, 2, 2, "#222");
+    if (s < 0.6) R(hx + hw - 4 + s, hy + 4, 2, 2, "#222");
+    if (happy) R(cx - 1 + s * 3, hy + 7, 3, 2, "#5a1a1a"); else R(cx - 1 + s * 3, hy + 8, 3, 1, P.mouth);
   } else if (s > 0.6 && c > -0.6) {
-    R(hx + hw - 3, hy + 4, 3, 2, "#111");
+    R(hx + hw - 3, hy + 4, 2, 2, "#222");
   }
   if (s > 0.6 && c > -0.6) R(hx + hw, hy + 5, 1, 2, P.skin);
-  // arms and gun
-  const armW = 3 + bulk * 0.3;
-  let tip = null;
-  if (pose === "pain") {
-    R(tx - armW, ty - 6, armW, 12, P.jacket); R(tx + bw, ty - 6, armW, 12, P.jacket);
-    R(tx - armW, ty - 9, armW, 3, P.skin); R(tx + bw, ty - 9, armW, 3, P.skin);
-  } else if (aiming) {
-    if (c > 0.35) {
-      R(cx - 4 + s * 6, ty + 4, 8, 5, P.jacket);
-      R(cx - 3 + s * 7, ty + 5, 6, 4, P.skin);
-      R(cx - 2 + s * 8, ty + 4, 4 + s * 4, 4, P.gun);
-      R(cx - 1 + s * 8, ty + 5, 2, 2, "#000");
-      tip = [cx + s * 8, ty + 5];
-    } else if (c > -0.8) {
-      const len = 6 + P.reach * s;
-      R(cx, ty + 3, len, 3, P.jacket);
-      R(cx + len, ty + 3, 3, 3, P.skin);
-      R(cx + len + 2, ty + 2, P.gunLen, 3, P.gun);
-      tip = [cx + len + 2 + P.gunLen, ty + 3];
-    } else {
-      R(tx - 1, ty + 2, 2, 8, P.jacket); R(tx + bw - 1, ty + 2, 2, 8, P.jacket);
-    }
-    if (pose === "fire" && tip) {
-      R(tip[0] - 3, tip[1] - 1, 7, 3, "#ffe070"); R(tip[0] - 1, tip[1] - 3, 3, 7, "#ffe070"); R(tip[0] - 1, tip[1] - 1, 3, 3, "#fff");
-    }
-  } else {
-    const off = (bw / 2 + armW / 2) * (1 - s * 0.8), swing = walk * 2 * s;
-    R(cx - off - armW / 2 - swing, ty + 1, armW, 14, P.jacketDark);
-    R(cx + off - armW / 2 + swing, ty + 1, armW, 14, P.jacket);
-    R(cx + off - armW / 2 + swing, ty + 15, armW, 3, P.skin);
-    if (c > -0.8) R(cx + off - armW / 2 + swing, ty + 17, 2, 3 + P.gunLen * 0.4, P.gun);
-  }
-  if (pose === "pain") {
-    g.globalCompositeOperation = "source-atop";
-    g.fillStyle = "rgba(255,40,30,0.35)"; g.fillRect(0, 0, FW, FH);
-    g.globalCompositeOperation = "source-over";
-  }
+  // arms: at the sides, one waving for help, or both up to cheer
+  const off = (bw / 2 + 1.5) * (1 - s * 0.8);
+  const armDown = (x, col) => { R(x - 1.5, ty + 1, 3, 14, col); R(x - 1.5, ty + 15, 3, 3, P.skin); };
+  const armUp = (x, col) => { R(x - 1.5, ty - 11, 3, 13, col); R(x - 1.5, ty - 14, 3, 3, P.skin); };
+  if (pose === "idle") { armDown(cx - off, P.shirtDark); armDown(cx + off, P.shirt); }
+  else if (pose === "wave0" || pose === "wave1") { armDown(cx - off, P.shirtDark); armUp(cx + off + (pose === "wave1" ? 4 : 1), P.shirt); }
+  else { const w = pose === "cheer1" ? 3 : 1; armUp(cx - off - w, P.shirtDark); armUp(cx + off + w, P.shirt); }
 }
 
 function makeSheet(P) {
-  const c = makeCanvas(FW * 5, FH * 9), g = c.getContext("2d");
+  const c = makeCanvas(FW * 5, FH * 8), g = c.getContext("2d");
   for (let a = 0; a < 5; a++) for (let p = 0; p < 5; p++) {
     const f = makeCanvas(FW, FH);
-    drawMan(f.getContext("2d"), a, POSES[p], P);
+    drawPerson(f.getContext("2d"), a, POSES[p], P);
     g.drawImage(f, p * FW, a * FH);
   }
   for (let r = 5; r < 8; r++) for (let p = 0; p < 5; p++) {
@@ -426,71 +391,18 @@ function makeSheet(P) {
     g.drawImage(c, p * FW, (8 - r) * FH, FW, FH, 0, 0, FW, FH);
     g.restore();
   }
-  // death frames: crumple, drop, lie, lie in a pool of blood
-  const front = makeCanvas(FW, FH);
-  drawMan(front.getContext("2d"), 0, "pain", P);
-  const y8 = 8 * FH;
-  g.save(); g.translate(FW / 2, y8 + FH); g.scale(1, 0.82); g.rotate(-0.18); g.drawImage(front, -FW / 2, -FH); g.restore();
-  g.save(); g.translate(FW + FW / 2, y8 + FH); g.scale(1, 0.5); g.rotate(-0.4); g.drawImage(front, -FW / 2, -FH); g.restore();
-  for (const k of [2, 3]) {
-    if (k === 3) { g.fillStyle = "#5a0a08"; g.beginPath(); g.ellipse(k * FW + FW / 2, y8 + FH - 4, 21, 3.5, 0, 0, Math.PI * 2); g.fill(); }
-    g.save(); g.translate(k * FW + FW / 2, y8 + FH - 8); g.rotate(-Math.PI / 2); g.scale(0.8, 0.8);
-    g.drawImage(front, -FW / 2, -FH / 2); g.restore();
-  }
   return toTex(c, false);
 }
 
-const TYPES = {
-  thug: {
-    hp: 40, speed: 2.8, r: 0.36, h: 1.8, scale: 1, range: 22, cool: [1.1, 2.2], pellets: 1, dmg: [4, 9], pain: 0.85,
-    sheet: makeSheet({
-      bulk: 0, reach: 8, gunLen: 5, jacket: "#8a6a3a", jacketLight: "#a8844e", jacketDark: "#6a5028", shirt: "#e8e4d8",
-      belt: "#2a2016", pants: "#2c3550", pantsDark: "#222a40", shoe: "#151515", skin: "#c99a72", skinDark: "#a87c58",
-      hat: "#1e1e22", mouth: "#6a3a2a", gun: "#1e1f23",
-    }),
-  },
-  brute: {
-    hp: 150, speed: 2.2, r: 0.5, h: 2.1, scale: 1.2, range: 12, cool: [1.6, 2.6], pellets: 4, dmg: [3, 6], pain: 0.3,
-    sheet: makeSheet({
-      bulk: 4, reach: 5, gunLen: 10, jacket: "#3f5a2e", jacketLight: "#56763f", jacketDark: "#2e4422", shirt: "#151515",
-      belt: "#111111", pants: "#3a3530", pantsDark: "#2c2824", shoe: "#0f0f0f", skin: "#b07c56", skinDark: "#94663f",
-      hat: null, mouth: "#5a2a1a", gun: "#2a2a2a",
-    }),
-  },
-};
-for (const T of Object.values(TYPES)) {
-  T.geo = new THREE.PlaneGeometry(FW * PX * T.scale, FH * PX * T.scale).translate(0, FH * PX * T.scale / 2, 0);
-}
-
-// Pickup sprites
-function pickupSprite(w, h, draw) {
-  const c = makeCanvas(w, h);
-  draw(rectFn(c.getContext("2d")));
-  const mat = new THREE.MeshBasicMaterial({ map: toTex(c, false), alphaTest: 0.5 });
-  const geo = new THREE.PlaneGeometry(w * PX, h * PX).translate(0, h * PX / 2, 0);
-  return { mat, geo };
-}
-const PICKUPS = {
-  medkit: { ...pickupSprite(20, 14, (R) => {
-    R(0, 2, 20, 12, "#2a2a2a"); R(1, 3, 18, 10, "#eeeeea"); R(8, 4, 4, 8, "#d02018"); R(6, 6, 8, 4, "#d02018"); R(7, 0, 6, 3, "#555");
-  }), msg: "Medkit", take: (p) => p.hp < 100 && (p.hp = Math.min(100, p.hp + 25), true) },
-  ammo: { ...pickupSprite(16, 11, (R) => {
-    R(0, 3, 16, 8, "#4d5a2a"); R(1, 4, 14, 6, "#65743a");
-    for (let x = 2; x < 14; x += 3) { R(x, 0, 2, 4, "#c9a640"); R(x, 0, 2, 1, "#8a6a20"); }
-  }), msg: "Pistol ammo", take: (p) => p.bullets < 200 && (p.bullets = Math.min(200, p.bullets + 12), true) },
-  shells: { ...pickupSprite(16, 11, (R) => {
-    R(0, 3, 16, 8, "#7a1d16"); R(1, 4, 14, 6, "#a4291f");
-    for (let x = 2; x < 14; x += 4) { R(x, 0, 3, 4, "#c02a1e"); R(x, 3, 3, 1, "#d0a040"); }
-  }), msg: "Shotgun shells", take: (p) => p.shells < 50 && (p.shells = Math.min(50, p.shells + 8), true) },
-  shotgun: { ...pickupSprite(36, 10, (R) => {
-    R(0, 4, 12, 5, "#6a3e1c"); R(10, 3, 8, 5, "#2b2e33"); R(16, 3, 20, 2, "#3d4047"); R(18, 5, 14, 2, "#30333a"); R(20, 5, 8, 3, "#7a4a24");
-  }), msg: "SHOTGUN! Press 2", take: (p) => {
-    const first = !p.hasShotgun;
-    p.hasShotgun = true; p.shells = Math.min(50, p.shells + 8);
-    if (first) switchWeapon(1);
-    return true;
-  } },
-};
+const LOOKS = [
+  { shirt: "#e9e6dc", shirtLight: "#ffffff", shirtDark: "#c4c0b4", tie: "#b02a2a", belt: "#222", pants: "#2d2f38", pantsDark: "#22242b", shoe: "#1a1a1a", skin: "#d9a982", hair: "#3a2a1a", mouth: "#7a3a2a" },
+  { shirt: "#c83a52", shirtLight: "#e05a70", shirtDark: "#9a2a3e", belt: "#5a1a28", pants: "#2a3a6a", pantsDark: "#1f2c52", shoe: "#2a1a1a", skin: "#e8b896", hair: "#d8b060", longHair: true, mouth: "#a04a4a" },
+  { shirt: "#5a7a4a", shirtLight: "#7a9a62", shirtDark: "#44603a", belt: "#3a2a1a", pants: "#5a4a3a", pantsDark: "#46392c", shoe: "#2a2018", skin: "#e0b896", hair: "#cfcfcf", mouth: "#8a4a3a" },
+  { shirt: "#3a7a8a", shirtLight: "#56a0b0", shirtDark: "#2a5a66", belt: "#1a2a30", pants: "#3a3a3a", pantsDark: "#2a2a2a", shoe: "#111", skin: "#8a5a3a", hair: "#151010", longHair: true, mouth: "#4a2a1a" },
+  { shirt: "#e8c020", shirtLight: "#f8e060", shirtDark: "#b89410", belt: "#555", pants: "#3a4a6a", pantsDark: "#2c3852", shoe: "#3a2a1a", skin: "#a87048", hair: "#1a1a1a", mouth: "#5a2a1a" },
+];
+const SHEETS = LOOKS.map(makeSheet);
+const personGeo = new THREE.PlaneGeometry(FW * PX, FH * PX).translate(0, FH * PX / 2, 0);
 
 // ---------------------------------------------------------------------------
 // The level, as Build-style sectors: each is a polygon with its own floor and
@@ -554,23 +466,16 @@ box(10.4, 23, 22, 32, { floor: 2.4, ceil: 6.5, floorTex: "marble", wallTex: "woo
 box(13, 26, 17, 29, { floor: 1.6, ceil: 6.5, floorTex: "carpet", wallTex: "wood", light: 0.8 });
 box(19, 24, 21.5, 25, { floor: 3.4, ceil: 6.5, floorTex: "wood", wallTex: "wood", light: 0.95 });
 doorway(15, 32, 17, 32.4, { floor: 2.4, ceil: 4.9, exitDoor: true });
-// The roof: reaching it ends the level. Low parapets on three sides.
-box(11, 32.4, 21, 40, { floor: 2.4, ceil: 14, sky: true, parapet: "new", floorTex: "roof", wallTex: "brick", light: 0.7, exit: true });
+// The roof, with low parapets on three sides
+box(11, 32.4, 21, 40, { floor: 2.4, ceil: 14, sky: true, parapet: "new", floorTex: "roof", wallTex: "brick", light: 0.7 });
 
 const START = { x: 5, z: 1.5, yaw: Math.PI };
 const N = Math.PI / 2, S = -Math.PI / 2, E = 0, Wd = Math.PI;
-const ENEMY_SPAWNS = [
-  ["thug", 5, 7.7, S], ["thug", 7, 13.7, S], ["thug", 12, 16.6, Wd],
-  ["thug", 24.5, 11, Wd], ["thug", 18.8, 8.3, N], ["thug", 20.5, 3.5, N], ["thug", 23, 17, S],
-  ["brute", 29, 14.8, Wd], ["thug", 30.8, 7, Wd],
-  ["thug", 7, 28, S],
-  ["thug", 11.4, 27, E], ["thug", 20, 30, S], ["thug", 12.5, 31, E], ["thug", 20.5, 26.5, Wd], ["brute", 15, 27.5, N],
-];
-const PICKUP_SPAWNS = [
-  ["ammo", 8.5, 1.5], ["ammo", 7, 12.5], ["medkit", -2, 14.6], ["ammo", -2, 15.8],
-  ["medkit", 21, 8.3], ["ammo", 21, 18], ["ammo", 25, 18],
-  ["shotgun", 31, 15], ["shells", 27, 15], ["shells", 29.1, 7.6],
-  ["medkit", 7, 29], ["medkit", 20.2, 24.5], ["shells", 14, 30.5], ["ammo", 21, 31],
+// Where the trapped people are and which way they face. Each one is behind
+// at least one door, and out of the way of the door when it flies in.
+const PEOPLE = [
+  [7, 14.2, S], [-2.5, 16.1, E], [20.6, 3.6, N], [24.8, 17.8, S], [30.5, 15, Wd],
+  [5, 29, S], [12, 31, E], [20.5, 29, Wd], [19.5, 38.5, S],
 ];
 
 // --- Compile the sectors into wall lines ---
@@ -851,27 +756,33 @@ function tone(dur, type, f0, f1, gain, delay = 0) {
   const g = ac.createGain(); g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
   o.connect(g).connect(master); o.start(t); o.stop(t + dur + 0.05);
 }
-const near = (x, z) => clamp(1 - Math.hypot(x - player.x, z - player.z) / 30, 0.06, 1);
+// A rough vowel: a sawtooth through a band-pass "mouth", muffled through a door.
+function voice(f0, f1, dur, gain, delay, muffled) {
+  if (!ac || gain < 0.005) return;
+  const t = ac.currentTime + delay;
+  const o = ac.createOscillator(); o.type = "sawtooth";
+  o.frequency.setValueAtTime(f0, t); o.frequency.linearRampToValueAtTime(f1, t + dur);
+  const f = ac.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = muffled ? 450 : 1000; f.Q.value = 1.5;
+  const g = ac.createGain(); g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(gain, t + 0.04); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o.connect(f).connect(g).connect(master); o.start(t); o.stop(t + dur + 0.05);
+}
+const near = (x, z) => clamp(1 - Math.hypot(x - player.x, z - player.z) / 32, 0.05, 1);
 const sfx = {
   whoosh: () => noise(0.16, "bandpass", 900, 0.18, 300),
   kickDoor: () => { tone(0.28, "sine", 150, 38, 0.9); noise(0.35, "lowpass", 1800, 0.7, 200); noise(0.09, "highpass", 2500, 0.45); noise(0.5, "bandpass", 700, 0.3, 250, 0.05); },
   doorLand: (v) => { noise(0.4, "lowpass", 700, 0.55 * v, 120); tone(0.3, "sine", 80, 35, 0.5 * v); },
-  kickBody: () => { tone(0.18, "sine", 120, 50, 0.7); noise(0.15, "lowpass", 900, 0.5); },
-  pistol: () => { noise(0.13, "highpass", 900, 0.5); tone(0.09, "square", 420, 70, 0.18); },
-  shotgun: () => { noise(0.45, "lowpass", 3200, 0.9, 300); tone(0.25, "sine", 130, 30, 0.6); noise(0.08, "bandpass", 1800, 0.25, 900, 0.32); noise(0.08, "bandpass", 1500, 0.25, 700, 0.45); },
-  enemyShot: (v, big) => { noise(big ? 0.35 : 0.14, "lowpass", big ? 2200 : 2600, 0.45 * v); tone(0.08, "square", 300, 60, 0.12 * v); },
-  pain: (v) => tone(0.18, "sawtooth", 230, 120, 0.22 * v),
-  death: (v) => { tone(0.5, "sawtooth", 210, 45, 0.28 * v); noise(0.3, "lowpass", 500, 0.2 * v, 100, 0.25); },
-  alert: (v) => { tone(0.1, "square", 300, 300, 0.1 * v); tone(0.12, "square", 420, 420, 0.1 * v, 0.1); },
-  hurt: () => tone(0.25, "sawtooth", 160, 85, 0.35),
-  pickup: () => { tone(0.06, "square", 660, 660, 0.14); tone(0.09, "square", 990, 990, 0.14, 0.06); },
-  click: () => tone(0.03, "square", 1300, 1300, 0.1),
-  land: () => noise(0.12, "lowpass", 400, 0.35),
   slam: (v) => { noise(0.25, "lowpass", 600, 0.5 * v, 100); tone(0.2, "sine", 90, 40, 0.4 * v); },
+  help: (v, muffled, pitch) => { voice(390 * pitch, 340 * pitch, 0.22, 0.55 * v, 0, muffled); voice(480 * pitch, 300 * pitch, 0.38, 0.55 * v, 0.26, muffled); },
+  saved: (pitch) => {
+    voice(400 * pitch, 640 * pitch, 0.35, 0.45, 0, false);
+    tone(0.1, "square", 660, 660, 0.1, 0.05); tone(0.1, "square", 880, 880, 0.1, 0.15); tone(0.22, "square", 1320, 1320, 0.1, 0.25);
+  },
+  land: () => noise(0.12, "lowpass", 400, 0.35),
 };
 
 // ---------------------------------------------------------------------------
-// Particles: splinters, dust, blood, sparks.
+// Particles: splinters, dust, confetti.
 // ---------------------------------------------------------------------------
 const PMAX = 700;
 const pPos = new Float32Array(PMAX * 3), pCol = new Float32Array(PMAX * 3);
@@ -882,14 +793,14 @@ const pMesh = new THREE.Points(pGeo, new THREE.PointsMaterial({ size: 0.07, vert
 pMesh.frustumCulled = false;
 scene.add(pMesh);
 let parts = [];
-function spawnParts(x, y, z, n, color, speed, dir = null, up = 2) {
-  const c = new THREE.Color(color);
+function spawnParts(x, y, z, n, colors, speed, dir = null, up = 2) {
+  const cs = [].concat(colors).map((c) => new THREE.Color(c));
   const s = findSector(x, z);
   const floor = s ? s.floor : y - 2;
   for (let i = 0; i < n && parts.length < PMAX; i++) {
     let vx = (Math.random() - 0.5) * 2, vy = Math.random() * up, vz = (Math.random() - 0.5) * 2;
     if (dir) { vx += dir[0] * 2.2; vz += dir[1] * 2.2; }
-    const k = speed * (0.4 + Math.random() * 0.6);
+    const k = speed * (0.4 + Math.random() * 0.6), c = cs[i % cs.length];
     const shade = 0.75 + Math.random() * 0.4;
     parts.push({ x, y, z, vx: vx * k, vy: vy * k * 0.6, vz: vz * k, life: 0.5 + Math.random() * 0.9, floor, r: c.r * shade, g: c.g * shade, b: c.b * shade });
   }
@@ -914,153 +825,60 @@ function updateParts(dt) {
 // Game state
 // ---------------------------------------------------------------------------
 const PLAYER_R = 0.32, PLAYER_H = 1.75, EYE = 1.55, JUMP_V = 7, RUN = 7, SENS = 0.0022;
-const KICK_TIME = 0.42, KICK_HIT = 0.11, KICK_REACH = 1.5;
-const WEAPONS = [
-  { name: "PISTOL", ammo: "bullets", rate: 0.2, pellets: 1, dmg: [14, 22], spread: 0.012 },
-  { name: "SHOTGUN", ammo: "shells", rate: 0.85, pellets: 7, dmg: [8, 13], spread: 0.075 },
-];
+const KICK_TIME = 0.42, KICK_HIT = 0.11, KICK_REACH = 1.5, RESCUE_DIST = 1.7;
 const POP_WORDS = ["WHAM!", "KRAKK!", "BOOM!", "THOOM!", "KA-BLAM!", "SMASH!"];
+const SAVED_WORDS = ["SAVED!", "RESCUED!", "YOU'RE SAFE!"];
+const CONFETTI = ["#ffd23a", "#ff5a4a", "#4f8cff", "#5ad06a", "#ffffff"];
 
 let state = "menu";
-let player, enemies = [], pickups = [], stats;
+let player, people = [], stats;
 let kick = { t: 0, done: false };
-let msgs = [], pop = null, shakeT = 0, hurtT = 0, pickT = 0, flashT = 0, nearDoor = null, gameTime = 0;
+let msgs = [], pop = null, shakeT = 0, savedT = 0, nearDoor = null, gameTime = 0;
 
 function newPlayer() {
   const p = {
     x: START.x, z: START.z, y: 0, vy: 0, yaw: START.yaw, pitch: 0, r: PLAYER_R, h: PLAYER_H,
-    hp: 100, bullets: 48, shells: 0, hasShotgun: false, weapon: 0, fireCool: 0, switchT: 0, recoil: 0,
-    grounded: true, viewY: EYE, bob: 0, bobAmt: 0, vx: 0, vz: 0, dead: false,
+    grounded: true, viewY: EYE, bob: 0, bobAmt: 0, vx: 0, vz: 0,
   };
   p.sector = findSector(p.x, p.z);
   return p;
 }
 
-function spawnEnemies() {
-  for (const e of enemies) scene.remove(e.mesh);
-  enemies = ENEMY_SPAWNS.map(([type, x, z, facing]) => {
-    const T = TYPES[type];
-    const tex = T.sheet.clone();
-    tex.repeat.set(1 / 5, 1 / 9);
-    const mesh = new THREE.Mesh(T.geo, new THREE.MeshBasicMaterial({ map: tex, alphaTest: 0.5 }));
+function spawnPeople() {
+  for (const p of people) scene.remove(p.mesh);
+  people = PEOPLE.map(([x, z, facing], i) => {
+    const tex = SHEETS[i % SHEETS.length].clone();
+    tex.repeat.set(1 / 5, 1 / 8);
+    const mesh = new THREE.Mesh(personGeo, new THREE.MeshBasicMaterial({ map: tex, alphaTest: 0.5 }));
     scene.add(mesh);
     const sector = findSector(x, z);
     return {
-      type: T, x, z, y: sector.floor, vy: 0, r: T.r, h: T.h, sector, facing, hp: T.hp, mesh, tex,
-      dead: false, deathT: 0, alert: false, sees: false, losT: Math.random() * 0.2, cool: 0, attackT: 0, fired: false,
-      flashT: 0, pain: 0, kvx: 0, kvz: 0, tx: x, tz: z, walkT: 0, stuck: 0, strafeT: 0, sx: 0, sz: 0, moving: false,
+      x, z, y: sector.floor, r: 0.3, h: 1.75, sector, facing, home: facing, mesh, tex,
+      saved: false, animT: Math.random(), helpT: 1 + Math.random() * 5, seeT: 0, sees: false,
+      pitch: 0.85 + Math.random() * 0.45,
     };
-  });
-}
-
-function spawnPickups() {
-  for (const p of pickups) scene.remove(p.mesh);
-  pickups = PICKUP_SPAWNS.map(([kind, x, z]) => {
-    const K = PICKUPS[kind];
-    const mesh = new THREE.Mesh(K.geo, K.mat);
-    const s = findSector(x, z);
-    mesh.position.set(x, s.floor, z);
-    scene.add(mesh);
-    return { kind, x, z, y: s.floor, mesh, taken: false, phase: Math.random() * 6 };
   });
 }
 
 function resetGame() {
   player = newPlayer();
   resetDoors();
-  spawnEnemies();
-  spawnPickups();
+  spawnPeople();
   parts = [];
   kick = { t: 0, done: false };
-  msgs = []; pop = null; shakeT = hurtT = pickT = flashT = 0; gameTime = 0;
-  stats = { kills: 0, doors: 0, shots: 0 };
-  message("Doors are no match for you. Kick: F, E or right click.");
+  msgs = []; pop = null; shakeT = savedT = 0; gameTime = 0;
+  stats = { doors: 0, saved: 0 };
+  message("People are trapped behind locked doors. Kick them in!");
+  message("Kick: click, F or E");
 }
 
-function message(text) { msgs.push({ text, t: 3.5 }); if (msgs.length > 4) msgs.shift(); }
+function message(text) { msgs.push({ text, t: 4 }); if (msgs.length > 4) msgs.shift(); }
+function showPop(text, color = "#ffd23a") { pop = { text, color, t: 0.8, rot: (Math.random() - 0.5) * 0.3 }; }
+const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
 // ---------------------------------------------------------------------------
-// Player actions
+// Kicking
 // ---------------------------------------------------------------------------
-function switchWeapon(i) {
-  if (i === player.weapon || (i === 1 && !player.hasShotgun)) return;
-  player.weapon = i; player.switchT = 0.3;
-}
-
-function alertEnemy(e) {
-  if (e.alert || e.dead) return;
-  e.alert = true;
-  e.cool = 0.4 + Math.random() * 0.7;
-  sfx.alert(near(e.x, e.z));
-}
-function alertNear(x, z, radius) {
-  for (const e of enemies) {
-    if (e.dead || e.alert) continue;
-    const d = Math.hypot(e.x - x, e.z - z);
-    if (d < radius * 0.45 || (d < radius && los(e.x, e.y + 1.5, e.z, x, player.y + EYE, z))) alertEnemy(e);
-  }
-}
-
-function hurtEnemy(e, dmg, kx, kz, cause) {
-  if (e.dead) return;
-  e.hp -= dmg;
-  alertEnemy(e);
-  e.kvx += kx; e.kvz += kz;
-  if (e.hp <= 0) {
-    e.dead = true; e.deathT = 0; stats.kills++;
-    sfx.death(near(e.x, e.z));
-    spawnParts(e.x, e.y + 1.1, e.z, 26, "#a01010", 3.5);
-    if (cause === "door") showPop("FLATTENED!");
-  } else if (cause === "kick" || Math.random() < e.type.pain) {
-    e.pain = cause === "kick" ? 0.55 : 0.28;
-    e.attackT = 0;
-    sfx.pain(near(e.x, e.z));
-  }
-}
-
-function hitscan(spreadYaw, spreadPitch, dmg) {
-  const yaw = player.yaw + spreadYaw, pitch = player.pitch + spreadPitch;
-  const dx = -Math.sin(yaw), dz = -Math.cos(yaw), slope = Math.tan(pitch);
-  const ox = player.x, oz = player.z, oy = player.viewY;
-  const wall = rayWall(ox, oz, dx, dz, 80, oy, slope);
-  let best = null, bt = wall.t;
-  for (const e of enemies) {
-    if (e.dead) continue;
-    const ex = e.x - ox, ez = e.z - oz, t = ex * dx + ez * dz;
-    if (t <= 0 || t >= bt) continue;
-    if (Math.abs(ex * dz - ez * dx) > e.r) continue;
-    const y = oy + slope * t;
-    if (y < e.y || y > e.y + e.h) continue;
-    best = e; bt = t;
-  }
-  const hx = ox + dx * (bt - 0.05), hz = oz + dz * (bt - 0.05);
-  let hy = oy + slope * bt;
-  if (best) {
-    hurtEnemy(best, dmg, dx * 0.6, dz * 0.6, "shot");
-    spawnParts(hx, hy, hz, 7, "#b01818", 2);
-  } else if (wall.line) {
-    const s = findSector(hx, hz);
-    if (s) hy = clamp(hy, s.floor + 0.02, s.ceil - 0.02);
-    spawnParts(hx, hy, hz, 5, "#9a958a", 1.5);
-    spawnParts(hx, hy, hz, 2, "#ffd060", 2.5);
-  }
-}
-
-function tryFire() {
-  const w = WEAPONS[player.weapon];
-  if (player.fireCool > 0 || player.switchT > 0 || kick.t > 0 || player.dead) return;
-  if (player[w.ammo] <= 0) {
-    sfx.click(); player.fireCool = 0.35;
-    if (player.weapon === 1 && player.bullets > 0) switchWeapon(0);
-    return;
-  }
-  player[w.ammo]--;
-  player.fireCool = w.rate; player.recoil = 1; flashT = 0.06; stats.shots++;
-  for (let i = 0; i < w.pellets; i++) hitscan((Math.random() - 0.5) * 2 * w.spread, (Math.random() - 0.5) * 1.2 * w.spread, rand(w.dmg));
-  (player.weapon ? sfx.shotgun : sfx.pistol)();
-  alertNear(player.x, player.z, 22);
-}
-
 function findKickDoor() {
   const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
   let best = null, bd = KICK_REACH;
@@ -1074,26 +892,17 @@ function findKickDoor() {
 }
 
 function startKick() {
-  if (kick.t > 0 || player.dead) return;
+  if (kick.t > 0) return;
   kick = { t: 1e-4, done: false };
   sfx.whoosh();
 }
 
 function resolveKick() {
-  const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
-  let hit = false;
   const d = findKickDoor();
-  if (d) { kickDoor(d); hit = true; }
-  for (const e of enemies) {
-    if (e.dead || Math.abs(e.y - player.y) > 1.2) continue;
-    const dx = e.x - player.x, dz = e.z - player.z, dist = Math.hypot(dx, dz);
-    if (dist - e.r > 1.3 || (dx * fx + dz * fz) / dist < 0.5) continue;
-    hurtEnemy(e, 60, fx * 10 / e.type.scale, fz * 10 / e.type.scale, "kick");
-    spawnParts(e.x, e.y + 1.2, e.z, 8, "#b01818", 2);
-    if (!d) sfx.kickBody();
-    hit = true;
-  }
-  if (hit) { shakeT = 0.22; player.vx -= fx * 1.5; player.vz -= fz * 1.5; }
+  if (!d) return;
+  kickDoor(d);
+  shakeT = 0.22;
+  player.vx += Math.sin(player.yaw) * 1.5; player.vz += Math.cos(player.yaw) * 1.5; // a little push back
 }
 
 function kickDoor(d) {
@@ -1103,49 +912,43 @@ function kickDoor(d) {
   Object.assign(d, { state: "flying", nx, nz, yaw: Math.atan2(nx, nz), vx: nx * 13, vz: nz * 13, vy: 2.5, omega: 9 });
   stats.doors++;
   sfx.kickDoor();
-  showPop(POP_WORDS[Math.floor(Math.random() * POP_WORDS.length)]);
+  showPop(pick(POP_WORDS));
   spawnParts(d.cx, d.floor + d.h * 0.5, d.cz, 45, "#8a5a2c", 5, [nx, nz], 2.5);
   spawnParts(d.cx, d.floor + 0.3, d.cz, 20, "#8c867c", 2.5, [nx, nz], 1);
-  alertNear(d.cx, d.cz, 15);
 }
 
-function showPop(text) { pop = { text, t: 0.75, rot: (Math.random() - 0.5) * 0.3 }; }
-
-function hurtPlayer(dmg) {
-  if (player.dead) return;
-  player.hp -= dmg;
-  hurtT = Math.min(0.7, hurtT + dmg / 25);
-  sfx.hurt();
-  if (player.hp <= 0) {
-    player.hp = 0; player.dead = true;
-    setTimeout(() => endGame(false), 1600);
-  }
+function rescue(p) {
+  p.saved = true; p.animT = 0;
+  stats.saved++;
+  savedT = 0.35;
+  sfx.saved(p.pitch);
+  showPop(pick(SAVED_WORDS), "#7dff8a");
+  spawnParts(p.x, p.y + 1.9, p.z, 40, CONFETTI, 2.5, null, 3);
+  const left = people.length - stats.saved;
+  message(left ? `${left} more to find` : "Everyone's safe!");
+  if (!left) setTimeout(endGame, 1800);
 }
 
 // ---------------------------------------------------------------------------
 // Update
 // ---------------------------------------------------------------------------
 const KEYS = new Set();
-let mouseDown = false;
 
 function updatePlayer(dt) {
   const p = player;
-  if (!p.dead) {
-    const turn = (KEYS.has("ArrowLeft") ? 1 : 0) - (KEYS.has("ArrowRight") ? 1 : 0);
-    p.yaw += turn * 2.6 * dt;
-    const fwd = (KEYS.has("KeyW") || KEYS.has("ArrowUp") ? 1 : 0) - (KEYS.has("KeyS") || KEYS.has("ArrowDown") ? 1 : 0);
-    const str = (KEYS.has("KeyD") ? 1 : 0) - (KEYS.has("KeyA") ? 1 : 0);
-    const fx = -Math.sin(p.yaw), fz = -Math.cos(p.yaw), rx = Math.cos(p.yaw), rz = -Math.sin(p.yaw);
-    let wx = fx * fwd + rx * str, wz = fz * fwd + rz * str;
-    const wl = Math.hypot(wx, wz);
-    const speed = KEYS.has("ShiftLeft") || KEYS.has("ShiftRight") ? RUN * 0.5 : RUN;
-    if (wl > 0) { wx = wx / wl * speed; wz = wz / wl * speed; }
-    const k = Math.min(1, dt * (p.grounded ? 10 : 2));
-    p.vx += (wx - p.vx) * k; p.vz += (wz - p.vz) * k;
-    if (KEYS.has("Space") && p.grounded) { p.vy = JUMP_V; p.grounded = false; }
-  } else {
-    p.vx *= 0.9; p.vz *= 0.9;
-  }
+  const turn = (KEYS.has("ArrowLeft") ? 1 : 0) - (KEYS.has("ArrowRight") ? 1 : 0);
+  p.yaw += turn * 2.6 * dt;
+  const fwd = (KEYS.has("KeyW") || KEYS.has("ArrowUp") ? 1 : 0) - (KEYS.has("KeyS") || KEYS.has("ArrowDown") ? 1 : 0);
+  const str = (KEYS.has("KeyD") ? 1 : 0) - (KEYS.has("KeyA") ? 1 : 0);
+  const fx = -Math.sin(p.yaw), fz = -Math.cos(p.yaw), rx = Math.cos(p.yaw), rz = -Math.sin(p.yaw);
+  let wx = fx * fwd + rx * str, wz = fz * fwd + rz * str;
+  const wl = Math.hypot(wx, wz);
+  const speed = KEYS.has("ShiftLeft") || KEYS.has("ShiftRight") ? RUN * 0.5 : RUN;
+  if (wl > 0) { wx = wx / wl * speed; wz = wz / wl * speed; }
+  const k = Math.min(1, dt * (p.grounded ? 10 : 2));
+  p.vx += (wx - p.vx) * k; p.vz += (wz - p.vz) * k;
+  if (KEYS.has("Space") && p.grounded) { p.vy = JUMP_V; p.grounded = false; }
+
   moveEntity(p, p.vx * dt, p.vz * dt);
   const s = p.sector, wasGrounded = p.grounded;
   p.vy -= GRAV * dt;
@@ -1157,120 +960,59 @@ function updatePlayer(dt) {
   } else p.grounded = false;
   if (p.y + p.h > s.ceil) { p.y = Math.max(s.floor, s.ceil - p.h); if (p.vy > 0) p.vy = 0; }
 
-  const target = p.y + (p.dead ? 0.35 : EYE);
-  if (p.grounded || p.dead) p.viewY += (target - p.viewY) * Math.min(1, dt * (p.dead ? 3 : 14));
+  const target = p.y + EYE;
+  if (p.grounded) p.viewY += (target - p.viewY) * Math.min(1, dt * 14);
   else p.viewY = target;
   const hs = Math.hypot(p.vx, p.vz);
   p.bobAmt = p.grounded ? Math.min(1, hs / RUN) : 0;
   p.bob += hs * dt * 1.7;
-
-  p.fireCool -= dt;
-  p.switchT = Math.max(0, p.switchT - dt);
-  p.recoil = Math.max(0, p.recoil - dt * (p.weapon ? 3 : 7));
-  if (mouseDown && !p.dead) tryFire();
 
   if (kick.t > 0) {
     kick.t += dt;
     if (!kick.done && kick.t >= KICK_HIT) { kick.done = true; resolveKick(); }
     if (kick.t >= KICK_TIME) kick.t = 0;
   }
-  nearDoor = p.dead ? null : findKickDoor();
-
-  for (const pk of pickups) {
-    if (pk.taken || p.dead) continue;
-    if (Math.hypot(pk.x - p.x, pk.z - p.z) < 0.8 && Math.abs(pk.y - p.y) < 1.3 && PICKUPS[pk.kind].take(p)) {
-      pk.taken = true; pk.mesh.visible = false; pickT = 0.25;
-      sfx.pickup(); message(PICKUPS[pk.kind].msg);
-    }
-  }
-  if (p.sector.exit && !p.dead) endGame(true);
+  nearDoor = findKickDoor();
 }
 
-function setFrame(e, col, row) { e.tex.offset.set(col / 5, 1 - (row + 1) / 9); }
+function setFrame(p, col, row) { p.tex.offset.set(col / 5, 1 - (row + 1) / 8); }
 
-function enemyFire(e) {
-  const T = e.type;
-  const dist = Math.hypot(player.x - e.x, player.z - e.z);
-  sfx.enemyShot(near(e.x, e.z), T.pellets > 1);
-  e.flashT = 0.1;
-  if (!los(e.x, e.y + 1.5 * T.scale, e.z, player.x, player.viewY, player.z)) return;
-  const moving = Math.hypot(player.vx, player.vz) > 3 ? 0.75 : 1;
-  const chance = clamp(0.92 - dist * 0.045, 0.15, 0.92) * moving;
-  let dmg = 0;
-  for (let i = 0; i < T.pellets; i++) if (Math.random() < chance) dmg += Math.round(rand(T.dmg));
-  if (dmg) hurtPlayer(dmg);
-}
-
-function updateEnemy(e, dt) {
-  const T = e.type;
-  if (Math.hypot(e.kvx, e.kvz) > 0.05) {
-    const sp = Math.hypot(e.kvx, e.kvz);
-    const hit = moveEntity(e, e.kvx * dt, e.kvz * dt);
-    if (hit && sp > 4 && !e.dead) {
-      hurtEnemy(e, 35, 0, 0, "slam");
-      sfx.slam(near(e.x, e.z)); showPop("SLAM!");
-      e.kvx = e.kvz = 0;
-    }
-    const k = Math.max(0, 1 - dt * 5);
-    e.kvx *= k; e.kvz *= k;
-  } else e.kvx = e.kvz = 0;
-  e.vy -= GRAV * dt; e.y += e.vy * dt;
-  if (e.y <= e.sector.floor) { e.y = e.sector.floor; e.vy = 0; }
-
-  if (e.dead) {
-    e.deathT += dt;
-    setFrame(e, Math.min(3, Math.floor(e.deathT / 0.12)), 8);
-    return;
+function updatePerson(p, dt) {
+  p.animT += dt;
+  const dist = Math.hypot(player.x - p.x, player.z - p.z);
+  p.seeT -= dt;
+  if (p.seeT <= 0) {
+    p.seeT = 0.2 + Math.random() * 0.1;
+    p.sees = dist < 14 && los(p.x, p.y + 1.6, p.z, player.x, player.viewY, player.z);
   }
-  e.flashT -= dt;
-  const dx = player.x - e.x, dz = player.z - e.z, dist = Math.hypot(dx, dz);
-  const toPlayer = Math.atan2(dz, dx);
-  e.losT -= dt;
-  if (e.losT <= 0) {
-    e.losT = 0.15 + Math.random() * 0.1;
-    e.sees = !player.dead && los(e.x, e.y + 1.5 * T.scale, e.z, player.x, player.viewY, player.z);
-  }
-  let pose = "walk0";
-  e.moving = false;
-  if (e.pain > 0) {
-    e.pain -= dt; pose = "pain";
-  } else if (!e.alert) {
-    if (e.sees && (Math.abs(angleDiff(toPlayer, e.facing)) < 1.2 || dist < 4)) alertEnemy(e);
+  if (p.sees) p.facing += angleDiff(Math.atan2(player.z - p.z, player.x - p.x), p.facing) * Math.min(1, dt * 6);
+  let pose;
+  if (p.saved) {
+    pose = Math.floor(p.animT / 0.2) % 2 ? "cheer1" : "cheer0";
   } else {
-    if (e.sees) { e.tx = player.x; e.tz = player.z; }
-    e.cool -= dt;
-    if (e.attackT > 0) {
-      e.facing = toPlayer;
-      e.attackT -= dt;
-      if (!e.fired && e.attackT < 0.15) { e.fired = true; enemyFire(e); }
-      pose = e.flashT > 0 ? "fire" : "aim";
-    } else if (e.sees && dist < T.range && e.cool <= 0 && !player.dead) {
-      e.attackT = 0.45; e.fired = false; e.cool = rand(T.cool); e.facing = toPlayer; pose = "aim";
-    } else {
-      let mx = e.tx - e.x, mz = e.tz - e.z, md = Math.hypot(mx, mz);
-      if (e.sees && dist < 2.4) md = 0; // close enough
-      if (e.strafeT > 0) { e.strafeT -= dt; mx = e.sx; mz = e.sz; md = 1; }
-      if (md > 0.3) {
-        mx /= md; mz /= md;
-        e.facing += angleDiff(Math.atan2(mz, mx), e.facing) * Math.min(1, dt * 8);
-        const step = T.speed * dt, ox = e.x, oz = e.z;
-        moveEntity(e, mx * step, mz * step);
-        const moved = Math.hypot(e.x - ox, e.z - oz);
-        e.stuck = moved < step * 0.35 ? e.stuck + dt : Math.max(0, e.stuck - dt);
-        if (e.stuck > 0.35) {
-          const sgn = Math.random() < 0.5 ? 1 : -1;
-          e.sx = -mz * sgn; e.sz = mx * sgn; e.strafeT = 0.7; e.stuck = 0;
-        }
-        e.moving = true;
-        e.walkT += dt;
-        pose = Math.floor(e.walkT / 0.22) % 2 ? "walk1" : "walk0";
-      } else if (e.sees) e.facing = toPlayer;
+    pose = Math.floor(p.animT / 0.3) % 2 ? "wave1" : "wave0";
+    // Trapped people call for help every few seconds, muffled through walls.
+    p.helpT -= dt;
+    if (p.helpT <= 0) {
+      p.helpT = 4 + Math.random() * 4;
+      if (dist < 32) sfx.help(near(p.x, p.z), !p.sees, p.pitch);
     }
+    if (p.sees && dist < RESCUE_DIST && Math.abs(p.y - player.y) < 1.5) rescue(p);
   }
-  // Pick the sprite for the angle the camera sees this enemy from.
-  const view = Math.atan2(player.z - e.z, player.x - e.x);
-  const idx = ((Math.round(angleDiff(view, e.facing) / (Math.PI / 4)) % 8) + 8) % 8;
-  setFrame(e, POSES.indexOf(pose), idx);
+  // Pick the sprite for the angle the camera sees this person from.
+  const view = Math.atan2(player.z - p.z, player.x - p.x);
+  const idx = ((Math.round(angleDiff(view, p.facing) / (Math.PI / 4)) % 8) + 8) % 8;
+  setFrame(p, POSES.indexOf(pose), idx);
+}
+
+// True if a door lying at (x, z) and reaching `reach` ahead would touch anyone.
+function doorHitsPerson(d, x, z, reach) {
+  for (const p of people) {
+    const rx = p.x - x, rz = p.z - z;
+    const along = rx * d.nx + rz * d.nz, across = Math.abs(rx * d.nz - rz * d.nx);
+    if (along > -0.2 && along < reach + p.r && across < d.w / 2 + p.r && Math.abs(p.y - d.y) < 1.5) return true;
+  }
+  return false;
 }
 
 function updateDoor(d, dt) {
@@ -1281,9 +1023,12 @@ function updateDoor(d, dt) {
   const n = Math.max(1, Math.ceil(sp * dt / 0.1));
   for (let i = 0; i < n && (d.vx || d.vz); i++) {
     const x = d.x + d.vx * dt / n, z = d.z + d.vz * dt / n;
-    // stop when the door's leading edge or middle runs into a wall
+    // Stop when the door's leading edge or middle runs into a wall. Doors
+    // never hit the people you're rescuing: they stop just short.
     if (hitsWall(x + d.nx * reach, z + d.nz * reach, d.y, 0.25, 0.12) || hitsWall(x + d.nx * reach * 0.5, z + d.nz * reach * 0.5, d.y, 0.25, 0.12)) {
       if (sp > 3) sfx.slam(near(x, z) * 0.8);
+      d.vx = d.vz = 0;
+    } else if (doorHitsPerson(d, x, z, reach)) {
       d.vx = d.vz = 0;
     } else { d.x = x; d.z = z; }
   }
@@ -1291,22 +1036,15 @@ function updateDoor(d, dt) {
   const s = findSector(d.x + d.nx * reach * 0.5, d.z + d.nz * reach * 0.5) || findSector(d.x, d.z);
   const floor = s ? s.floor : d.floor;
   if (d.y <= floor) {
-    if (!d.landed && d.theta >= Math.PI / 2 - 0.01) { d.landed = true; sfx.doorLand(near(d.x, d.z)); spawnParts(d.x + d.nx * reach * 0.5, floor + 0.1, d.z + d.nz * reach * 0.5, 18, "#8c867c", 2, null, 1.2); shakeT = Math.max(shakeT, 0.12); }
+    if (!d.landed && d.theta >= Math.PI / 2 - 0.01) {
+      d.landed = true;
+      sfx.doorLand(near(d.x, d.z));
+      spawnParts(d.x + d.nx * reach * 0.5, floor + 0.1, d.z + d.nz * reach * 0.5, 18, "#8c867c", 2, null, 1.2);
+      shakeT = Math.max(shakeT, 0.12);
+    }
     d.y = floor; d.vy = 0;
     const k = Math.max(0, 1 - dt * 6);
     d.vx *= k; d.vz *= k;
-  }
-  if (sp > 3) {
-    for (const e of enemies) {
-      if (e.dead || d.hit.has(e)) continue;
-      const rx = e.x - d.x, rz = e.z - d.z;
-      const along = rx * d.nx + rz * d.nz, across = Math.abs(rx * d.nz - rz * d.nx);
-      if (along > -e.r - 0.1 && along < reach + e.r && across < d.w / 2 + e.r && e.y < d.y + d.h * Math.cos(d.theta) + 0.4 && e.y + e.h > d.y - 0.1) {
-        d.hit.add(e);
-        hurtEnemy(e, 250, d.vx * 0.4, d.vz * 0.4, "door");
-        d.vx *= 0.75; d.vz *= 0.75;
-      }
-    }
   }
   if (d.theta >= Math.PI / 2 && d.landed && sp < 0.05) d.state = "down";
   d.group.position.set(d.x, d.y + 0.06 * Math.sin(d.theta), d.z);
@@ -1316,29 +1054,22 @@ function updateDoor(d, dt) {
 function update(dt) {
   gameTime += dt;
   updatePlayer(dt);
-  for (const e of enemies) updateEnemy(e, dt);
+  for (const p of people) updatePerson(p, dt);
   for (const d of doors) updateDoor(d, dt);
   updateParts(dt);
   for (const m of msgs) m.t -= dt;
   msgs = msgs.filter((m) => m.t > 0);
   if (pop && (pop.t -= dt) <= 0) pop = null;
   shakeT = Math.max(0, shakeT - dt);
-  hurtT = Math.max(0, hurtT - dt);
-  pickT = Math.max(0, pickT - dt);
-  flashT = Math.max(0, flashT - dt);
+  savedT = Math.max(0, savedT - dt);
 }
 
 // Sprites always face the camera, lit by the sector they stand in.
-function syncSprites(t) {
-  for (const e of enemies) {
-    e.mesh.position.set(e.x, e.y, e.z);
-    e.mesh.rotation.y = player.yaw;
-    e.mesh.material.color.setScalar(lin(e.sector.light) * (e.flashT > 0 ? 1.6 : 1));
-  }
-  for (const p of pickups) {
-    if (p.taken) continue;
-    p.mesh.position.y = p.y + 0.06 + Math.sin(t * 3 + p.phase) * 0.05;
+function syncSprites() {
+  for (const p of people) {
+    p.mesh.position.set(p.x, p.y, p.z);
     p.mesh.rotation.y = player.yaw;
+    p.mesh.material.color.setScalar(lin(p.sector.light));
   }
 }
 
@@ -1347,35 +1078,19 @@ function placeCamera() {
   const bob = Math.sin(p.bob) * 0.045 * p.bobAmt;
   const sh = shakeT > 0 ? shakeT * 0.25 : 0;
   camera.position.set(p.x + (Math.random() - 0.5) * sh, p.viewY + bob + (Math.random() - 0.5) * sh, p.z + (Math.random() - 0.5) * sh);
-  camera.rotation.set(p.pitch, p.yaw, p.dead ? 0.5 : 0);
+  camera.rotation.set(p.pitch, p.yaw, 0);
 }
 
 // ---------------------------------------------------------------------------
-// HUD and the first-person view model, drawn on the low-res 2D canvas.
+// HUD: the hero's fists and kicking leg, drawn on the low-res 2D canvas.
 // ---------------------------------------------------------------------------
 function sprite(w, h, draw) { const c = makeCanvas(w, h); draw(rectFn(c.getContext("2d"))); return c; }
 const GLOVE = "#b8231c", GLOVE_D = "#7d150f", GLOVE_L = "#d9453b", CUFF = "#e2b23a";
-const pistolImg = sprite(48, 64, (R) => {
-  R(19, 2, 10, 30, "#50555d"); R(19, 2, 2, 30, "#737a84"); R(27, 2, 2, 30, "#3a3e44");
-  for (let i = 0; i < 4; i++) R(20, 22 + i * 2, 8, 1, "#3a3e44");
-  R(23, 0, 2, 3, "#2b2e33"); R(19, 30, 3, 2, "#222"); R(26, 30, 3, 2, "#222");
-  R(18, 31, 12, 14, "#2b2e33");
-  R(10, 40, 28, 24, GLOVE); R(10, 40, 28, 2, GLOVE_L); R(12, 48, 24, 1, GLOVE_D); R(12, 53, 24, 1, GLOVE_D);
-  R(6, 44, 6, 14, "#a51f19"); R(36, 46, 6, 18, "#a51f19");
-  R(8, 60, 32, 4, CUFF);
-});
-const shotgunImgs = [0, 5, 10].map((p) => sprite(64, 76, (R) => {
-  R(28, 18, 8, 40, "#30333a");
-  R(27, 0, 10, 56, "#3d4047"); R(27, 0, 2, 56, "#5f646d"); R(35, 0, 2, 56, "#2b2e33"); R(31, 0, 2, 2, "#ddd");
-  R(22, 34 + p, 20, 16, "#7a4a24");
-  for (let i = 0; i < 4; i++) R(22, 37 + p + i * 3, 20, 1, "#5a3418");
-  R(13, 38 + p, 12, 14, GLOVE); R(13, 38 + p, 12, 2, GLOVE_L); R(40, 40 + p, 6, 10, "#a51f19");
-  R(24, 52, 16, 14, "#2b2e33");
-  R(20, 60, 30, 16, GLOVE); R(20, 60, 30, 2, GLOVE_L); R(22, 66, 26, 1, GLOVE_D);
-  R(18, 72, 34, 4, CUFF);
-}));
-const flashImg = sprite(28, 22, (R) => {
-  R(10, 0, 8, 22, "#ffb020"); R(0, 7, 28, 8, "#ffb020"); R(4, 3, 20, 16, "#ffd860"); R(9, 6, 10, 10, "#fff6c8");
+const fistImg = sprite(30, 32, (R) => {
+  R(3, 6, 24, 18, GLOVE); R(3, 6, 24, 2, GLOVE_L);
+  R(9, 6, 1, 10, GLOVE_D); R(15, 6, 1, 10, GLOVE_D); R(21, 6, 1, 10, GLOVE_D);
+  R(3, 16, 15, 5, "#a51f19"); R(3, 16, 15, 1, GLOVE_L);
+  R(6, 24, 20, 8, CUFF); R(6, 24, 20, 1, "#f5d470");
 });
 
 function drawLeg(ext) {
@@ -1418,54 +1133,38 @@ function text(str, x, y, size, color, align = "left", stroke = "#000") {
   hg.strokeText(str, x, y);
   hg.fillStyle = color; hg.fillText(str, x, y);
 }
+const clock = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t) % 60).padStart(2, "0")}`;
 
 function drawHUD() {
   const g = hg, p = player;
   g.clearRect(0, 0, W, H);
   g.imageSmoothingEnabled = false;
-  // view model
   const ext = kick.t > 0 ? (kick.t < KICK_TIME * 0.35 ? 1 - (1 - kick.t / (KICK_TIME * 0.35)) ** 2 : kick.t < KICK_TIME * 0.5 ? 1 : 1 - (kick.t - KICK_TIME * 0.5) / (KICK_TIME * 0.5)) : 0;
-  if (!p.dead) {
-    const bx = Math.cos(p.bob * 0.5) * 7 * p.bobAmt, by = Math.abs(Math.sin(p.bob * 0.5)) * 6 * p.bobAmt;
-    const lower = ext * 90 + (p.switchT > 0 ? Math.sin(p.switchT / 0.3 * Math.PI) * 80 : 0);
-    if (p.weapon === 0) {
-      const x = Math.round(W / 2 - 48 + 22 + bx), y = Math.round(H - 118 + by + p.recoil * 10 + lower);
-      if (flashT > 0) g.drawImage(flashImg, x + 48 - 28, y - 34, 56, 44);
-      g.drawImage(pistolImg, x, y, 96, 128);
-    } else {
-      const pump = p.recoil > 0 && p.recoil < 0.75 ? (p.recoil > 0.45 ? 2 : 1) : 0;
-      const x = Math.round(W / 2 - 64 + 14 + bx), y = Math.round(H - 140 + by + p.recoil * 14 + lower);
-      if (flashT > 0) g.drawImage(flashImg, x + 64 - 34, y - 40, 68, 52);
-      g.drawImage(shotgunImgs[pump], x, y, 128, 152);
-    }
-    if (ext > 0) drawLeg(ext);
-    // crosshair
-    g.fillStyle = "rgba(255,240,200,0.8)";
-    g.fillRect(W / 2 - 4, H / 2, 3, 1); g.fillRect(W / 2 + 2, H / 2, 3, 1);
-    g.fillRect(W / 2, H / 2 - 4, 1, 3); g.fillRect(W / 2, H / 2 + 2, 1, 3);
-    if (nearDoor && kick.t === 0) text("[F] KICK", W / 2, H / 2 + 26, 12, "#ffd23a", "center");
-  }
+  // fists, held up in a guard and pulled apart while kicking
+  const bx = Math.cos(p.bob * 0.5) * 6 * p.bobAmt, by = Math.abs(Math.sin(p.bob * 0.5)) * 6 * p.bobAmt;
+  const fy = Math.round(H - 58 + by + ext * 30), spread = ext * 30;
+  g.drawImage(fistImg, Math.round(W / 2 + 46 + spread + bx), fy, 60, 64);
+  g.save(); g.translate(Math.round(W / 2 - 46 - spread + bx), fy); g.scale(-1, 1); g.drawImage(fistImg, 0, 0, 60, 64); g.restore();
+  if (ext > 0) drawLeg(ext);
+  // crosshair dot and the kick prompt
+  g.fillStyle = "rgba(255,240,200,0.8)";
+  g.fillRect(W / 2 - 1, H / 2 - 1, 2, 2);
+  if (nearDoor && kick.t === 0) text("KICK!", W / 2, H / 2 + 24, 13, "#ffd23a", "center");
   // status
-  text("+", 10, H - 10, 22, "#e8352a");
-  text(String(Math.max(0, Math.ceil(p.hp))), 26, H - 10, 22, p.hp > 25 ? "#f2efe6" : "#ff5a4a");
-  const w = WEAPONS[p.weapon];
-  text(String(p[w.ammo]), W - 10, H - 10, 22, "#f2efe6", "right");
-  text(w.name + (p.hasShotgun ? "" : ""), W - 10, H - 34, 10, "#c9c3b4", "right");
-  text(`DOORS ${stats.doors}/${doors.length}`, W - 8, 16, 11, "#ffd23a", "right");
-  text(`KILLS ${stats.kills}/${enemies.length}`, W - 8, 29, 11, "#c9c3b4", "right");
+  text(`RESCUED ${stats.saved}/${people.length}`, W - 8, 17, 13, "#7dff8a", "right");
+  text(`DOORS ${stats.doors}/${doors.length}`, W - 8, 31, 10, "#ffd23a", "right");
+  text(clock(gameTime), 10, H - 10, 16, "#f2efe6");
   msgs.forEach((m, i) => { g.globalAlpha = clamp(m.t, 0, 1); text(m.text, 8, 16 + i * 13, 10, "#f2efe6"); });
   g.globalAlpha = 1;
   if (pop) {
-    const age = 0.75 - pop.t, sc = age < 0.08 ? 0.6 + age / 0.08 * 0.6 : 1.2 - Math.min(0.2, (age - 0.08));
+    const age = 0.8 - pop.t, sc = age < 0.08 ? 0.6 + age / 0.08 * 0.6 : 1.2 - Math.min(0.2, age - 0.08);
     g.save(); g.translate(W / 2, H * 0.32); g.rotate(pop.rot); g.scale(sc, sc);
     g.globalAlpha = clamp(pop.t / 0.2, 0, 1);
     text(pop.text, 3, 3, 34, "#000", "center", "#000");
-    text(pop.text, 0, 0, 34, "#ffd23a", "center", "#c0261f");
+    text(pop.text, 0, 0, 34, pop.color, "center", "#c0261f");
     g.restore(); g.globalAlpha = 1;
   }
-  if (hurtT > 0) { g.fillStyle = `rgba(200,0,0,${Math.min(0.55, hurtT)})`; g.fillRect(0, 0, W, H); }
-  if (pickT > 0) { g.fillStyle = `rgba(255,220,120,${pickT * 0.6})`; g.fillRect(0, 0, W, H); }
-  if (p.dead) { g.fillStyle = "rgba(120,0,0,0.35)"; g.fillRect(0, 0, W, H); }
+  if (savedT > 0) { g.fillStyle = `rgba(120,255,140,${savedT * 0.5})`; g.fillRect(0, 0, W, H); }
 }
 
 // ---------------------------------------------------------------------------
@@ -1477,18 +1176,16 @@ function show(name) { for (const [k, el] of Object.entries(screens)) el.classLis
 function lockPointer() { try { const r = canvas.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (e) { /* not available */ } }
 
 function startGame() { initAudio(); resetGame(); state = "play"; show(null); lockPointer(); }
-function endGame(won) {
+function endGame() {
   if (state !== "play") return;
   state = "over";
-  mouseDown = false;
   document.exitPointerLock?.();
-  const t = Math.floor(gameTime);
-  $("overTitle").textContent = won ? "BUILDING CLEARED" : "YOU GOT WASTED";
-  $("overText").textContent = won ? "You kicked your way to the roof." : "Even a superhero needs a medkit now and then.";
+  $("overTitle").textContent = "EVERYONE'S SAFE";
+  $("overText").textContent = "You kicked in every door between you and them.";
   $("stats").innerHTML = [
-    ["Time", `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`],
+    ["Time", clock(gameTime)],
+    ["People rescued", `${stats.saved} / ${people.length}`],
     ["Doors kicked", `${stats.doors} / ${doors.length}`],
-    ["Kills", `${stats.kills} / ${enemies.length}`],
   ].map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join("");
   show("over");
 }
@@ -1497,36 +1194,31 @@ $("play").addEventListener("click", startGame);
 $("again").addEventListener("click", startGame);
 $("resume").addEventListener("click", () => { initAudio(); state = "play"; show(null); lockPointer(); });
 document.addEventListener("pointerlockchange", () => {
-  if (document.pointerLockElement !== canvas && state === "play") { state = "paused"; mouseDown = false; KEYS.clear(); show("pause"); }
+  if (document.pointerLockElement !== canvas && state === "play") { state = "paused"; KEYS.clear(); show("pause"); }
 });
 
 addEventListener("keydown", (e) => {
   KEYS.add(e.code);
   if (state !== "play") return;
   if (e.code === "KeyF" || e.code === "KeyE") startKick();
-  if (e.code === "Digit1") switchWeapon(0);
-  if (e.code === "Digit2") switchWeapon(1);
   if (e.code === "Space" || e.code.startsWith("Arrow")) e.preventDefault();
 });
 addEventListener("keyup", (e) => KEYS.delete(e.code));
-addEventListener("blur", () => { KEYS.clear(); mouseDown = false; });
+addEventListener("blur", () => KEYS.clear());
 document.addEventListener("mousedown", (e) => {
   if (state !== "play") return;
   if (document.pointerLockElement !== canvas) lockPointer();
-  if (e.button === 0) mouseDown = true;
-  if (e.button === 2) startKick();
+  if (e.button === 0 || e.button === 2) startKick();
 });
-document.addEventListener("mouseup", (e) => { if (e.button === 0) mouseDown = false; });
 document.addEventListener("contextmenu", (e) => e.preventDefault());
 document.addEventListener("mousemove", (e) => {
   if (state !== "play" || document.pointerLockElement !== canvas) return;
   player.yaw -= e.movementX * SENS;
   player.pitch = clamp(player.pitch - e.movementY * SENS, -1.2, 1.2);
 });
-document.addEventListener("wheel", (e) => { if (state === "play") switchWeapon(player.weapon === 0 ? 1 : 0); }, { passive: true });
 
 // For automated checks in the browser console.
-window.oneKick = { get player() { return player; }, get enemies() { return enemies; }, doors, startGame, startKick };
+window.oneKick = { get player() { return player; }, get people() { return people; }, get stats() { return stats; }, doors, startGame, startKick };
 
 resetGame();
 let last = performance.now();
@@ -1534,8 +1226,8 @@ function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   if (state === "play") update(dt);
-  else if (state === "menu") { player.yaw += dt * 0.15; } // slow pan behind the title
-  syncSprites(now / 1000);
+  else if (state === "menu") player.yaw += dt * 0.15; // slow pan behind the title
+  syncSprites();
   placeCamera();
   renderer.render(scene, camera);
   if (state === "menu") hg.clearRect(0, 0, W, H); else drawHUD();
