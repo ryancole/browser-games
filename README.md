@@ -1,6 +1,6 @@
 # Browser Games
 
-A collection of small games for the browser. Each game is a self-contained folder under `src/` that runs as-is: open its `index.html`, no build needed. Most have no dependencies at all; Powder Run and One Kick load Three.js from a CDN.
+A collection of small games for the browser. Each game is a self-contained folder under `src/` that runs as-is: open its `index.html`, no build needed. Most have no dependencies at all; Powder Run loads Three.js from a CDN.
 
 When the site is published to GitHub Pages, each page is minified first to make it smaller to download. To build the minified copy locally, into `dist/`:
 
@@ -20,4 +20,3 @@ Play them at https://rycole.com/browser-games/.
 | [Sky Hop](src/sky-hop/) | Tap to flap through the gaps between the pillars. |
 | [Powder Run](src/powder-run/) | Snowboard down ten 3D courses, from a neon city at night and an icy gorge to a lava flow, a snowed-in mountain highway, a sleeping town at midnight, the face of Everest and the Moon, spinning and grabbing off kickers, cliffs and rooftops. |
 | [Footbag Jam](src/footbag-jam/) | Keep the footbag in the air on an 8-bit beach with heads, knees, toes and back kicks. |
-| [One Kick](src/one-kick/) | A retro first-person rescue game: you're a superhero whose one power is kicking down any door, and people are trapped behind them. |
